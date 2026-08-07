@@ -71,7 +71,7 @@
   }
   body.stream-mode{cursor:none;}
   body.stream-mode.ui-visible{cursor:default;}
-  body.stream-mode .chat-panel, body.stream-mode .ticker, body.stream-mode .stage-banner{
+  body.stream-mode .chat-panel, body.stream-mode .ticker, body.stream-mode .stage-banner, body.stream-mode .disclaimer{
     opacity:1; pointer-events:auto; /* always keep on-screen viewer-facing elements visible */
   }
 
@@ -191,6 +191,17 @@
   @media (max-width: 640px){
     .chat-panel{height:72px; left:10px; right:10px; bottom:78px;}
     .chat-msg{font-size:11px; padding:4px 9px;}
+  }
+
+  /* Always-on disclosure that the hype meter / crowd panel is simulated, not real viewer data */
+  .disclaimer{
+    position:fixed; left:16px; bottom:172px; z-index:16;
+    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.4px;
+    color:rgba(237,230,216,0.4);
+    pointer-events:none;
+  }
+  @media (max-width: 640px){
+    .disclaimer{bottom:154px; font-size:8px; max-width:220px; line-height:1.3;}
   }
 
   /* Leaderboard panel */
@@ -339,7 +350,7 @@
 </div>
 
 <div class="hud">
-  <div class="brand">LAST FLAG <span>STANDING</span> <span class="live-badge"><span class="live-dot"></span>LIVE</span></div>
+  <div class="brand">LAST FLAG <span>STANDING</span> <span class="live-badge"><span class="live-dot"></span>24/7 ARENA</span></div>
   <div class="stat-row">
     <div class="stat"><div class="n" id="statRound" style="font-size:15px; letter-spacing:1px;">—</div><div class="l">Stage</div></div>
     <div class="stat"><div class="n" id="statAlive">0</div><div class="l">Remaining</div></div>
@@ -356,9 +367,10 @@
 <div class="ticker" id="ticker"></div>
 
 <div class="chat-panel">
-  <div class="chat-head"><span><span class="dot"></span>LIVE CHAT</span><span id="viewerCount">— watching</span></div>
+  <div class="chat-head"><span><span class="dot"></span>ARENA HYPE</span><span id="viewerCount">— hype</span></div>
   <div class="chat-body" id="chatBody"></div>
 </div>
+<div class="disclaimer">Arena hype &amp; crowd messages are simulated for atmosphere — not real viewer data.</div>
 
 <div class="arena-wrap">
   <canvas id="arena"></canvas>
@@ -367,9 +379,9 @@
 <div class="leaderboard" id="leaderboard">
   <button class="close-lb" id="closeLb">✕</button>
   <h3>All-Time Champions</h3>
-  <div class="sub">Shared across everyone watching</div>
+  <div class="sub">Persistent record for this arena</div>
   <div id="lbList"><div class="lb-empty">No champions crowned yet.</div></div>
-  <div class="lb-note">Win counts are stored globally and visible to all viewers of this arena.</div>
+  <div class="lb-note">Win counts are saved on this device and carry over between runs.</div>
 </div>
 
 <div class="winner-screen" id="winnerScreen">
@@ -686,7 +698,7 @@ function pushChat(text, opts={}){
 let chatTimer = null;
 function startChat(){
   stopChat();
-  viewerCountEl.textContent = (1200 + Math.floor(Math.random()*4000)).toLocaleString() + ' watching';
+  viewerCountEl.textContent = (1200 + Math.floor(Math.random()*4000)).toLocaleString() + ' hype';
   chatTimer = setInterval(()=>{
     if(paused || !running) return;
     const alive = flags.filter(f=>f.alive);
@@ -702,45 +714,41 @@ function startChat(){
 }
 function stopChat(){ if(chatTimer) clearInterval(chatTimer); }
 
-// ---------- Leaderboard (persistent, shared) ----------
+// ---------- Leaderboard (persistent, local to this browser/machine) ----------
 const lbList = document.getElementById('lbList');
-async function recordWin(countryName, emoji){
+const LB_KEY = 'lfs_leaderboard_v1';
+function getWinsStore(){
   try{
-    const key = 'wins:' + countryName;
-    let current = 0;
-    try{
-      const existing = await window.storage.get(key, true);
-      if(existing && existing.value) current = JSON.parse(existing.value).wins || 0;
-    }catch(e){ current = 0; }
-    await window.storage.set(key, JSON.stringify({ wins: current+1, emoji, name: countryName }), true);
-  }catch(e){ console.error('leaderboard save failed', e); }
+    const raw = localStorage.getItem(LB_KEY);
+    return raw ? JSON.parse(raw) : {};
+  }catch(e){ console.error('leaderboard read failed', e); return {}; }
+}
+function setWinsStore(store){
+  try{ localStorage.setItem(LB_KEY, JSON.stringify(store)); }
+  catch(e){ console.error('leaderboard save failed', e); }
+}
+function recordWin(countryName, emoji){
+  const store = getWinsStore();
+  const current = store[countryName]?.wins || 0;
+  store[countryName] = { wins: current + 1, emoji, name: countryName };
+  setWinsStore(store);
   loadLeaderboard();
 }
-async function loadLeaderboard(){
-  try{
-    const listRes = await window.storage.list('wins:', true);
-    if(!listRes || !listRes.keys || !listRes.keys.length){
-      lbList.innerHTML = '<div class="lb-empty">No champions crowned yet.</div>';
-      return;
-    }
-    const entries = [];
-    for(const k of listRes.keys){
-      try{
-        const r = await window.storage.get(k, true);
-        if(r && r.value) entries.push(JSON.parse(r.value));
-      }catch(e){}
-    }
-    entries.sort((a,b)=> (b.wins||0) - (a.wins||0));
-    lbList.innerHTML = renderFlags(entries.slice(0,15).map((e,i)=>`
-      <div class="lb-row">
-        <div class="lb-rank">${i+1}</div>
-        <div class="lb-flag">${e.emoji||'🏳️'}</div>
-        <div class="lb-name">${e.name}</div>
-        <div class="lb-wins">${e.wins}</div>
-      </div>`).join(''));
-  }catch(e){
-    lbList.innerHTML = '<div class="lb-empty">Leaderboard unavailable right now.</div>';
+function loadLeaderboard(){
+  const store = getWinsStore();
+  const entries = Object.values(store);
+  if(!entries.length){
+    lbList.innerHTML = '<div class="lb-empty">No champions crowned yet.</div>';
+    return;
   }
+  entries.sort((a,b)=> (b.wins||0) - (a.wins||0));
+  lbList.innerHTML = renderFlags(entries.slice(0,15).map((e,i)=>`
+    <div class="lb-row">
+      <div class="lb-rank">${i+1}</div>
+      <div class="lb-flag">${e.emoji||'🏳️'}</div>
+      <div class="lb-name">${e.name}</div>
+      <div class="lb-wins">${e.wins}</div>
+    </div>`).join(''));
 }
 
 document.getElementById('boardToggle').addEventListener('click', ()=>{
