@@ -517,6 +517,55 @@
     border:1px solid var(--line); border-radius:4px;
     padding:6px 10px; pointer-events:none;
   }
+
+/* ===== Mobile Stream Layout V2 ===== */
+@media (max-width:640px){
+  body:not(.canvas-locked){
+    overflow:auto;
+  }
+  .hud{
+    position:relative!important;
+  }
+  .left-panel,
+  .right-panel,
+  .chat-panel,
+  .arena-wrap{
+    position:relative!important;
+    left:auto!important;
+    right:auto!important;
+    top:auto!important;
+    bottom:auto!important;
+    width:100%!important;
+    margin:0 auto!important;
+  }
+
+  .right-panel{display:block!important;order:1;padding:8px 10px;}
+  .arena-wrap{
+    order:2;
+    height:58vh!important;
+    min-height:420px;
+    display:flex!important;
+    align-items:center;
+    justify-content:center;
+  }
+  .left-panel{
+    display:block!important;
+    order:3;
+    padding:8px 10px;
+    height:170px!important;
+  }
+  .chat-panel{
+    display:flex!important;
+    order:4;
+    height:90px!important;
+    margin:8px 10px 0;
+  }
+  body{
+    display:flex;
+    flex-direction:column;
+  }
+}
+
 </style>
 </head>
 <body>
