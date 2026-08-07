@@ -596,15 +596,15 @@
 <div class="controls" id="controls">
   <select id="sizeSelect">
     <option value="16">16 Flags</option>
-    <option value="24" selected>24 Flags</option>
+    <option value="24">24 Flags</option>
     <option value="40">40 Flags</option>
     <option value="60">60 Flags</option>
-    <option value="115">All 115+</option>
+    <option value="115" selected>All 115+</option>
   </select>
   <select id="speedSelect">
     <option value="0.6">Slow</option>
-    <option value="1" selected>Normal</option>
-    <option value="1.8">Fast</option>
+    <option value="1">Normal</option>
+    <option value="1.8" selected>Fast</option>
   </select>
   <button class="primary" id="startBtn">Start Battle</button>
   <button id="pauseBtn">Pause</button>
@@ -829,7 +829,7 @@ let shrinkTarget = 1;
 let running = false;
 let paused = false;
 let animId = null;
-let speedMult = 1;
+let speedMult = 1.8;
 let lastShrink = 0;
 let tickerEl = document.getElementById('ticker');
 const stageBannerEl = document.getElementById('stageBanner');
