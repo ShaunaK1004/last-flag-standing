@@ -551,20 +551,26 @@ armSubscribeCallout();
 
 // ---------- Flag rendering: Windows Chrome/Edge shows flag emoji as plain text
 // codes instead of the flag itself, so pull real flag images from Twemoji
-// instead of relying on the OS emoji font, both on canvas and in the DOM. ----------
+// instead of relying on the OS emoji font, both on canvas and in the DOM.
+// Falls back to the plain emoji glyph if the Twemoji CDN can't be reached,
+// so a blocked/failed CDN load never breaks the arena itself. ----------
+const TWEMOJI_OK = typeof window.twemoji !== 'undefined';
 const FLAG_IMG_CACHE = {};
 function getFlagImg(emoji){
+  if(!TWEMOJI_OK) return null;
   if(FLAG_IMG_CACHE[emoji]) return FLAG_IMG_CACHE[emoji];
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.src = `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/${twemoji.convert.toCodePoint(emoji)}.png`;
-  FLAG_IMG_CACHE[emoji] = img;
-  return img;
+  try{
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/${twemoji.convert.toCodePoint(emoji)}.png`;
+    FLAG_IMG_CACHE[emoji] = img;
+    return img;
+  }catch(e){ return null; }
 }
 function twemojify(el){
-  if(window.twemoji && el) twemoji.parse(el, { folder: '72x72', ext: '.png' });
+  if(TWEMOJI_OK && el){ try{ twemoji.parse(el, { folder: '72x72', ext: '.png' }); }catch(e){} }
 }
-COUNTRIES.forEach(c => getFlagImg(c[0])); // warm the image cache up front
+if(TWEMOJI_OK) COUNTRIES.forEach(c => getFlagImg(c[0])); // warm the image cache up front
 // ---------- Canvas / engine setup ----------
 const canvas = document.getElementById('arena');
 const ctx = canvas.getContext('2d');
@@ -1008,7 +1014,7 @@ function render(){
     ctx.rotate(f.body.angle);
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = 6;
-    if(img.complete && img.naturalWidth){
+    if(img && img.complete && img.naturalWidth){
       ctx.beginPath();
       ctx.arc(0, 0, size/2, 0, Math.PI*2);
       ctx.closePath();
@@ -1017,12 +1023,18 @@ function render(){
       ctx.stroke();
       ctx.clip();
       ctx.drawImage(img, -size/2, -size/2, size, size);
-    } else {
-      // placeholder while the flag image is still loading
+    } else if(img){
+      // Twemoji image still loading — draw a neutral placeholder for this frame
       ctx.beginPath();
       ctx.arc(0, 0, size/2, 0, Math.PI*2);
       ctx.fillStyle = 'rgba(232,184,75,0.3)';
       ctx.fill();
+    } else {
+      // Twemoji unavailable (CDN blocked/offline) — fall back to the OS emoji glyph
+      ctx.font = `${size}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(f.emoji, 0, 0);
     }
     ctx.restore();
   });
