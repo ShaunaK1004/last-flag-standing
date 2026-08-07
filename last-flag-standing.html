@@ -1,1 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LAST FLAG STANDING — Arena</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<style>
+  :root{
+    --ink:#100D0A;
+    --stone:#221D18;
+    --sand:#C08552;
+    --gold:#E8B84B;
+    --ember:#D9481D;
+    --bone:#EDE6D8;
+    --line: rgba(237,230,216,0.12);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;height:100%;background:radial-gradient(120% 120% at 50% -10%, #241d16 0%, #100D0A 55%, #0a0806 100%);
+    color:var(--bone);
+    font-family:'Oswald',sans-serif;
+    overflow:hidden;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  img, canvas{-webkit-user-drag:none; user-drag:none;}
+  .hud{
+    position:fixed; top:0; left:0; right:0; z-index:20;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 22px;
+    background:linear-gradient(180deg, rgba(16,13,10,0.92), rgba(16,13,10,0));
+    pointer-events:none;
+  }
+  .hud *{pointer-events:auto;}
+  .brand{
+    font-family:'Anton',sans-serif;
+    font-size:22px; letter-spacing:1.5px;
+    color:var(--gold);
+    text-shadow:0 0 18px rgba(232,184,75,0.35);
+  }
+  .brand span{color:var(--bone);}
+  .live-badge{
+    display:inline-flex; align-items:center; gap:5px;
+    font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1.5px;
+    background:rgba(217,72,29,0.16); border:1px solid rgba(217,72,29,0.5);
+    color:#ff6a4a; padding:3px 8px; border-radius:3px; margin-left:10px;
+    vertical-align:middle;
+  }
+  .live-dot{width:6px;height:6px;border-radius:50%;background:#ff4d4d;box-shadow:0 0 8px #ff4d4d; animation: pulse 1.4s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
+
+  .stream-toggle{
+    position:fixed; top:16px; right:172px; z-index:25;
+    font-family:'Oswald',sans-serif; font-weight:600; letter-spacing:1px; text-transform:uppercase;
+    font-size:12px; background:var(--stone); color:var(--bone); border:1px solid var(--line);
+    padding:9px 14px; border-radius:3px; cursor:pointer;
+  }
+  .stream-toggle:hover{border-color:var(--gold); color:var(--gold);}
+  .stream-toggle.active{background:var(--ember); border-color:transparent; color:var(--bone);}
+
+  body.stream-mode .hud, body.stream-mode .controls, body.stream-mode .board-toggle,
+  body.stream-mode .stream-toggle, body.stream-mode .leaderboard.show ~ .close-lb{
+    opacity:0; pointer-events:none; transition: opacity .5s ease;
+  }
+  body.stream-mode.ui-visible .hud, body.stream-mode.ui-visible .controls,
+  body.stream-mode.ui-visible .board-toggle, body.stream-mode.ui-visible .stream-toggle{
+    opacity:1; pointer-events:auto;
+  }
+  body.stream-mode{cursor:none;}
+  body.stream-mode.ui-visible{cursor:default;}
+  body.stream-mode .chat-panel, body.stream-mode .ticker, body.stream-mode .stage-banner{
+    opacity:1; pointer-events:auto; /* always keep on-screen viewer-facing elements visible */
+  }
+
+  @media (max-width: 640px){
+    .stream-toggle{top:auto; bottom:8px; right:8px; font-size:10px; padding:7px 10px;}
+  }
+  .stat-row{display:flex; gap:22px; align-items:baseline;}
+  .stat{text-align:right;}
+  .stat .n{font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600; color:var(--bone);}
+  .stat .l{font-size:11px; letter-spacing:2px; text-transform:uppercase; color:#8a8072;}
+
+  .stage-banner{
+    position:fixed; top:100px; left:50%; z-index:22;
+    transform: translate(-50%, -10px);
+    font-family:'Anton',sans-serif;
+    font-size:34px; letter-spacing:3px;
+    color:var(--gold);
+    text-shadow: 0 0 22px rgba(232,184,75,0.6), 0 2px 0 rgba(0,0,0,0.5);
+    opacity:0; pointer-events:none;
+    transition: opacity .35s ease, transform .35s ease;
+    text-align:center;
+    white-space:nowrap;
+  }
+  .stage-banner.show{
+    opacity:1; transform: translate(-50%, 0);
+  }
+  @media (max-width: 640px){
+    .stage-banner{font-size:20px; top:88px;}
+  }
+
+  .arena-wrap{
+    position:absolute; top:70px; left:0; right:0; bottom:172px; z-index:2;
+    display:flex; align-items:center; justify-content:center;
+  }
+  /* Stacking: #bgfx (z0, embers/glow) sits behind .arena-wrap (z2), which sits
+     behind the HUD/controls/panels (z15-30+). screen blend lets embers glow
+     over the dark gradient without washing out the arena drawn on top of it. */
+  #bgfx{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    mix-blend-mode: screen;
+  }
+  canvas{display:block;}
+
+  .controls{
+    position:fixed; bottom:0; left:0; right:0; z-index:20;
+    display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap;
+    padding:18px 20px 22px;
+    background:linear-gradient(0deg, rgba(16,13,10,0.95), rgba(16,13,10,0));
+  }
+  button{
+    font-family:'Oswald',sans-serif; font-weight:600; letter-spacing:1px; text-transform:uppercase;
+    font-size:13px;
+    background:var(--stone);
+    color:var(--bone);
+    border:1px solid var(--line);
+    padding:11px 18px;
+    border-radius:3px;
+    cursor:pointer;
+    transition: all .15s ease;
+  }
+  button:hover{border-color:var(--gold); color:var(--gold);}
+  button.primary{
+    background:linear-gradient(180deg, var(--ember), #B23A17);
+    border-color:transparent; color:var(--bone);
+  }
+  button.primary:hover{filter:brightness(1.12); color:var(--bone);}
+  button:focus-visible{outline:2px solid var(--gold); outline-offset:2px;}
+
+  select{
+    font-family:'JetBrains Mono',monospace; font-size:12px;
+    background:var(--stone); color:var(--bone); border:1px solid var(--line);
+    padding:10px 12px; border-radius:3px;
+  }
+
+  .ticker{
+    position:fixed; left:22px; bottom:82px; z-index:20;
+    font-family:'JetBrains Mono',monospace; font-size:12px; color:#a89a83;
+    max-width:260px; min-height:18px;
+    letter-spacing:0.3px;
+  }
+  .ticker b{color:var(--gold);}
+
+  /* Live chat panel — horizontal strip below the arena, above controls */
+  .chat-panel{
+    position:fixed; left:16px; right:16px; bottom:82px; z-index:15;
+    height:86px;
+    background:rgba(20,16,12,0.78);
+    border:1px solid var(--line);
+    border-radius:8px;
+    display:flex; flex-direction:column;
+    backdrop-filter: blur(6px);
+    overflow:hidden;
+  }
+  .chat-head{
+    padding:6px 12px; border-bottom:1px solid var(--line);
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--gold);
+    display:flex; align-items:center; justify-content:space-between;
+    flex-shrink:0;
+  }
+  .chat-head .dot{width:6px;height:6px;border-radius:50%;background:#ff4d4d;box-shadow:0 0 8px #ff4d4d; margin-right:6px; display:inline-block;}
+  .chat-body{
+    flex:1; overflow-x:auto; overflow-y:hidden; padding:8px 10px;
+    display:flex; flex-direction:row; align-items:center; gap:8px;
+    scrollbar-width:thin;
+  }
+  .chat-body::-webkit-scrollbar{height:4px;}
+  .chat-body::-webkit-scrollbar-thumb{background:var(--stone); border-radius:4px;}
+  .chat-msg{
+    font-size:12px; line-height:1.3; white-space:nowrap; flex-shrink:0;
+    background:rgba(255,255,255,0.04); border:1px solid var(--line);
+    padding:5px 10px; border-radius:14px;
+    animation: fadeIn .25s ease;
+  }
+  .chat-msg .u{font-weight:600; margin-right:4px;}
+  @keyframes fadeIn{from{opacity:0; transform:translateX(10px);} to{opacity:1; transform:translateX(0);}}
+  @media (max-width: 640px){
+    .chat-panel{height:72px; left:10px; right:10px; bottom:78px;}
+    .chat-msg{font-size:11px; padding:4px 9px;}
+  }
+
+  /* Leaderboard panel */
+  .board-toggle{
+    position:fixed; top:16px; right:16px; z-index:25;
+  }
+  .leaderboard{
+    position:fixed; top:0; right:-340px; width:320px; height:100%; z-index:30;
+    background:rgba(16,13,10,0.97); border-left:1px solid var(--line);
+    padding:70px 20px 20px; transition: right .25s ease;
+    overflow-y:auto;
+  }
+  .leaderboard.show{right:0;}
+  .leaderboard h3{
+    font-family:'Anton',sans-serif; letter-spacing:1px; color:var(--gold);
+    font-size:18px; margin:0 0 4px;
+  }
+  .leaderboard .sub{font-family:'JetBrains Mono',monospace; font-size:11px; color:#8a8072; margin-bottom:16px;}
+  .lb-row{
+    display:flex; align-items:center; gap:10px;
+    padding:9px 0; border-bottom:1px solid var(--line);
+  }
+  .lb-rank{font-family:'JetBrains Mono',monospace; color:#8a8072; width:22px; font-size:13px;}
+  .lb-flag{font-size:20px;}
+  .lb-name{flex:1; font-size:13px;}
+  .lb-wins{font-family:'JetBrains Mono',monospace; color:var(--gold); font-size:13px; font-weight:600;}
+  .lb-empty{color:#8a8072; font-size:13px; font-family:'JetBrains Mono',monospace;}
+  .close-lb{
+    position:absolute; top:16px; right:18px;
+    background:none; border:none; color:var(--bone); font-size:20px; cursor:pointer; padding:4px 8px;
+  }
+  .lb-note{
+    margin-top:16px; font-size:11px; color:#6d6355; font-family:'JetBrains Mono',monospace; line-height:1.5;
+  }
+
+  /* Subscribe lower-third callout */
+  .subscribe-callout{
+    position:fixed; left:16px; bottom:180px; z-index:21;
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(100deg, rgba(20,16,12,0.94), rgba(34,29,24,0.94));
+    border:1px solid var(--line); border-left:3px solid var(--ember);
+    border-radius:6px;
+    padding:12px 18px 12px 14px;
+    transform: translateX(-120%);
+    transition: transform .55s cubic-bezier(.2,.8,.2,1);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  }
+  .subscribe-callout.show{ transform: translateX(0); }
+  .subscribe-callout .bell{
+    font-size:22px; animation: ring 1.8s ease-in-out infinite;
+    filter: drop-shadow(0 0 8px rgba(232,184,75,0.5));
+  }
+  @keyframes ring{
+    0%,100%{ transform: rotate(0deg); }
+    5%{ transform: rotate(14deg); } 10%{ transform: rotate(-12deg); }
+    15%{ transform: rotate(9deg); } 20%{ transform: rotate(-6deg); }
+    25%,100%{ transform: rotate(0deg); }
+  }
+  .subscribe-callout .txt-h{
+    font-family:'Anton',sans-serif; font-size:14px; letter-spacing:0.5px; color:var(--bone);
+  }
+  .subscribe-callout .txt-s{
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:#a89a83; margin-top:2px;
+  }
+  .subscribe-callout .sub-btn{
+    font-family:'Oswald',sans-serif; font-weight:700; letter-spacing:0.5px; text-transform:uppercase;
+    font-size:12px; background:var(--ember); color:var(--bone);
+    padding:8px 14px; border-radius:3px; margin-left:6px; white-space:nowrap;
+  }
+  @media (max-width: 640px){
+    .subscribe-callout{ left:10px; bottom:172px; padding:10px 14px 10px 12px; gap:9px; }
+    .subscribe-callout .txt-h{font-size:12px;}
+    .subscribe-callout .txt-s{display:none;}
+    .subscribe-callout .sub-btn{font-size:11px; padding:7px 10px;}
+  }
+
+  .winner-screen{
+    position:fixed; inset:0; z-index:50;
+    display:none; align-items:center; justify-content:center; flex-direction:column;
+    background:radial-gradient(60% 60% at 50% 40%, rgba(232,184,75,0.14), rgba(16,13,10,0.96) 65%);
+    text-align:center;
+  }
+  .winner-screen.show{display:flex;}
+  .winner-flag{font-size:120px; line-height:1; filter:drop-shadow(0 0 40px rgba(232,184,75,0.5));}
+  .winner-title{
+    font-family:'Anton',sans-serif; font-size:14px; letter-spacing:6px;
+    color:var(--ember); text-transform:uppercase; margin-top:18px;
+  }
+  .winner-name{
+    font-family:'Anton',sans-serif; font-size:48px; color:var(--bone); margin-top:6px;
+    letter-spacing:1px;
+  }
+  .winner-sub{
+    font-family:'JetBrains Mono',monospace; color:#a89a83; font-size:13px; margin-top:10px;
+  }
+  .winner-next{
+    font-family:'JetBrains Mono',monospace; color:var(--gold); font-size:13px; margin-top:16px;
+    letter-spacing:1px;
+  }
+
+  .loop-toggle{
+    display:flex; align-items:center; gap:6px;
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:#a89a83;
+    letter-spacing:0.5px; user-select:none; cursor:pointer;
+  }
+  .loop-toggle input{accent-color:var(--gold); cursor:pointer;}
+
+  @media (max-width: 640px){
+    .brand{font-size:16px;}
+    .stat .n{font-size:17px;}
+    .stat-row{gap:14px;}
+    .ticker{display:none;}
+  }
+
+  /* Locked composition: pins the whole page to a fixed logical size (default
+     1920x1080, override with ?w=&h=) and scales it to fit whatever window/
+     OBS source it's actually rendered in — so the layout never reflows. */
+  html{ background:#0a0806; }
+  body.canvas-locked{
+    width:1920px; height:1080px;
+    transform-origin: 0 0;
+    overflow:hidden;
+  }
+
+  /* Optional persistent stream-branding corner tag, set via ?handle= */
+  .corner-handle{
+    position:fixed; right:16px; bottom:16px; z-index:21;
+    font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:0.5px;
+    color:var(--gold); background:rgba(16,13,10,0.65);
+    border:1px solid var(--line); border-radius:4px;
+    padding:6px 10px; pointer-events:none;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bgfx"></canvas>
+
+<div class="subscribe-callout" id="subscribeCallout">
+  <div class="bell">🔔</div>
+  <div>
+    <div class="txt-h">New champion every few minutes</div>
+    <div class="txt-s">Subscribe so you never miss a battle</div>
+  </div>
+  <div class="sub-btn">Subscribe</div>
+</div>
+
+<div class="hud">
+  <div class="brand">LAST FLAG <span>STANDING</span> <span class="live-badge"><span class="live-dot"></span>LIVE</span></div>
+  <div class="stat-row">
+    <div class="stat"><div class="n" id="statRound" style="font-size:15px; letter-spacing:1px;">—</div><div class="l">Stage</div></div>
+    <div class="stat"><div class="n" id="statAlive">0</div><div class="l">Remaining</div></div>
+    <div class="stat"><div class="n" id="statRadius">100%</div><div class="l">Arena</div></div>
+    <div class="stat"><div class="n" id="statGap">1.0x</div><div class="l">Gate Speed</div></div>
+  </div>
+</div>
+
+<div class="stage-banner" id="stageBanner"></div>
+
+<button class="board-toggle" id="boardToggle">🏆 Leaderboard</button>
+<button class="stream-toggle" id="streamToggle" title="Toggle clean stream mode (hides controls, for OBS capture)">🎥 Stream Mode</button>
+
+<div class="ticker" id="ticker"></div>
+
+<div class="chat-panel">
+  <div class="chat-head"><span><span class="dot"></span>LIVE CHAT</span><span id="viewerCount">— watching</span></div>
+  <div class="chat-body" id="chatBody"></div>
+</div>
+
+<div class="arena-wrap">
+  <canvas id="arena"></canvas>
+</div>
+
+<div class="leaderboard" id="leaderboard">
+  <button class="close-lb" id="closeLb">✕</button>
+  <h3>All-Time Champions</h3>
+  <div class="sub">Shared across everyone watching</div>
+  <div id="lbList"><div class="lb-empty">No champions crowned yet.</div></div>
+  <div class="lb-note">Win counts are stored globally and visible to all viewers of this arena.</div>
+</div>
+
+<div class="winner-screen" id="winnerScreen">
+  <div class="winner-flag" id="winnerFlag">🏳️</div>
+  <div class="winner-title">Champion of the Arena</div>
+  <div class="winner-name" id="winnerName">—</div>
+  <div class="winner-sub" id="winnerSub"></div>
+  <div class="winner-next" id="winnerNext">Next battle in <span id="countdownN">8</span>s</div>
+  <div style="margin-top:22px;">
+    <button class="primary" id="rematchBtn">Start Next Battle Now</button>
+  </div>
+</div>
+
+<div class="controls" id="controls">
+  <select id="sizeSelect">
+    <option value="16">16 Flags</option>
+    <option value="24" selected>24 Flags</option>
+    <option value="40">40 Flags</option>
+    <option value="60">60 Flags</option>
+    <option value="115">All 115+</option>
+  </select>
+  <select id="speedSelect">
+    <option value="0.6">Slow</option>
+    <option value="1" selected>Normal</option>
+    <option value="1.8">Fast</option>
+  </select>
+  <button class="primary" id="startBtn">Start Battle</button>
+  <button id="pauseBtn">Pause</button>
+  <button id="resetBtn">Reset</button>
+  <label class="loop-toggle"><input type="checkbox" id="autoLoopCheck" checked> Auto-loop</label>
+</div>
+
+<script>
+const { Engine, World, Bodies, Body, Common } = Matter;
+
+// ---------- Stream config (read once, up front, before anything sizes itself) ----------
+const params = new URLSearchParams(location.search);
+const wantsStreamMode = params.get('stream') === '1';
+const wantsLocked = wantsStreamMode && params.get('lock') !== '0';
+const LOCK_W = parseInt(params.get('w'), 10) || 1920;
+const LOCK_H = parseInt(params.get('h'), 10) || 1080;
+const streamHandle = params.get('handle');   // e.g. ?handle=@yourchannel
+const ctaTitle = params.get('ctaTitle');     // overrides the subscribe-callout headline
+const ctaSub = params.get('ctaSub');         // overrides the subscribe-callout subtext
+
+function applyLockedScale(){
+  if(!wantsLocked) return;
+  const scale = Math.min(window.innerWidth / LOCK_W, window.innerHeight / LOCK_H);
+  const offsetX = (window.innerWidth - LOCK_W*scale) / 2;
+  const offsetY = (window.innerHeight - LOCK_H*scale) / 2;
+  document.body.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+}
+if(wantsLocked){
+  document.body.classList.add('canvas-locked');
+  applyLockedScale();
+  window.addEventListener('resize', applyLockedScale);
+}
+
+// ---------- Full country pool (115+) ----------
+const COUNTRIES = [
+["🇺🇸","USA"],["🇨🇦","Canada"],["🇲🇽","Mexico"],["🇧🇷","Brazil"],["🇦🇷","Argentina"],
+["🇨🇱","Chile"],["🇨🇴","Colombia"],["🇵🇪","Peru"],["🇻🇪","Venezuela"],["🇪🇨","Ecuador"],
+["🇺🇾","Uruguay"],["🇵🇾","Paraguay"],["🇧🇴","Bolivia"],["🇨🇷","Costa Rica"],["🇵🇦","Panama"],
+["🇬🇹","Guatemala"],["🇭🇳","Honduras"],["🇸🇻","El Salvador"],["🇳🇮","Nicaragua"],["🇩🇴","Dominican Rep."],
+["🇨🇺","Cuba"],["🇯🇲","Jamaica"],["🇹🇹","Trinidad & Tobago"],
+["🇬🇧","UK"],["🇮🇪","Ireland"],["🇫🇷","France"],["🇩🇪","Germany"],["🇮🇹","Italy"],
+["🇪🇸","Spain"],["🇵🇹","Portugal"],["🇳🇱","Netherlands"],["🇧🇪","Belgium"],["🇨🇭","Switzerland"],
+["🇦🇹","Austria"],["🇸🇪","Sweden"],["🇳🇴","Norway"],["🇩🇰","Denmark"],["🇫🇮","Finland"],
+["🇮🇸","Iceland"],["🇵🇱","Poland"],["🇨🇿","Czechia"],["🇸🇰","Slovakia"],["🇭🇺","Hungary"],
+["🇷🇴","Romania"],["🇧🇬","Bulgaria"],["🇬🇷","Greece"],["🇭🇷","Croatia"],["🇸🇮","Slovenia"],
+["🇷🇸","Serbia"],["🇺🇦","Ukraine"],["🇧🇾","Belarus"],["🇱🇹","Lithuania"],["🇱🇻","Latvia"],
+["🇪🇪","Estonia"],["🇲🇹","Malta"],["🇱🇺","Luxembourg"],["🇲🇨","Monaco"],["🇦🇩","Andorra"],
+["🇷🇺","Russia"],["🇹🇷","Turkiye"],["🇮🇱","Israel"],["🇸🇦","Saudi Arabia"],["🇦🇪","UAE"],
+["🇶🇦","Qatar"],["🇰🇼","Kuwait"],["🇧🇭","Bahrain"],["🇴🇲","Oman"],["🇯🇴","Jordan"],
+["🇱🇧","Lebanon"],["🇮🇶","Iraq"],["🇪🇬","Egypt"],
+["🇿🇦","South Africa"],["🇳🇬","Nigeria"],["🇰🇪","Kenya"],["🇬🇭","Ghana"],["🇲🇦","Morocco"],
+["🇩🇿","Algeria"],["🇹🇳","Tunisia"],["🇪🇹","Ethiopia"],["🇺🇬","Uganda"],["🇹🇿","Tanzania"],
+["🇸🇳","Senegal"],["🇨🇮","Ivory Coast"],["🇨🇲","Cameroon"],["🇿🇼","Zimbabwe"],["🇿🇲","Zambia"],
+["🇲🇿","Mozambique"],["🇷🇼","Rwanda"],["🇳🇦","Namibia"],["🇧🇼","Botswana"],
+["🇮🇳","India"],["🇨🇳","China"],["🇯🇵","Japan"],["🇰🇷","S. Korea"],["🇮🇩","Indonesia"],
+["🇵🇭","Philippines"],["🇻🇳","Vietnam"],["🇹🇭","Thailand"],["🇲🇾","Malaysia"],["🇸🇬","Singapore"],
+["🇲🇲","Myanmar"],["🇰🇭","Cambodia"],["🇱🇦","Laos"],["🇧🇩","Bangladesh"],["🇵🇰","Pakistan"],
+["🇱🇰","Sri Lanka"],["🇳🇵","Nepal"],["🇧🇹","Bhutan"],["🇲🇳","Mongolia"],["🇰🇿","Kazakhstan"],
+["🇺🇿","Uzbekistan"],
+["🇦🇺","Australia"],["🇳🇿","New Zealand"],["🇫🇯","Fiji"],["🇵🇬","Papua New Guinea"]
+];
+
+// ---------- Ambient background FX: embers + mouse-parallax glow ----------
+const bgfx = document.getElementById('bgfx');
+const bgCtx = bgfx.getContext('2d');
+let bgW, bgH;
+function sizeBgfx(){
+  const w = wantsLocked ? LOCK_W : window.innerWidth;
+  const h = wantsLocked ? LOCK_H : window.innerHeight;
+  bgW = bgfx.width = w * devicePixelRatio;
+  bgH = bgfx.height = h * devicePixelRatio;
+  bgfx.style.width = w + 'px';
+  bgfx.style.height = h + 'px';
+}
+window.addEventListener('resize', sizeBgfx);
+sizeBgfx();
+
+let mouseX = (wantsLocked ? LOCK_W : window.innerWidth)/2, mouseY = (wantsLocked ? LOCK_H : window.innerHeight)/2;
+let glowX = mouseX * devicePixelRatio, glowY = mouseY * devicePixelRatio;
+document.addEventListener('mousemove', (e)=>{ mouseX = e.clientX; mouseY = e.clientY; });
+
+const EMBER_COUNT = 55;
+function makeEmber(){
+  return {
+    x: Math.random() * bgW,
+    y: bgH + Math.random()*80,
+    r: (1 + Math.random()*2.2) * devicePixelRatio,
+    speed: (0.25 + Math.random()*0.8) * devicePixelRatio,
+    drift: (Math.random()-0.5) * 0.5 * devicePixelRatio,
+    flicker: Math.random()*Math.PI*2,
+    hue: 18 + Math.random()*32
+  };
+}
+const embers = [];
+for(let i=0;i<EMBER_COUNT;i++){
+  const e = makeEmber();
+  e.y = Math.random()*bgH; // spread across screen on first paint
+  embers.push(e);
+}
+
+function stepBgfx(){
+  bgCtx.clearRect(0,0,bgW,bgH);
+
+  // mouse-parallax glow, eased toward the pointer for a floaty feel
+  glowX += (mouseX*devicePixelRatio - glowX) * 0.035;
+  glowY += (mouseY*devicePixelRatio - glowY) * 0.035;
+  const glowR = Math.max(bgW,bgH) * 0.42;
+  const grad = bgCtx.createRadialGradient(glowX, glowY, 0, glowX, glowY, glowR);
+  grad.addColorStop(0, 'rgba(217,72,29,0.10)');
+  grad.addColorStop(0.5, 'rgba(232,184,75,0.035)');
+  grad.addColorStop(1, 'rgba(232,184,75,0)');
+  bgCtx.fillStyle = grad;
+  bgCtx.fillRect(0,0,bgW,bgH);
+
+  embers.forEach(e=>{
+    e.y -= e.speed;
+    e.x += e.drift + Math.sin(e.flicker) * 0.3;
+    e.flicker += 0.035;
+    if(e.y < -20){
+      Object.assign(e, makeEmber());
+      e.y = bgH + 10;
+    }
+    const alpha = 0.22 + 0.35 * (0.5 + 0.5*Math.sin(e.flicker*1.6));
+    bgCtx.beginPath();
+    bgCtx.arc(e.x, e.y, e.r, 0, Math.PI*2);
+    bgCtx.fillStyle = `hsla(${e.hue}, 85%, 58%, ${alpha})`;
+    bgCtx.shadowColor = `hsla(${e.hue}, 90%, 55%, 0.85)`;
+    bgCtx.shadowBlur = 6 * devicePixelRatio;
+    bgCtx.fill();
+  });
+  bgCtx.shadowBlur = 0;
+
+  requestAnimationFrame(stepBgfx);
+}
+stepBgfx();
+
+// ---------- Periodic subscribe callout ----------
+const subscribeCalloutEl = document.getElementById('subscribeCallout');
+let subscribeTimer = null;
+function showSubscribeCallout(){
+  // don't pop it up over the winner screen, or while stream-mode UI is hidden
+  if(document.getElementById('winnerScreen').classList.contains('show')) return;
+  if(document.body.classList.contains('stream-mode') && !document.body.classList.contains('ui-visible')) return;
+  subscribeCalloutEl.classList.add('show');
+  setTimeout(()=> subscribeCalloutEl.classList.remove('show'), 6000);
+}
+function armSubscribeCallout(){
+  clearInterval(subscribeTimer);
+  subscribeTimer = setInterval(showSubscribeCallout, 45000);
+}
+setTimeout(showSubscribeCallout, 10000); // first nudge shortly after load
+armSubscribeCallout();
+
+// ---------- Canvas / engine setup ----------
+const canvas = document.getElementById('arena');
+const ctx = canvas.getContext('2d');
+let W, H, center, arenaRadius;
+
+function sizeCanvas(){
+  const wrap = document.querySelector('.arena-wrap');
+  W = canvas.width = wrap.clientWidth * devicePixelRatio;
+  H = canvas.height = wrap.clientHeight * devicePixelRatio;
+  canvas.style.width = wrap.clientWidth + 'px';
+  canvas.style.height = wrap.clientHeight + 'px';
+  center = { x: W/2, y: H/2 };
+  arenaRadius = Math.min(W, H) * 0.42;
+}
+window.addEventListener('resize', ()=>{ sizeCanvas(); });
+
+let engine, world;
+let flags = [];
+let round = 0;
+let totalFlags = 0;
+let currentStage = null;
+let safeRadius = 1;
+let shrinkTarget = 1;
+let running = false;
+let paused = false;
+let animId = null;
+let speedMult = 1;
+let lastShrink = 0;
+let tickerEl = document.getElementById('ticker');
+const stageBannerEl = document.getElementById('stageBanner');
+
+function stageLabel(remaining, total){
+  if(remaining <= 1) return 'CHAMPION';
+  if(remaining <= 2) return 'FINAL — ROUND OF 2';
+  if(remaining <= 4) return 'SEMIFINALS — ROUND OF 4';
+  if(remaining <= 8) return 'QUARTERFINALS — ROUND OF 8';
+  if(remaining <= 16) return 'ROUND OF 16';
+  if(remaining <= 32) return 'ROUND OF 32';
+  return `ROUND OF ${total}`;
+}
+function announceStage(label){
+  stageBannerEl.textContent = label;
+  stageBannerEl.classList.add('show');
+  clearTimeout(announceStage._t);
+  announceStage._t = setTimeout(()=> stageBannerEl.classList.remove('show'), 1900);
+}
+
+// Rotating boundary gate
+let gapAngle = 0;
+let gapWidth = 0.5;          // radians, angular width of the opening
+let gapSpeed = 0.012;        // radians per physics tick, ramps up each round
+let gapSpin = 1;             // direction, flips sometimes for chaos
+
+function pushTicker(msg){
+  const p = document.createElement('div');
+  p.innerHTML = msg;
+  tickerEl.prepend(p);
+  while(tickerEl.children.length > 4) tickerEl.removeChild(tickerEl.lastChild);
+}
+
+// ---------- Simulated live chat ----------
+const chatBody = document.getElementById('chatBody');
+const viewerCountEl = document.getElementById('viewerCount');
+const CHAT_NAMES = [
+  "flagfan_92","turbo_watcher","xX_arena_Xx","citrusVibes","noona_k","mel_streams",
+  "gg_wp_07","late_night_lurker","couchgeneral","zz_top_hat","random_viewer","emberfox",
+  "quiet_potato","northwind","sofa_general","clip_it","chromabyte","tinyrocket",
+  "who_dis","pixel_pete","wanderlust22","cafe_owl","midnight_snack","glassjaw",
+  "yeti_mode","paper_crane","rustbucket","echo_lark","3am_gang","sunny_d"
+];
+const CHAT_HYPE = [
+  "LETS GOOOO", "no way this is actually insane", "the physics on this is so smooth",
+  "chat we are SO back", "who's still got their pick alive", "this stream never gets old",
+  "clip that last hit 😭", "the shrinking zone is brutal today", "day 47 of watching this instead of working",
+  "ok THAT was close", "run it back after this one", "the algorithm brought me here and I'm not leaving"
+];
+function chatMsgFor(country, emoji, kind){
+  const bank = {
+    cheer: [
+      `${emoji} ${country} LETS GOOO`, `cheering for ${emoji}${country}!!`,
+      `${country} is built different`, `who else rooting for ${country} 🙌`,
+      `${country} to the FINALS 🔥`, `${emoji}${emoji}${emoji}`
+    ],
+    death: [
+      `NOOO not ${emoji}${country} 😭`, `GG ${country} 🫡`, `${country} we hardly knew ye`,
+      `rip ${emoji}${country}, gone too soon`, `well that's my pick eliminated`
+    ],
+    win: [
+      `${emoji}${country} CHAMPIONS 🏆🏆🏆`, `CALLED IT. ${country} #1`,
+      `${country} DESERVED THAT`, `${emoji} on top, as expected`
+    ]
+  };
+  const arr = bank[kind];
+  return arr[Math.floor(Math.random()*arr.length)];
+}
+function pushChat(text, opts={}){
+  const row = document.createElement('div');
+  row.className = 'chat-msg';
+  const name = opts.name || CHAT_NAMES[Math.floor(Math.random()*CHAT_NAMES.length)];
+  const hue = (name.split('').reduce((a,c)=>a+c.charCodeAt(0),0) * 37) % 360;
+  row.innerHTML = `<span class="u" style="color:hsl(${hue} 70% 68%)">${name}:</span><span>${text}</span>`;
+  chatBody.appendChild(row);
+  chatBody.scrollLeft = chatBody.scrollWidth;
+  while(chatBody.children.length > 40) chatBody.removeChild(chatBody.firstChild);
+}
+let chatTimer = null;
+function startChat(){
+  stopChat();
+  viewerCountEl.textContent = (1200 + Math.floor(Math.random()*4000)).toLocaleString() + ' watching';
+  chatTimer = setInterval(()=>{
+    if(paused || !running) return;
+    const alive = flags.filter(f=>f.alive);
+    if(!alive.length) return;
+    const roll = Math.random();
+    if(roll < 0.55){
+      const f = alive[Math.floor(Math.random()*alive.length)];
+      pushChat(chatMsgFor(f.name, f.emoji, 'cheer'));
+    } else {
+      pushChat(CHAT_HYPE[Math.floor(Math.random()*CHAT_HYPE.length)]);
+    }
+  }, 900 / Math.max(0.5, speedMult));
+}
+function stopChat(){ if(chatTimer) clearInterval(chatTimer); }
+
+// ---------- Leaderboard (persistent, shared) ----------
+const lbList = document.getElementById('lbList');
+async function recordWin(countryName, emoji){
+  try{
+    const key = 'wins:' + countryName;
+    let current = 0;
+    try{
+      const existing = await window.storage.get(key, true);
+      if(existing && existing.value) current = JSON.parse(existing.value).wins || 0;
+    }catch(e){ current = 0; }
+    await window.storage.set(key, JSON.stringify({ wins: current+1, emoji, name: countryName }), true);
+  }catch(e){ console.error('leaderboard save failed', e); }
+  loadLeaderboard();
+}
+async function loadLeaderboard(){
+  try{
+    const listRes = await window.storage.list('wins:', true);
+    if(!listRes || !listRes.keys || !listRes.keys.length){
+      lbList.innerHTML = '<div class="lb-empty">No champions crowned yet.</div>';
+      return;
+    }
+    const entries = [];
+    for(const k of listRes.keys){
+      try{
+        const r = await window.storage.get(k, true);
+        if(r && r.value) entries.push(JSON.parse(r.value));
+      }catch(e){}
+    }
+    entries.sort((a,b)=> (b.wins||0) - (a.wins||0));
+    lbList.innerHTML = entries.slice(0,15).map((e,i)=>`
+      <div class="lb-row">
+        <div class="lb-rank">${i+1}</div>
+        <div class="lb-flag">${e.emoji||'🏳️'}</div>
+        <div class="lb-name">${e.name}</div>
+        <div class="lb-wins">${e.wins}</div>
+      </div>`).join('');
+  }catch(e){
+    lbList.innerHTML = '<div class="lb-empty">Leaderboard unavailable right now.</div>';
+  }
+}
+
+document.getElementById('boardToggle').addEventListener('click', ()=>{
+  document.getElementById('leaderboard').classList.add('show');
+  loadLeaderboard();
+});
+document.getElementById('closeLb').addEventListener('click', ()=>{
+  document.getElementById('leaderboard').classList.remove('show');
+});
+
+// ---------- Simulation setup ----------
+function setup(count){
+  cancelAnimationFrame(animId);
+  engine = Engine.create();
+  engine.gravity.y = 0;
+  world = engine.world;
+  flags = [];
+  round = 0;
+  safeRadius = 1;
+  shrinkTarget = 1;
+  gapAngle = Math.random() * Math.PI * 2;
+  gapWidth = 0.5;
+  gapSpeed = 0.012;
+  gapSpin = 1;
+  paused = false;
+  document.getElementById('winnerScreen').classList.remove('show');
+  tickerEl.innerHTML = '';
+  chatBody.innerHTML = '';
+
+  const pool = Common.shuffle(COUNTRIES.slice());
+  const n = Math.min(count, pool.length);
+  totalFlags = n;
+  currentStage = null;
+  stageBannerEl.classList.remove('show');
+  const r = Math.max(11, Math.min(24, 340 / Math.sqrt(n)));
+
+  for(let i=0;i<n;i++){
+    const angle = (i / n) * Math.PI * 2;
+    const dist = arenaRadius * 0.55 * Math.random();
+    const x = center.x + Math.cos(angle) * dist;
+    const y = center.y + Math.sin(angle) * dist;
+    const body = Bodies.circle(x, y, r, {
+      restitution: 0.92,
+      friction: 0,
+      frictionAir: 0.001,
+      density: 0.001,
+      label: pool[i][1]
+    });
+    const speed = 2.2;
+    Body.setVelocity(body, {
+      x: (Math.random()-0.5)*speed*2,
+      y: (Math.random()-0.5)*speed*2
+    });
+    World.add(world, body);
+    flags.push({ body, emoji: pool[i][0], name: pool[i][1], r, alive:true });
+  }
+
+  updateStats();
+  render();
+}
+
+function updateStats(){
+  const remaining = flags.filter(f=>f.alive).length;
+  const stage = stageLabel(remaining, totalFlags);
+  document.getElementById('statRound').textContent = stage;
+  document.getElementById('statAlive').textContent = remaining;
+  document.getElementById('statRadius').textContent = Math.round(safeRadius*100)+'%';
+  document.getElementById('statGap').textContent = (gapSpeed/0.012).toFixed(1)+'x';
+
+  if(stage !== currentStage){
+    if(currentStage !== null){
+      announceStage(stage);
+      pushTicker(`🏆 <b>${stage}</b> begins — ${remaining} left`);
+      pushChat(`here we go, ${stage.split(' — ')[0].toLowerCase()}!!`, { name: 'stream_mod' });
+    }
+    currentStage = stage;
+  }
+}
+
+// ---------- Elimination particle bursts (drawn on the arena canvas) ----------
+let particles = [];
+function burst(x, y, colorBase){
+  const count = 16 + Math.floor(Math.random()*10);
+  for(let i=0;i<count;i++){
+    const angle = Math.random()*Math.PI*2;
+    const speed = (1.4 + Math.random()*3.4) * devicePixelRatio;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle)*speed,
+      vy: Math.sin(angle)*speed,
+      r: (1.4 + Math.random()*2.4) * devicePixelRatio,
+      life: 1,
+      decay: 0.02 + Math.random()*0.02,
+      colorBase
+    });
+  }
+}
+function updateAndDrawParticles(){
+  if(!particles.length) return;
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p=>{
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.95; p.vy *= 0.95;
+    p.life -= p.decay;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * Math.max(0,p.life), 0, Math.PI*2);
+    ctx.fillStyle = `rgba(${p.colorBase}, ${Math.max(0,p.life).toFixed(2)})`;
+    ctx.fill();
+  });
+}
+
+function eliminate(f, cause){
+  if(!f.alive) return;
+  f.alive = false;
+  const { x, y } = f.body.position;
+  burst(x, y, cause === 'gate' ? '217,72,29' : '232,184,75');
+  World.remove(world, f.body);
+  const remaining = flags.filter(x=>x.alive).length;
+  const verb = cause === 'gate' ? 'swept out through the gate' : 'eliminated';
+  pushTicker(`<b>${f.emoji} ${f.name}</b> ${verb} — ${remaining} remain`);
+  pushChat(chatMsgFor(f.name, f.emoji, 'death'));
+}
+
+function step(){
+  if(!paused){
+    Engine.update(engine, 16.6 * speedMult);
+
+    const now = performance.now();
+    const remainingNow = flags.filter(f=>f.alive).length;
+    // once we're down to the round of 32 or fewer, ease difficulty back off
+    // so eliminations in the late rounds are slow enough to actually see
+    const taper = remainingNow <= 32 ? Math.max(0.32, remainingNow / 32) : 1;
+    const roundInterval = (4200 / speedMult) * (remainingNow <= 32 ? 1.4 : 1);
+
+    if(now - lastShrink > roundInterval){
+      lastShrink = now;
+      round++;
+      // ramp difficulty: boundary creeps in slightly, gate spins faster, sometimes reverses —
+      // but scaled down by taper once the bracket thins out
+      shrinkTarget = Math.max(0.55, shrinkTarget - 0.03 * taper);
+      gapSpeed = Math.min(0.05 * taper, gapSpeed + 0.004 * taper);
+      // if the field just thinned past 32, ease an already-fast gate back down
+      if(remainingNow <= 32) gapSpeed = Math.max(0.012, Math.min(gapSpeed, 0.05 * taper));
+
+      // force a direction change less often, and with a gentler kick, once things thin out
+      const flipChance = remainingNow <= 32 ? 0.2 : 0.35;
+      const forceFlipEvery = remainingNow <= 32 ? 5 : 3;
+      const shouldFlip = (round % forceFlipEvery === 0) || Math.random() < flipChance;
+      if(shouldFlip){
+        gapSpin *= -1;
+        flags.forEach(f=>{
+          if(!f.alive) return;
+          const b = f.body;
+          const dx = b.position.x - center.x;
+          const dy = b.position.y - center.y;
+          const dist = Math.sqrt(dx*dx+dy*dy) || 1;
+          const nx = dx/dist, ny = dy/dist;
+          // stronger kick for flags loitering near the center, gentler near the wall,
+          // and overall gentler once the bracket has thinned out
+          const centerness = 1 - Math.min(1, dist / (arenaRadius * safeRadius));
+          const kick = (0.018 + centerness * 0.03) * taper;
+          Body.applyForce(b, b.position, { x: nx*kick, y: ny*kick });
+        });
+        pushTicker(`⚡ The gate reverses — flags surge outward!`);
+      } else {
+        pushTicker(`Round ${round} — the gate spins faster`);
+      }
+    }
+    safeRadius += (shrinkTarget - safeRadius) * 0.03;
+    gapAngle = (gapAngle + gapSpeed * gapSpin * speedMult + Math.PI*2) % (Math.PI*2);
+
+    const hardRBase = arenaRadius * safeRadius;
+    flags.forEach(f=>{
+      if(!f.alive) return;
+      const b = f.body;
+      const dx = b.position.x - center.x;
+      const dy = b.position.y - center.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      const hardR = hardRBase - f.r;
+      if(dist > hardR){
+        // angle of this flag relative to arena center, normalized [0, 2π)
+        const flagAngle = (Math.atan2(dy, dx) + Math.PI*2) % (Math.PI*2);
+        let diff = flagAngle - gapAngle;
+        diff = ((diff + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI;
+
+        if(Math.abs(diff) < gapWidth/2){
+          // lined up with the opening — ejected through the gate
+          eliminate(f, 'gate');
+          return;
+        }
+        // otherwise it's a solid wall: bounce back in
+        const nx = dx/dist, ny = dy/dist;
+        Body.setPosition(b, { x: center.x + nx*hardR, y: center.y + ny*hardR });
+        const vDotN = b.velocity.x*nx + b.velocity.y*ny;
+        Body.setVelocity(b, {
+          x: b.velocity.x - 2*vDotN*nx,
+          y: b.velocity.y - 2*vDotN*ny
+        });
+      }
+    });
+
+    updateStats();
+
+    const alive = flags.filter(f=>f.alive);
+    if(alive.length <= 1 && flags.length > 1 && running){
+      finish(alive[0]);
+    }
+  }
+
+  render();
+  animId = requestAnimationFrame(step);
+}
+
+function render(){
+  ctx.clearRect(0,0,W,H);
+
+  const grad = ctx.createRadialGradient(center.x, center.y, 10, center.x, center.y, arenaRadius);
+  grad.addColorStop(0, '#2b2118');
+  grad.addColorStop(1, '#15100b');
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, arenaRadius, 0, Math.PI*2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.lineWidth = 2 * devicePixelRatio;
+  ctx.strokeStyle = 'rgba(192,133,82,0.35)';
+  ctx.stroke();
+
+  // Rotating boundary ring with a gap the flags can be ejected through
+  const liveR = arenaRadius * safeRadius;
+  const gapStart = gapAngle - gapWidth/2;
+  const gapEnd = gapAngle + gapWidth/2;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 6 * devicePixelRatio;
+  ctx.strokeStyle = 'rgba(232,184,75,0.85)';
+  ctx.shadowColor = 'rgba(232,184,75,0.5)';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  // draw the solid wall arc: from gapEnd around to gapStart (the long way)
+  ctx.arc(center.x, center.y, liveR, gapEnd, gapStart + Math.PI*2);
+  ctx.stroke();
+  ctx.restore();
+
+  // glowing hazard markers at the gap edges
+  [gapStart, gapEnd].forEach(a=>{
+    const gx = center.x + Math.cos(a) * liveR;
+    const gy = center.y + Math.sin(a) * liveR;
+    ctx.beginPath();
+    ctx.arc(gx, gy, 5 * devicePixelRatio, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(217,72,29,0.9)';
+    ctx.shadowColor = 'rgba(217,72,29,0.8)';
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+
+  // faint outward wedge showing where the opening leads
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(center.x, center.y);
+  ctx.arc(center.x, center.y, arenaRadius * 1.08, gapStart, gapEnd);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(217,72,29,0.08)';
+  ctx.fill();
+  ctx.restore();
+
+  flags.forEach(f=>{
+    if(!f.alive) return;
+    const { x, y } = f.body.position;
+    const size = f.r * 1.9;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(f.body.angle);
+    ctx.font = `${size}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 6;
+    ctx.fillText(f.emoji, 0, 0);
+    ctx.restore();
+  });
+
+  updateAndDrawParticles();
+}
+
+let autoLoopTimer = null;
+function finish(winnerF){
+  running = false;
+  paused = true;
+  const ws = document.getElementById('winnerScreen');
+  subscribeCalloutEl.classList.remove('show');
+  document.getElementById('winnerFlag').textContent = winnerF ? winnerF.emoji : '🏳️';
+  document.getElementById('winnerName').textContent = winnerF ? winnerF.name : 'No Survivors';
+  document.getElementById('winnerSub').textContent = `Survived ${round} rounds`;
+  ws.classList.add('show');
+  pushTicker(`<b>${winnerF ? winnerF.emoji+' '+winnerF.name : 'Nobody'}</b> is the Champion!`);
+  if(winnerF){
+    pushChat(chatMsgFor(winnerF.name, winnerF.emoji, 'win'), { name: 'stream_mod' });
+    recordWin(winnerF.name, winnerF.emoji);
+  }
+
+  const autoLoopOn = document.getElementById('autoLoopCheck').checked;
+  const nextEl = document.getElementById('winnerNext');
+  const countEl = document.getElementById('countdownN');
+  clearInterval(autoLoopTimer);
+  if(autoLoopOn){
+    nextEl.style.display = 'block';
+    let secs = 8;
+    countEl.textContent = secs;
+    autoLoopTimer = setInterval(()=>{
+      secs--;
+      countEl.textContent = secs;
+      if(secs <= 0){
+        clearInterval(autoLoopTimer);
+        document.getElementById('winnerScreen').classList.remove('show');
+        beginRun();
+      }
+    }, 1000);
+  } else {
+    nextEl.style.display = 'none';
+  }
+}
+
+// ---------- Controls ----------
+function beginRun(){
+  const count = parseInt(document.getElementById('sizeSelect').value, 10);
+  speedMult = parseFloat(document.getElementById('speedSelect').value);
+  setup(count);
+  running = true;
+  paused = false;
+  lastShrink = performance.now();
+  cancelAnimationFrame(animId);
+  step();
+  startChat();
+}
+
+document.getElementById('startBtn').addEventListener('click', beginRun);
+document.getElementById('rematchBtn').addEventListener('click', ()=>{
+  clearInterval(autoLoopTimer);
+  document.getElementById('winnerScreen').classList.remove('show');
+  beginRun();
+});
+
+document.getElementById('pauseBtn').addEventListener('click', (e)=>{
+  if(!running) return;
+  paused = !paused;
+  e.target.textContent = paused ? 'Resume' : 'Pause';
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  running = false;
+  clearInterval(autoLoopTimer);
+  stopChat();
+  const count = parseInt(document.getElementById('sizeSelect').value, 10);
+  setup(count);
+});
+
+document.getElementById('speedSelect').addEventListener('change', (e)=>{
+  speedMult = parseFloat(e.target.value);
+});
+
+// ---------- Stream mode: hides UI chrome for clean OBS capture, ----------
+// reveals it again on mouse movement so the streamer can still adjust settings
+const streamToggle = document.getElementById('streamToggle');
+let idleTimer = null;
+function armIdleHide(){
+  clearTimeout(idleTimer);
+  document.body.classList.add('ui-visible');
+  idleTimer = setTimeout(()=>{
+    document.body.classList.remove('ui-visible');
+  }, 2600);
+}
+streamToggle.addEventListener('click', ()=>{
+  const on = document.body.classList.toggle('stream-mode');
+  streamToggle.classList.toggle('active', on);
+  if(on){ armIdleHide(); }
+  else{ clearTimeout(idleTimer); document.body.classList.remove('ui-visible'); }
+});
+document.addEventListener('mousemove', ()=>{
+  if(document.body.classList.contains('stream-mode')) armIdleHide();
+});
+
+// Clean capture: no right-click menu, no accidental drags/selection
+document.addEventListener('contextmenu', e => e.preventDefault());
+
+// ---------- Init ----------
+if(ctaTitle) document.querySelector('#subscribeCallout .txt-h').textContent = ctaTitle;
+if(ctaSub) document.querySelector('#subscribeCallout .txt-s').textContent = ctaSub;
+if(streamHandle){
+  const handleEl = document.createElement('div');
+  handleEl.className = 'corner-handle';
+  handleEl.textContent = streamHandle;
+  document.body.appendChild(handleEl);
+}
+sizeCanvas();
+if(wantsStreamMode){
+  document.body.classList.add('stream-mode');
+  streamToggle.classList.add('active');
+  armIdleHide();
+}
+beginRun(); // auto-start immediately so the arena is always live, no manual click required
+loadLeaderboard();
+</script>
+</body>
+</html>
 
