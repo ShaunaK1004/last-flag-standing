@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/twemoji.min.js" crossorigin="anonymous"></script>
 <style>
   :root{
     --ink:#100D0A;
@@ -548,6 +549,22 @@ function armSubscribeCallout(){
 setTimeout(showSubscribeCallout, 10000); // first nudge shortly after load
 armSubscribeCallout();
 
+// ---------- Flag rendering: Windows Chrome/Edge shows flag emoji as plain text
+// codes instead of the flag itself, so pull real flag images from Twemoji
+// instead of relying on the OS emoji font, both on canvas and in the DOM. ----------
+const FLAG_IMG_CACHE = {};
+function getFlagImg(emoji){
+  if(FLAG_IMG_CACHE[emoji]) return FLAG_IMG_CACHE[emoji];
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.src = `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/${twemoji.convert.toCodePoint(emoji)}.png`;
+  FLAG_IMG_CACHE[emoji] = img;
+  return img;
+}
+function twemojify(el){
+  if(window.twemoji && el) twemoji.parse(el, { folder: '72x72', ext: '.png' });
+}
+COUNTRIES.forEach(c => getFlagImg(c[0])); // warm the image cache up front
 // ---------- Canvas / engine setup ----------
 const canvas = document.getElementById('arena');
 const ctx = canvas.getContext('2d');
@@ -605,6 +622,7 @@ function pushTicker(msg){
   const p = document.createElement('div');
   p.innerHTML = msg;
   tickerEl.prepend(p);
+  twemojify(p);
   while(tickerEl.children.length > 4) tickerEl.removeChild(tickerEl.lastChild);
 }
 
@@ -650,6 +668,7 @@ function pushChat(text, opts={}){
   const hue = (name.split('').reduce((a,c)=>a+c.charCodeAt(0),0) * 37) % 360;
   row.innerHTML = `<span class="u" style="color:hsl(${hue} 70% 68%)">${name}:</span><span>${text}</span>`;
   chatBody.appendChild(row);
+  twemojify(row);
   chatBody.scrollLeft = chatBody.scrollWidth;
   while(chatBody.children.length > 40) chatBody.removeChild(chatBody.firstChild);
 }
@@ -708,6 +727,7 @@ async function loadLeaderboard(){
         <div class="lb-name">${e.name}</div>
         <div class="lb-wins">${e.wins}</div>
       </div>`).join('');
+    twemojify(lbList);
   }catch(e){
     lbList.innerHTML = '<div class="lb-empty">Leaderboard unavailable right now.</div>';
   }
@@ -981,16 +1001,29 @@ function render(){
   flags.forEach(f=>{
     if(!f.alive) return;
     const { x, y } = f.body.position;
-    const size = f.r * 1.9;
+    const size = f.r * 2.1;
+    const img = getFlagImg(f.emoji);
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(f.body.angle);
-    ctx.font = `${size}px serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = 6;
-    ctx.fillText(f.emoji, 0, 0);
+    if(img.complete && img.naturalWidth){
+      ctx.beginPath();
+      ctx.arc(0, 0, size/2, 0, Math.PI*2);
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(237,230,216,0.55)';
+      ctx.lineWidth = 1.2 * devicePixelRatio;
+      ctx.stroke();
+      ctx.clip();
+      ctx.drawImage(img, -size/2, -size/2, size, size);
+    } else {
+      // placeholder while the flag image is still loading
+      ctx.beginPath();
+      ctx.arc(0, 0, size/2, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(232,184,75,0.3)';
+      ctx.fill();
+    }
     ctx.restore();
   });
 
@@ -1004,6 +1037,7 @@ function finish(winnerF){
   const ws = document.getElementById('winnerScreen');
   subscribeCalloutEl.classList.remove('show');
   document.getElementById('winnerFlag').textContent = winnerF ? winnerF.emoji : '🏳️';
+  twemojify(document.getElementById('winnerFlag'));
   document.getElementById('winnerName').textContent = winnerF ? winnerF.name : 'No Survivors';
   document.getElementById('winnerSub').textContent = `Survived ${round} rounds`;
   ws.classList.add('show');
@@ -1117,4 +1151,3 @@ loadLeaderboard();
 </script>
 </body>
 </html>
-
