@@ -169,8 +169,8 @@
        Bottom is calc'd flush against the top of the feed strip (one gap
        above it) so no vertical space goes unused. */
     .arena-wrap{
-      top:82px; left:4px; right:4px;
-      bottom:calc(var(--m-controls-h) + var(--m-gap) + var(--m-chat-h) + var(--m-gap) + var(--m-feed-h) + var(--m-gap));
+      top:52px; left:0; right:0;
+      bottom:0;
     }
   }
   /* Stacking: #bgfx (z0, embers/glow) sits behind .arena-wrap (z2), which sits
@@ -263,10 +263,7 @@
        chat bar — full width, out of the animation's way, not eating a side
        column. bottom = controls height + gap + chat height + gap, so it
        always sits flush regardless of viewport, no drift. */
-    .left-panel{
-      top:auto; left:8px; right:8px; z-index:15;
-      bottom:calc(var(--m-controls-h) + var(--m-gap) + var(--m-chat-h) + var(--m-gap));
-      width:auto; height:var(--m-feed-h); gap:0;
+    .left-panel{display:none;
     }
   }
 
@@ -369,9 +366,7 @@
   .chat-msg .u{font-weight:600; margin-right:4px;}
   @keyframes fadeIn{from{opacity:0; transform:translateX(10px);} to{opacity:1; transform:translateX(0);}}
   @media (max-width: 640px){
-    .chat-panel{
-      height:var(--m-chat-h); left:8px; right:8px;
-      bottom:calc(var(--m-controls-h) + var(--m-gap));
+    .chat-panel{display:none;
     }
     .chat-msg{font-size:11px; padding:4px 9px;}
   }
@@ -384,9 +379,7 @@
     pointer-events:none;
   }
   @media (max-width: 640px){
-    .disclaimer{
-      bottom:calc(var(--m-controls-h) + var(--m-gap) + var(--m-chat-h) + var(--m-gap) + var(--m-feed-h) + var(--m-gap));
-      font-size:8px; max-width:220px; line-height:1.3;
+    .disclaimer{display:none;
     }
   }
 
