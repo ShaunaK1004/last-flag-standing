@@ -70,17 +70,71 @@
   }
   body.stream-mode{cursor:none;}
   body.stream-mode.ui-visible{cursor:default;}
-  body.stream-mode .chat-panel, body.stream-mode .left-panel, body.stream-mode .stage-banner, body.stream-mode .disclaimer{
+  body.stream-mode .chat-panel, body.stream-mode .left-panel, body.stream-mode .right-panel, body.stream-mode .stage-banner, body.stream-mode .disclaimer{
     opacity:1; pointer-events:auto; /* always keep on-screen viewer-facing elements visible */
   }
 
   @media (max-width: 640px){
-    .stream-toggle{top:auto; bottom:8px; right:8px; font-size:10px; padding:7px 10px;}
+    /* Folded into the .controls strip on mobile (see below) instead of
+       floating separately, so it can't collide with the chat panel. */
+    .controls .stream-toggle{
+      position:static; top:auto; right:auto; bottom:auto;
+      font-size:10px; padding:6px 10px; flex:0 0 auto; white-space:nowrap;
+    }
   }
   .stat-row{display:flex; gap:22px; align-items:baseline;}
   .stat{text-align:right;}
   .stat .n{font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600; color:var(--bone);}
   .stat .l{font-size:11px; letter-spacing:2px; text-transform:uppercase; color:#8a8072;}
+
+  @media (max-width: 640px){
+    .hud{flex-wrap:wrap; padding:10px 12px 8px; gap:6px 0; row-gap:6px;}
+    .brand{flex:1 1 100%; font-size:14px; letter-spacing:0.75px;}
+    .live-badge{font-size:9px; padding:2px 6px; margin-left:6px;}
+    .stat-row{flex:1 1 100%; justify-content:space-between; gap:10px;}
+    .stat .n{font-size:14px;}
+    .stat .l{font-size:8px; letter-spacing:1px;}
+  }
+
+  /* Navbar leaderboard stat — desktop keeps the plain "Gate Speed" readout;
+     on mobile that slot is swapped for a compact champions button that
+     periodically pops its own dropdown instead of a permanent side panel. */
+  .lb-stat{ display:none; }
+  @media (max-width: 640px){
+    .gate-stat{ display:none; }
+    .lb-stat{
+      display:flex; flex-direction:column; align-items:flex-end;
+      background:none; border:none; padding:0; cursor:pointer;
+      font-family:inherit; color:inherit;
+    }
+    .lb-stat .n{font-size:14px;}
+    .lb-stat .l{font-size:8px; letter-spacing:1px;}
+  }
+
+  /* Opaque, narrow dropdown — anchored top-right under the navbar so it
+     stays clear of the arena's central spin, only ever shown briefly. */
+  .lb-drop{
+    position:fixed; top:84px; right:8px; z-index:26;
+    width:150px; max-width:44vw;
+    background:rgba(12,10,8,0.97); border:1px solid var(--line); border-radius:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.55);
+    padding:8px 9px 6px;
+    opacity:0; transform:translateY(-6px);
+    pointer-events:none;
+    transition: opacity .3s ease, transform .3s ease;
+  }
+  .lb-drop.show{ opacity:1; transform:translateY(0); pointer-events:auto; }
+  .lb-drop .lb-drop-head{
+    font-family:'Anton',sans-serif; letter-spacing:0.5px; color:var(--gold);
+    font-size:11px; margin-bottom:5px; display:flex; align-items:center; justify-content:space-between;
+  }
+  .lb-drop #lbListMobile .lb-row{ padding:4px 1px; gap:4px; }
+  .lb-drop #lbListMobile .lb-name{ font-size:10px; gap:4px; }
+  .lb-drop #lbListMobile .lb-name .lb-flag{ font-size:12px; }
+  .lb-drop #lbListMobile .lb-wins{ font-size:10px; }
+  .lb-drop #lbListMobile .lb-empty{ font-size:10px; }
+  .lb-drop #lbListMobile{ max-height:170px; overflow-y:auto; }
+  @media (min-width: 641px){ .lb-drop{ display:none; } }
 
   .stage-banner{
     position:fixed; top:100px; left:50%; z-index:22;
@@ -104,6 +158,20 @@
   .arena-wrap{
     position:absolute; top:70px; left:0; right:0; bottom:172px; z-index:2;
     display:flex; align-items:center; justify-content:center;
+  }
+  /* Mobile: inset the arena between the feed/champions columns so the
+     spinning ring never sits underneath them (they no longer overlap). */
+  @media (max-width: 640px){
+    /* Champions column is gone on mobile (leaderboard now lives in the navbar
+       dropdown instead), and the feed strip stacks directly above the chat
+       bar at the bottom — so the arena reclaims practically the entire
+       width and the whole area below the navbar for the main rotation.
+       Bottom is calc'd flush against the top of the feed strip (one gap
+       above it) so no vertical space goes unused. */
+    .arena-wrap{
+      top:82px; left:4px; right:4px;
+      bottom:calc(var(--m-controls-h) + var(--m-gap) + var(--m-chat-h) + var(--m-gap) + var(--m-feed-h) + var(--m-gap));
+    }
   }
   /* Stacking: #bgfx (z0, embers/glow) sits behind .arena-wrap (z2), which sits
      behind the HUD/controls/panels (z15-30+). screen blend lets embers glow
@@ -145,9 +213,44 @@
     padding:10px 12px; border-radius:3px;
   }
 
+  /* Mobile: every control (both dropdowns, Start/Pause/Reset, auto-loop)
+     collapses into one small horizontally-scrollable strip so nothing wraps
+     into extra rows. Sits directly under the Arena Hype chat panel.
+     Height is fixed (not padding-derived) so the stack above it — chat
+     panel, then feed strip, then the arena — can be positioned with exact
+     calc() math instead of guessed pixel gaps. */
+  :root{
+    --m-controls-h: 44px;
+    --m-chat-h: 64px;
+    --m-feed-h: 168px;
+    --m-gap: 6px;
+  }
+  @media (max-width: 640px){
+    .controls{
+      justify-content:flex-start; flex-wrap:nowrap;
+      overflow-x:auto; -webkit-overflow-scrolling:touch;
+      gap:6px; padding:0 8px;
+      height:var(--m-controls-h);
+      box-sizing:border-box;
+    }
+    .controls::-webkit-scrollbar{ display:none; }
+    .controls select{
+      font-size:10px; padding:6px 8px; flex:0 0 auto; min-width:0;
+    }
+    .controls button{
+      font-size:10px; padding:6px 10px; flex:0 0 auto; white-space:nowrap;
+    }
+    .controls .loop-toggle{
+      font-size:9px; gap:4px; flex:0 0 auto; white-space:nowrap;
+    }
+  }
+  @media (max-width: 400px){
+    :root{ --m-feed-h: 140px; }
+  }
+
   /* Left-hand column: sits in the open space beside the arena, holds the
-     always-on champions table and the event feed. Anchored by top+bottom
-     (not a fixed height) so it can never drift down into the chat panel. */
+     always-on event feed. Anchored by top+bottom (not a fixed height) so it
+     can never drift down into the chat panel. */
   .left-panel{
     position:fixed; top:96px; left:16px; bottom:196px; z-index:16;
     width:250px;
@@ -156,7 +259,32 @@
   }
   .left-panel > *{ pointer-events:auto; }
   @media (max-width: 640px){
-    .left-panel{ top:82px; left:10px; width:180px; bottom:168px; gap:8px; }
+    /* Thin horizontal strip stacked exactly one gap above the Arena Hype
+       chat bar — full width, out of the animation's way, not eating a side
+       column. bottom = controls height + gap + chat height + gap, so it
+       always sits flush regardless of viewport, no drift. */
+    .left-panel{
+      top:auto; left:8px; right:8px; z-index:15;
+      bottom:calc(var(--m-controls-h) + var(--m-gap) + var(--m-chat-h) + var(--m-gap));
+      width:auto; height:var(--m-feed-h); gap:0;
+    }
+  }
+
+  /* Right-hand column: mirrors the left panel on the opposite side of the
+     arena, holds the always-on champions table. Same anchoring logic. */
+  .right-panel{
+    position:fixed; top:96px; right:16px; bottom:196px; z-index:16;
+    width:250px;
+    display:flex; flex-direction:column; gap:12px;
+    pointer-events:none;
+  }
+  .right-panel > *{ pointer-events:auto; }
+  @media (max-width: 640px){
+    /* Always-on champions table is desktop-only real estate — on mobile the
+       leaderboard moves into the navbar dropdown (see .lb-stat / .lb-drop)
+       instead, so this column is fully removed to free the screen for the
+       arena. */
+    .right-panel{ display:none; }
   }
 
   .event-feed{
@@ -182,7 +310,28 @@
   .ticker div:last-child{border-bottom:none;}
   .ticker b{color:var(--gold);}
   @media (max-width: 640px){
-    .event-feed{display:none;}
+    /* Detailed vertical feed, contained inside its own scrollable box —
+       newest entry on top, full "Country swept out — N remain" line per
+       row, same as the desktop layout, just sized to fit the mobile strip. */
+    .event-feed{
+      display:flex; flex-direction:column; height:100%;
+    }
+    .event-feed .feed-head{
+      padding:6px 10px; font-size:9px; flex-shrink:0;
+      border-bottom:1px solid var(--line);
+    }
+    .ticker{
+      display:block;
+      flex:1 1 auto; min-height:0;
+      overflow-y:auto; overflow-x:hidden; white-space:normal;
+      font-size:10.5px; padding:4px 10px;
+    }
+    .ticker div{
+      display:block; white-space:normal;
+      padding:4px 0; border-bottom:1px dashed var(--line);
+      animation: fadeIn .25s ease;
+    }
+    .ticker div:last-child{ border-bottom:none; }
   }
 
   /* Live chat panel — horizontal strip below the arena, above controls */
@@ -220,7 +369,10 @@
   .chat-msg .u{font-weight:600; margin-right:4px;}
   @keyframes fadeIn{from{opacity:0; transform:translateX(10px);} to{opacity:1; transform:translateX(0);}}
   @media (max-width: 640px){
-    .chat-panel{height:72px; left:10px; right:10px; bottom:78px;}
+    .chat-panel{
+      height:var(--m-chat-h); left:8px; right:8px;
+      bottom:calc(var(--m-controls-h) + var(--m-gap));
+    }
     .chat-msg{font-size:11px; padding:4px 9px;}
   }
 
@@ -232,7 +384,10 @@
     pointer-events:none;
   }
   @media (max-width: 640px){
-    .disclaimer{bottom:154px; font-size:8px; max-width:220px; line-height:1.3;}
+    .disclaimer{
+      bottom:calc(var(--m-controls-h) + var(--m-gap) + var(--m-chat-h) + var(--m-gap) + var(--m-feed-h) + var(--m-gap));
+      font-size:8px; max-width:220px; line-height:1.3;
+    }
   }
 
   /* Champions table — always visible on-screen, no click required.
@@ -269,8 +424,14 @@
   .lb-wins{font-family:'JetBrains Mono',monospace; color:var(--gold); font-size:13px; font-weight:600; text-align:right;}
   .lb-empty{color:#8a8072; font-size:12px; font-family:'JetBrains Mono',monospace;}
   @media (max-width: 640px){
-    #lbList{max-height:260px;}
-    .champions-panel h3{font-size:13px;}
+    .champions-panel{padding:8px 8px 6px;}
+    .champions-panel h3{font-size:11px;}
+    .champions-panel .sub{font-size:8px; margin-bottom:5px; line-height:1.3;}
+    #lbList{max-height:200px;}
+    .lb-row{padding:5px 1px; gap:4px;}
+    .lb-name{font-size:10px; gap:4px;}
+    .lb-name .lb-flag{font-size:12px;}
+    .lb-wins{font-size:10px;}
   }
 
   /* Subscribe lower-third callout */
@@ -308,7 +469,7 @@
     padding:8px 14px; border-radius:3px; margin-left:6px; white-space:nowrap;
   }
   @media (max-width: 640px){
-    .subscribe-callout{ left:10px; bottom:172px; padding:10px 14px 10px 12px; gap:9px; }
+    .subscribe-callout{ left:10px; bottom:160px; padding:10px 14px 10px 12px; gap:9px; }
     .subscribe-callout .txt-h{font-size:12px;}
     .subscribe-callout .txt-s{display:none;}
     .subscribe-callout .sub-btn{font-size:11px; padding:7px 10px;}
@@ -344,12 +505,6 @@
     letter-spacing:0.5px; user-select:none; cursor:pointer;
   }
   .loop-toggle input{accent-color:var(--gold); cursor:pointer;}
-
-  @media (max-width: 640px){
-    .brand{font-size:16px;}
-    .stat .n{font-size:17px;}
-    .stat-row{gap:14px;}
-  }
 
   /* Locked composition: pins the whole page to a fixed logical size (default
      1920x1080, override with ?w=&h=) and scales it to fit whatever window/
@@ -390,23 +545,30 @@
     <div class="stat"><div class="n" id="statRound" style="font-size:15px; letter-spacing:1px;">—</div><div class="l">Stage</div></div>
     <div class="stat"><div class="n" id="statAlive">0</div><div class="l">Remaining</div></div>
     <div class="stat"><div class="n" id="statRadius">100%</div><div class="l">Arena</div></div>
-    <div class="stat"><div class="n" id="statGap">1.0x</div><div class="l">Gate Speed</div></div>
+    <div class="stat gate-stat"><div class="n" id="statGap">1.0x</div><div class="l">Gate Speed</div></div>
+    <div class="stat lb-stat" id="lbStat"><div class="n">🏆</div><div class="l">Leaders</div></div>
   </div>
+</div>
+
+<div class="lb-drop" id="lbDrop">
+  <div class="lb-drop-head"><span>🏆 Champions</span></div>
+  <div id="lbListMobile"><div class="lb-empty">No champions crowned yet.</div></div>
 </div>
 
 <div class="stage-banner" id="stageBanner"></div>
 
-<button class="stream-toggle" id="streamToggle" title="Toggle clean stream mode (hides controls, for OBS capture)">🎥 Stream Mode</button>
-
 <div class="left-panel">
+  <div class="event-feed">
+    <div class="feed-head">Arena Feed</div>
+    <div class="ticker" id="ticker"></div>
+  </div>
+</div>
+
+<div class="right-panel">
   <div class="champions-panel">
     <h3>🏆 All-Time Champions</h3>
     <div class="sub">Wins are saved on this device</div>
     <div id="lbList"><div class="lb-empty">No champions crowned yet.</div></div>
-  </div>
-  <div class="event-feed">
-    <div class="feed-head">Arena Feed</div>
-    <div class="ticker" id="ticker"></div>
   </div>
 </div>
 
@@ -447,7 +609,8 @@
   <button class="primary" id="startBtn">Start Battle</button>
   <button id="pauseBtn">Pause</button>
   <button id="resetBtn">Reset</button>
-  <label class="loop-toggle"><input type="checkbox" id="autoLoopCheck" checked> Auto-loop</label>
+  <label class="loop-toggle"><input type="checkbox" id="autoLoopCheck" checked> Championship Mode</label>
+  <button class="stream-toggle" id="streamToggle" title="Toggle clean stream mode (hides controls, for OBS capture)">🎥 Stream Mode</button>
 </div>
 
 <script>
@@ -505,6 +668,16 @@ const COUNTRIES = [
 ["🇦🇺","Australia"],["🇳🇿","New Zealand"],["🇫🇯","Fiji"],["🇵🇬","Papua New Guinea"]
 ];
 
+// ---------- Mobile perf mode ----------
+// Desktop stays on full native devicePixelRatio (it already runs smooth).
+// Mobile GPUs choke on 115+ flags at DPR 2-3x plus per-object shadowBlur,
+// so on mobile we cap the render DPR and drop the more expensive glow
+// effects once the flag count gets high. Recomputed on resize/rotation.
+function isMobileViewport(){ return window.matchMedia('(max-width: 640px)').matches; }
+let MOBILE = isMobileViewport();
+function currentDPR(){ return MOBILE ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1); }
+let DPR = currentDPR();
+
 // ---------- Ambient background FX: embers + mouse-parallax glow ----------
 const bgfx = document.getElementById('bgfx');
 const bgCtx = bgfx.getContext('2d');
@@ -512,26 +685,26 @@ let bgW, bgH;
 function sizeBgfx(){
   const w = wantsLocked ? LOCK_W : window.innerWidth;
   const h = wantsLocked ? LOCK_H : window.innerHeight;
-  bgW = bgfx.width = w * devicePixelRatio;
-  bgH = bgfx.height = h * devicePixelRatio;
+  bgW = bgfx.width = w * DPR;
+  bgH = bgfx.height = h * DPR;
   bgfx.style.width = w + 'px';
   bgfx.style.height = h + 'px';
 }
-window.addEventListener('resize', sizeBgfx);
+window.addEventListener('resize', ()=>{ MOBILE = isMobileViewport(); DPR = currentDPR(); sizeBgfx(); });
 sizeBgfx();
 
 let mouseX = (wantsLocked ? LOCK_W : window.innerWidth)/2, mouseY = (wantsLocked ? LOCK_H : window.innerHeight)/2;
-let glowX = mouseX * devicePixelRatio, glowY = mouseY * devicePixelRatio;
+let glowX = mouseX * DPR, glowY = mouseY * DPR;
 document.addEventListener('mousemove', (e)=>{ mouseX = e.clientX; mouseY = e.clientY; });
 
-const EMBER_COUNT = 55;
+const EMBER_COUNT = MOBILE ? 24 : 55; // fewer ambient embers on mobile — they redraw with a shadowBlur every frame regardless of arena state, so this is a steady cost independent of flag count
 function makeEmber(){
   return {
     x: Math.random() * bgW,
     y: bgH + Math.random()*80,
-    r: (1 + Math.random()*2.2) * devicePixelRatio,
-    speed: (0.25 + Math.random()*0.8) * devicePixelRatio,
-    drift: (Math.random()-0.5) * 0.5 * devicePixelRatio,
+    r: (1 + Math.random()*2.2) * DPR,
+    speed: (0.25 + Math.random()*0.8) * DPR,
+    drift: (Math.random()-0.5) * 0.5 * DPR,
     flicker: Math.random()*Math.PI*2,
     hue: 18 + Math.random()*32
   };
@@ -547,8 +720,8 @@ function stepBgfx(){
   bgCtx.clearRect(0,0,bgW,bgH);
 
   // mouse-parallax glow, eased toward the pointer for a floaty feel
-  glowX += (mouseX*devicePixelRatio - glowX) * 0.035;
-  glowY += (mouseY*devicePixelRatio - glowY) * 0.035;
+  glowX += (mouseX*DPR - glowX) * 0.035;
+  glowY += (mouseY*DPR - glowY) * 0.035;
   const glowR = Math.max(bgW,bgH) * 0.42;
   const grad = bgCtx.createRadialGradient(glowX, glowY, 0, glowX, glowY, glowR);
   grad.addColorStop(0, 'rgba(217,72,29,0.10)');
@@ -569,8 +742,12 @@ function stepBgfx(){
     bgCtx.beginPath();
     bgCtx.arc(e.x, e.y, e.r, 0, Math.PI*2);
     bgCtx.fillStyle = `hsla(${e.hue}, 85%, 58%, ${alpha})`;
-    bgCtx.shadowColor = `hsla(${e.hue}, 90%, 55%, 0.85)`;
-    bgCtx.shadowBlur = 6 * devicePixelRatio;
+    if(!MOBILE){
+      // shadowBlur per-ember is the priciest part of this loop — skip it on
+      // mobile where it competes with the 115-flag physics/render each frame
+      bgCtx.shadowColor = `hsla(${e.hue}, 90%, 55%, 0.85)`;
+      bgCtx.shadowBlur = 6 * DPR;
+    }
     bgCtx.fill();
   });
   bgCtx.shadowBlur = 0;
@@ -633,8 +810,8 @@ let W, H, center, arenaRadius;
 
 function sizeCanvas(){
   const wrap = document.querySelector('.arena-wrap');
-  W = canvas.width = wrap.clientWidth * devicePixelRatio;
-  H = canvas.height = wrap.clientHeight * devicePixelRatio;
+  W = canvas.width = wrap.clientWidth * DPR;
+  H = canvas.height = wrap.clientHeight * DPR;
   canvas.style.width = wrap.clientWidth + 'px';
   canvas.style.height = wrap.clientHeight + 'px';
   center = { x: W/2, y: H/2 };
@@ -682,7 +859,10 @@ let gapSpin = 1;             // direction, flips sometimes for chaos
 function pushTicker(msg){
   const p = document.createElement('div');
   p.innerHTML = renderFlags(msg);
+  // Newest entry on top, oldest trimmed off the bottom — same detailed
+  // vertical list on mobile and desktop.
   tickerEl.prepend(p);
+  tickerEl.scrollTop = 0;
   while(tickerEl.children.length > 30) tickerEl.removeChild(tickerEl.lastChild);
 }
 
@@ -770,23 +950,64 @@ function recordWin(countryName, emoji){
   setWinsStore(store);
   loadLeaderboard();
 }
+const lbListMobile = document.getElementById('lbListMobile');
 function loadLeaderboard(){
   const store = getWinsStore();
   const entries = Object.values(store);
   if(!entries.length){
     lbList.innerHTML = '<div class="lb-empty">No champions crowned yet.</div>';
+    if(lbListMobile) lbListMobile.innerHTML = '<div class="lb-empty">No champions crowned yet.</div>';
     return;
   }
   entries.sort((a,b)=> (b.wins||0) - (a.wins||0));
   // 2-column row: country (flag+name) | win count. First 10 sit directly
   // visible with no scrolling; #lbList's own max-height (10 rows) takes
   // over automatically once an 11th champion is crowned.
-  lbList.innerHTML = renderFlags(entries.map(e=>`
+  const rowsHtml = renderFlags(entries.map(e=>`
     <div class="lb-row">
       <div class="lb-name"><span class="lb-flag">${e.emoji||'🏳️'}</span><span>${e.name}</span></div>
       <div class="lb-wins">${e.wins}</div>
     </div>`).join(''));
+  lbList.innerHTML = rowsHtml;
+  // Mobile dropdown only needs the top 5 — it's a brief popover, not a full table.
+  if(lbListMobile){
+    const topHtml = renderFlags(entries.slice(0,5).map(e=>`
+      <div class="lb-row">
+        <div class="lb-name"><span class="lb-flag">${e.emoji||'🏳️'}</span><span>${e.name}</span></div>
+        <div class="lb-wins">${e.wins}</div>
+      </div>`).join(''));
+    lbListMobile.innerHTML = topHtml;
+  }
 }
+
+// ---------- Mobile navbar leaderboard dropdown ----------
+// Replaces the always-on champions column on small screens: the "Leaders"
+// stat pops an opaque, narrow dropdown at intervals (and on tap), then
+// closes itself so it never sits over the arena for long.
+const lbDropEl = document.getElementById('lbDrop');
+const lbStatEl = document.getElementById('lbStat');
+let lbDropHideTimer = null;
+function showLbDrop(duration = 4000){
+  if(!lbDropEl) return;
+  loadLeaderboard();
+  lbDropEl.classList.add('show');
+  clearTimeout(lbDropHideTimer);
+  lbDropHideTimer = setTimeout(()=> lbDropEl.classList.remove('show'), duration);
+}
+if(lbStatEl){
+  lbStatEl.addEventListener('click', ()=>{
+    if(lbDropEl.classList.contains('show')){
+      clearTimeout(lbDropHideTimer);
+      lbDropEl.classList.remove('show');
+    } else {
+      showLbDrop(5000);
+    }
+  });
+}
+// Auto-pop periodically on mobile only, so it never interferes with desktop.
+setInterval(()=>{
+  if(MOBILE) showLbDrop(4000);
+}, 18000);
 
 // ---------- Simulation setup ----------
 function setup(count){
@@ -863,12 +1084,12 @@ function burst(x, y, colorBase){
   const count = 16 + Math.floor(Math.random()*10);
   for(let i=0;i<count;i++){
     const angle = Math.random()*Math.PI*2;
-    const speed = (1.4 + Math.random()*3.4) * devicePixelRatio;
+    const speed = (1.4 + Math.random()*3.4) * DPR;
     particles.push({
       x, y,
       vx: Math.cos(angle)*speed,
       vy: Math.sin(angle)*speed,
-      r: (1.4 + Math.random()*2.4) * devicePixelRatio,
+      r: (1.4 + Math.random()*2.4) * DPR,
       life: 1,
       decay: 0.02 + Math.random()*0.02,
       colorBase
@@ -1001,7 +1222,7 @@ function render(){
   ctx.arc(center.x, center.y, arenaRadius, 0, Math.PI*2);
   ctx.fillStyle = grad;
   ctx.fill();
-  ctx.lineWidth = 2 * devicePixelRatio;
+  ctx.lineWidth = 2 * DPR;
   ctx.strokeStyle = 'rgba(192,133,82,0.35)';
   ctx.stroke();
 
@@ -1012,7 +1233,7 @@ function render(){
 
   ctx.save();
   ctx.lineCap = 'round';
-  ctx.lineWidth = 6 * devicePixelRatio;
+  ctx.lineWidth = 6 * DPR;
   ctx.strokeStyle = 'rgba(232,184,75,0.85)';
   ctx.shadowColor = 'rgba(232,184,75,0.5)';
   ctx.shadowBlur = 10;
@@ -1027,7 +1248,7 @@ function render(){
     const gx = center.x + Math.cos(a) * liveR;
     const gy = center.y + Math.sin(a) * liveR;
     ctx.beginPath();
-    ctx.arc(gx, gy, 5 * devicePixelRatio, 0, Math.PI*2);
+    ctx.arc(gx, gy, 5 * DPR, 0, Math.PI*2);
     ctx.fillStyle = 'rgba(217,72,29,0.9)';
     ctx.shadowColor = 'rgba(217,72,29,0.8)';
     ctx.shadowBlur = 12;
@@ -1045,6 +1266,11 @@ function render(){
   ctx.fill();
   ctx.restore();
 
+  // Per-flag shadowBlur is the single most expensive part of this loop at
+  // high counts — fine on desktop, but on mobile with 115+ flags it's the
+  // main source of the laggy/stuttering animation, so drop it there once
+  // the field is large. Desktop behavior is untouched.
+  const skipFlagShadow = MOBILE && flags.length > 60;
   flags.forEach(f=>{
     if(!f.alive) return;
     const { x, y } = f.body.position;
@@ -1053,14 +1279,18 @@ function render(){
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(f.body.angle);
-    ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 6;
+    if(skipFlagShadow){
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 6;
+    }
     if(img.complete && img.naturalWidth && !img._failed){
       ctx.beginPath();
       ctx.arc(0, 0, size/2, 0, Math.PI*2);
       ctx.closePath();
       ctx.strokeStyle = 'rgba(237,230,216,0.55)';
-      ctx.lineWidth = 1.2 * devicePixelRatio;
+      ctx.lineWidth = 1.2 * DPR;
       ctx.stroke();
       ctx.clip();
       ctx.drawImage(img, -size/2, -size/2, size, size);
