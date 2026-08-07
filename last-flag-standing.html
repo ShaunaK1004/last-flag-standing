@@ -61,17 +61,16 @@
   .stream-toggle:hover{border-color:var(--gold); color:var(--gold);}
   .stream-toggle.active{background:var(--ember); border-color:transparent; color:var(--bone);}
 
-  body.stream-mode .hud, body.stream-mode .controls, body.stream-mode .board-toggle,
-  body.stream-mode .stream-toggle, body.stream-mode .leaderboard.show ~ .close-lb{
+  body.stream-mode .hud, body.stream-mode .controls, body.stream-mode .stream-toggle{
     opacity:0; pointer-events:none; transition: opacity .5s ease;
   }
   body.stream-mode.ui-visible .hud, body.stream-mode.ui-visible .controls,
-  body.stream-mode.ui-visible .board-toggle, body.stream-mode.ui-visible .stream-toggle{
+  body.stream-mode.ui-visible .stream-toggle{
     opacity:1; pointer-events:auto;
   }
   body.stream-mode{cursor:none;}
   body.stream-mode.ui-visible{cursor:default;}
-  body.stream-mode .chat-panel, body.stream-mode .ticker, body.stream-mode .stage-banner, body.stream-mode .disclaimer{
+  body.stream-mode .chat-panel, body.stream-mode .left-panel, body.stream-mode .stage-banner, body.stream-mode .disclaimer{
     opacity:1; pointer-events:auto; /* always keep on-screen viewer-facing elements visible */
   }
 
@@ -146,13 +145,45 @@
     padding:10px 12px; border-radius:3px;
   }
 
-  .ticker{
-    position:fixed; left:22px; bottom:82px; z-index:20;
-    font-family:'JetBrains Mono',monospace; font-size:12px; color:#a89a83;
-    max-width:260px; min-height:18px;
-    letter-spacing:0.3px;
+  /* Left-hand column: sits in the open space beside the arena, holds the
+     always-on champions table and the event feed. Anchored by top+bottom
+     (not a fixed height) so it can never drift down into the chat panel. */
+  .left-panel{
+    position:fixed; top:96px; left:16px; bottom:196px; z-index:16;
+    width:250px;
+    display:flex; flex-direction:column; gap:12px;
+    pointer-events:none;
   }
+  .left-panel > *{ pointer-events:auto; }
+  @media (max-width: 640px){
+    .left-panel{ top:82px; left:10px; width:180px; bottom:168px; gap:8px; }
+  }
+
+  .event-feed{
+    background:rgba(20,16,12,0.78); border:1px solid var(--line); border-radius:8px;
+    backdrop-filter: blur(6px);
+    display:flex; flex-direction:column;
+    min-height:0; flex:1 1 auto;
+    overflow:hidden;
+  }
+  .event-feed .feed-head{
+    padding:7px 10px; border-bottom:1px solid var(--line); flex-shrink:0;
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--gold);
+  }
+  .ticker{
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#a89a83;
+    letter-spacing:0.3px; line-height:1.4;
+    padding:8px 10px; overflow-y:auto; min-height:0;
+  }
+  .ticker::-webkit-scrollbar{width:4px;}
+  .ticker::-webkit-scrollbar-thumb{background:var(--stone); border-radius:4px;}
+  .ticker div{padding:4px 0; border-bottom:1px dashed var(--line);}
+  .ticker div:last-child{border-bottom:none;}
   .ticker b{color:var(--gold);}
+  @media (max-width: 640px){
+    .event-feed{display:none;}
+  }
 
   /* Live chat panel — horizontal strip below the arena, above controls */
   .chat-panel{
@@ -204,37 +235,42 @@
     .disclaimer{bottom:154px; font-size:8px; max-width:220px; line-height:1.3;}
   }
 
-  /* Leaderboard panel */
-  .board-toggle{
-    position:fixed; top:16px; right:16px; z-index:25;
+  /* Champions table — always visible on-screen, no click required.
+     Direct (unscrolled) view holds exactly 10 rows; the 11th win onward
+     scrolls inside the fixed-height rows box instead of pushing the
+     panel (and everything below it) further down the page. */
+  .champions-panel{
+    background:rgba(16,13,10,0.86); border:1px solid var(--line); border-radius:8px;
+    backdrop-filter: blur(6px);
+    padding:12px 14px 10px;
+    flex:0 0 auto;
   }
-  .leaderboard{
-    position:fixed; top:0; right:-340px; width:320px; height:100%; z-index:30;
-    background:rgba(16,13,10,0.97); border-left:1px solid var(--line);
-    padding:70px 20px 20px; transition: right .25s ease;
+  .champions-panel h3{
+    font-family:'Anton',sans-serif; letter-spacing:1px; color:var(--gold);
+    font-size:15px; margin:0 0 2px;
+  }
+  .champions-panel .sub{
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:#8a8072; margin-bottom:8px;
+  }
+  #lbList{
+    max-height:390px; /* exactly 10 rows before scrolling kicks in */
     overflow-y:auto;
   }
-  .leaderboard.show{right:0;}
-  .leaderboard h3{
-    font-family:'Anton',sans-serif; letter-spacing:1px; color:var(--gold);
-    font-size:18px; margin:0 0 4px;
-  }
-  .leaderboard .sub{font-family:'JetBrains Mono',monospace; font-size:11px; color:#8a8072; margin-bottom:16px;}
+  #lbList::-webkit-scrollbar{width:4px;}
+  #lbList::-webkit-scrollbar-thumb{background:var(--stone); border-radius:4px;}
   .lb-row{
-    display:flex; align-items:center; gap:10px;
-    padding:9px 0; border-bottom:1px solid var(--line);
+    display:grid; grid-template-columns:1fr auto; align-items:center; gap:10px;
+    padding:8px 2px; border-bottom:1px solid var(--line);
   }
-  .lb-rank{font-family:'JetBrains Mono',monospace; color:#8a8072; width:22px; font-size:13px;}
-  .lb-flag{font-size:20px;}
-  .lb-name{flex:1; font-size:13px;}
-  .lb-wins{font-family:'JetBrains Mono',monospace; color:var(--gold); font-size:13px; font-weight:600;}
-  .lb-empty{color:#8a8072; font-size:13px; font-family:'JetBrains Mono',monospace;}
-  .close-lb{
-    position:absolute; top:16px; right:18px;
-    background:none; border:none; color:var(--bone); font-size:20px; cursor:pointer; padding:4px 8px;
-  }
-  .lb-note{
-    margin-top:16px; font-size:11px; color:#6d6355; font-family:'JetBrains Mono',monospace; line-height:1.5;
+  .lb-row:last-child{border-bottom:none;}
+  .lb-name{font-size:13px; display:flex; align-items:center; gap:7px; min-width:0;}
+  .lb-name .lb-flag{font-size:16px; flex-shrink:0;}
+  .lb-name span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .lb-wins{font-family:'JetBrains Mono',monospace; color:var(--gold); font-size:13px; font-weight:600; text-align:right;}
+  .lb-empty{color:#8a8072; font-size:12px; font-family:'JetBrains Mono',monospace;}
+  @media (max-width: 640px){
+    #lbList{max-height:260px;}
+    .champions-panel h3{font-size:13px;}
   }
 
   /* Subscribe lower-third callout */
@@ -313,7 +349,6 @@
     .brand{font-size:16px;}
     .stat .n{font-size:17px;}
     .stat-row{gap:14px;}
-    .ticker{display:none;}
   }
 
   /* Locked composition: pins the whole page to a fixed logical size (default
@@ -361,10 +396,19 @@
 
 <div class="stage-banner" id="stageBanner"></div>
 
-<button class="board-toggle" id="boardToggle">🏆 Leaderboard</button>
 <button class="stream-toggle" id="streamToggle" title="Toggle clean stream mode (hides controls, for OBS capture)">🎥 Stream Mode</button>
 
-<div class="ticker" id="ticker"></div>
+<div class="left-panel">
+  <div class="champions-panel">
+    <h3>🏆 All-Time Champions</h3>
+    <div class="sub">Wins are saved on this device</div>
+    <div id="lbList"><div class="lb-empty">No champions crowned yet.</div></div>
+  </div>
+  <div class="event-feed">
+    <div class="feed-head">Arena Feed</div>
+    <div class="ticker" id="ticker"></div>
+  </div>
+</div>
 
 <div class="chat-panel">
   <div class="chat-head"><span><span class="dot"></span>ARENA HYPE</span><span id="viewerCount">— hype</span></div>
@@ -374,14 +418,6 @@
 
 <div class="arena-wrap">
   <canvas id="arena"></canvas>
-</div>
-
-<div class="leaderboard" id="leaderboard">
-  <button class="close-lb" id="closeLb">✕</button>
-  <h3>All-Time Champions</h3>
-  <div class="sub">Persistent record for this arena</div>
-  <div id="lbList"><div class="lb-empty">No champions crowned yet.</div></div>
-  <div class="lb-note">Win counts are saved on this device and carry over between runs.</div>
 </div>
 
 <div class="winner-screen" id="winnerScreen">
@@ -647,7 +683,7 @@ function pushTicker(msg){
   const p = document.createElement('div');
   p.innerHTML = renderFlags(msg);
   tickerEl.prepend(p);
-  while(tickerEl.children.length > 4) tickerEl.removeChild(tickerEl.lastChild);
+  while(tickerEl.children.length > 30) tickerEl.removeChild(tickerEl.lastChild);
 }
 
 // ---------- Simulated live chat ----------
@@ -742,22 +778,15 @@ function loadLeaderboard(){
     return;
   }
   entries.sort((a,b)=> (b.wins||0) - (a.wins||0));
-  lbList.innerHTML = renderFlags(entries.slice(0,15).map((e,i)=>`
+  // 2-column row: country (flag+name) | win count. First 10 sit directly
+  // visible with no scrolling; #lbList's own max-height (10 rows) takes
+  // over automatically once an 11th champion is crowned.
+  lbList.innerHTML = renderFlags(entries.map(e=>`
     <div class="lb-row">
-      <div class="lb-rank">${i+1}</div>
-      <div class="lb-flag">${e.emoji||'🏳️'}</div>
-      <div class="lb-name">${e.name}</div>
+      <div class="lb-name"><span class="lb-flag">${e.emoji||'🏳️'}</span><span>${e.name}</span></div>
       <div class="lb-wins">${e.wins}</div>
     </div>`).join(''));
 }
-
-document.getElementById('boardToggle').addEventListener('click', ()=>{
-  document.getElementById('leaderboard').classList.add('show');
-  loadLeaderboard();
-});
-document.getElementById('closeLb').addEventListener('click', ()=>{
-  document.getElementById('leaderboard').classList.remove('show');
-});
 
 // ---------- Simulation setup ----------
 function setup(count){
