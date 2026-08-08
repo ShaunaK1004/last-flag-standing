@@ -518,7 +518,189 @@
     padding:6px 10px; pointer-events:none;
   }
 
-/* ===== Mobile Stream Layout V2 ===== */
+
+  /* ===== Portrait 9:16 STREAM COMPOSITION =====
+     Activated by ?w=1080&h=1920 (or any portrait locked canvas).
+     This is intentionally independent of viewport media queries so OBS Browser
+     Source gets the same vertical composition even when the source is rendered
+     on a desktop monitor. Desktop/16:9 composition remains untouched. */
+  body.mobile-stream{
+    width:1080px;
+    height:1920px;
+    overflow:hidden;
+  }
+
+  body.mobile-stream .hud{
+    position:absolute;
+    top:0; left:0; right:0;
+    height:92px;
+    padding:18px 28px 8px;
+    z-index:30;
+  }
+  body.mobile-stream .brand{
+    font-size:24px;
+    letter-spacing:1.2px;
+  }
+  body.mobile-stream .stat-row{
+    gap:28px;
+  }
+  body.mobile-stream .stat .n{font-size:20px;}
+  body.mobile-stream .stat .l{font-size:9px;}
+
+  /* Standing / champions table at the top */
+  body.mobile-stream .right-panel{
+    display:block!important;
+    position:absolute!important;
+    top:98px!important;
+    left:28px!important;
+    right:28px!important;
+    width:auto!important;
+    height:270px!important;
+    padding:0!important;
+    z-index:18;
+  }
+  body.mobile-stream .champions-panel{
+    width:100%;
+    height:100%;
+    padding:16px 20px 12px;
+    border-radius:12px;
+  }
+  body.mobile-stream .champions-panel h3{
+    font-size:21px;
+    margin-bottom:3px;
+  }
+  body.mobile-stream .champions-panel .sub{
+    font-size:11px;
+    margin-bottom:8px;
+  }
+  body.mobile-stream #lbList{
+    max-height:205px;
+    overflow:hidden;
+  }
+  body.mobile-stream .lb-row{
+    padding:7px 3px;
+  }
+  body.mobile-stream .lb-name{font-size:15px;}
+  body.mobile-stream .lb-name .lb-flag{font-size:18px;}
+  body.mobile-stream .lb-wins{font-size:14px;}
+
+  /* Main animation — large square region in the middle */
+  body.mobile-stream .arena-wrap{
+    display:flex!important;
+    position:absolute!important;
+    top:382px!important;
+    left:0!important;
+    right:0!important;
+    bottom:auto!important;
+    width:1080px!important;
+    height:900px!important;
+    z-index:2;
+    align-items:center!important;
+    justify-content:center!important;
+  }
+  body.mobile-stream .arena-wrap canvas{
+    width:900px!important;
+    height:900px!important;
+    max-width:none!important;
+    max-height:none!important;
+  }
+  body.mobile-stream .stage-banner{
+    top:398px;
+    font-size:28px;
+    z-index:22;
+  }
+
+  /* Arena feed below the animation */
+  body.mobile-stream .left-panel{
+    display:block!important;
+    position:absolute!important;
+    top:1298px!important;
+    left:28px!important;
+    right:28px!important;
+    bottom:auto!important;
+    width:auto!important;
+    height:250px!important;
+    z-index:17;
+  }
+  body.mobile-stream .event-feed{
+    height:100%;
+    border-radius:12px;
+  }
+  body.mobile-stream .event-feed .feed-head{
+    padding:10px 14px;
+    font-size:12px;
+  }
+  body.mobile-stream .ticker{
+    font-size:12px;
+    line-height:1.35;
+    padding:7px 14px;
+  }
+  body.mobile-stream .ticker div{padding:5px 0;}
+
+  /* Arena hype chat directly below the feed */
+  body.mobile-stream .chat-panel{
+    display:flex!important;
+    position:absolute!important;
+    top:1560px!important;
+    left:28px!important;
+    right:28px!important;
+    bottom:auto!important;
+    width:auto!important;
+    height:155px!important;
+    z-index:17;
+    border-radius:12px;
+  }
+  body.mobile-stream .chat-head{
+    padding:9px 14px;
+    font-size:12px;
+  }
+  body.mobile-stream .chat-body{
+    padding:10px 12px;
+    gap:8px;
+    flex-wrap:nowrap;
+  }
+  body.mobile-stream .chat-msg{
+    font-size:12px;
+    padding:6px 10px;
+  }
+
+  body.mobile-stream .disclaimer{
+    display:block!important;
+    left:30px;
+    top:1725px;
+    bottom:auto;
+    font-size:9px;
+    z-index:18;
+  }
+
+  /* Keep controls available at the very bottom for local testing.
+     Stream Mode fades them out, so they do not appear in the YouTube feed. */
+  body.mobile-stream .controls{
+    position:absolute;
+    left:0; right:0; bottom:0;
+    height:72px;
+    padding:8px 18px;
+    z-index:30;
+  }
+  body.mobile-stream .controls button,
+  body.mobile-stream .controls select{
+    font-size:11px;
+    padding:7px 10px;
+  }
+
+  body.mobile-stream .subscribe-callout{
+    left:28px;
+    bottom:95px;
+    z-index:35;
+  }
+  body.mobile-stream .corner-handle{
+    right:24px;
+    bottom:22px;
+  }
+
+  /* Winner screen naturally remains full 1080x1920. */
+
+  /* ===== Mobile Stream Layout V2 ===== */
 @media (max-width:640px){
   body:not(.canvas-locked){
     overflow:auto;
@@ -667,6 +849,7 @@ const LOCK_H = parseInt(params.get('h'), 10) || 1080;
 const streamHandle = params.get('handle');   // e.g. ?handle=@yourchannel
 const ctaTitle = params.get('ctaTitle');     // overrides the subscribe-callout headline
 const ctaSub = params.get('ctaSub');         // overrides the subscribe-callout subtext
+  const portraitStream = wantsLocked && LOCK_H > LOCK_W;
 
 function applyLockedScale(){
   if(!wantsLocked) return;
@@ -677,6 +860,7 @@ function applyLockedScale(){
 }
 if(wantsLocked){
   document.body.classList.add('canvas-locked');
+  if(portraitStream) document.body.classList.add('mobile-stream');
   applyLockedScale();
   window.addEventListener('resize', applyLockedScale);
 }
