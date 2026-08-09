@@ -748,6 +748,312 @@
   }
 }
 
+
+  /* ============================================================
+     VERTICAL LIVE REDESIGN — 1080 x 1920
+     Fresh presentation layer. Matter.js/game logic remains intact.
+     ============================================================ */
+  body.mobile-stream{
+    width:1080px!important;
+    height:1920px!important;
+    background:
+      radial-gradient(85% 38% at 50% 45%, rgba(232,184,75,.10), transparent 65%),
+      radial-gradient(70% 25% at 50% 100%, rgba(217,72,29,.12), transparent 70%),
+      #080706!important;
+    color:#f4efe5;
+  }
+
+  body.mobile-stream::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    z-index:1;
+    pointer-events:none;
+    background:
+      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    background-size:54px 54px;
+    mask-image:linear-gradient(to bottom, rgba(0,0,0,.8), transparent 96%);
+  }
+
+  body.mobile-stream .hud{
+    top:0!important; left:0!important; right:0!important;
+    height:104px!important;
+    padding:18px 28px 12px!important;
+    background:linear-gradient(180deg, rgba(8,7,6,.98), rgba(8,7,6,.65), transparent)!important;
+    z-index:80!important;
+  }
+  body.mobile-stream .brand{
+    font-size:25px!important;
+    letter-spacing:1.8px!important;
+  }
+  body.mobile-stream .stat-row{gap:20px!important;}
+  body.mobile-stream .stat .n{font-size:19px!important;}
+  body.mobile-stream .stat .l{font-size:9px!important;}
+
+  /* TOP 4 — compact, prominent, always visible */
+  body.mobile-stream .right-panel{
+    display:block!important;
+    position:absolute!important;
+    top:108px!important;
+    left:24px!important;
+    right:24px!important;
+    width:auto!important;
+    height:286px!important;
+    z-index:50!important;
+  }
+  body.mobile-stream .champions-panel{
+    height:100%!important;
+    padding:18px 20px 14px!important;
+    border:1px solid rgba(232,184,75,.28)!important;
+    border-radius:16px!important;
+    background:
+      linear-gradient(145deg, rgba(30,24,18,.96), rgba(12,10,8,.96))!important;
+    box-shadow:
+      0 14px 40px rgba(0,0,0,.45),
+      inset 0 1px 0 rgba(255,255,255,.035)!important;
+  }
+  body.mobile-stream .champions-panel h3{
+    font-size:22px!important;
+    letter-spacing:1.2px!important;
+    color:#f1c45a!important;
+    margin:0!important;
+  }
+  body.mobile-stream .champions-panel .sub{
+    font-size:10px!important;
+    letter-spacing:1.6px!important;
+    color:#887d6d!important;
+    margin:3px 0 10px!important;
+  }
+  body.mobile-stream #lbList{
+    max-height:212px!important;
+    overflow:hidden!important;
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:6px!important;
+  }
+  body.mobile-stream #lbList .lb-row{
+    min-height:58px!important;
+    padding:8px 10px!important;
+    border:1px solid rgba(237,230,216,.09)!important;
+    border-radius:9px!important;
+    background:rgba(255,255,255,.035)!important;
+    grid-template-columns:1fr auto!important;
+  }
+  body.mobile-stream #lbList .lb-row:nth-child(n+5){display:none!important;}
+  body.mobile-stream #lbList .lb-row:first-child{
+    border-color:rgba(232,184,75,.42)!important;
+    background:rgba(232,184,75,.08)!important;
+  }
+  body.mobile-stream .lb-name{font-size:14px!important;gap:6px!important;}
+  body.mobile-stream .lb-name .lb-flag{font-size:18px!important;}
+  body.mobile-stream .lb-wins{font-size:15px!important;color:#f1c45a!important;}
+
+  /* CENTER ROTATION ARENA */
+  body.mobile-stream .arena-wrap{
+    display:flex!important;
+    position:absolute!important;
+    top:410px!important;
+    left:180px!important;
+    width:720px!important;
+    height:720px!important;
+    z-index:5!important;
+    align-items:center!important;
+    justify-content:center!important;
+    background:
+      radial-gradient(circle at center, rgba(232,184,75,.055), transparent 55%);
+  }
+  body.mobile-stream .arena-wrap::before{
+    content:"";
+    position:absolute;
+    width:710px;height:710px;
+    border-radius:50%;
+    border:1px solid rgba(232,184,75,.16);
+    box-shadow:
+      0 0 70px rgba(232,184,75,.06),
+      inset 0 0 70px rgba(217,72,29,.035);
+    pointer-events:none;
+  }
+  body.mobile-stream .arena-wrap::after{
+    content:"LIVE ROTATION ARENA";
+    position:absolute;
+    top:18px;
+    left:50%;
+    transform:translateX(-50%);
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    letter-spacing:3px;
+    color:rgba(237,230,216,.45);
+    white-space:nowrap;
+    pointer-events:none;
+  }
+  body.mobile-stream .arena-wrap canvas{
+    width:720px!important;
+    height:720px!important;
+    max-width:none!important;
+    max-height:none!important;
+    border-radius:50%;
+    filter:drop-shadow(0 0 28px rgba(232,184,75,.12));
+  }
+  body.mobile-stream .stage-banner{
+    top:438px!important;
+    font-size:30px!important;
+    letter-spacing:4px!important;
+    z-index:25!important;
+  }
+
+  /* FEED — large readable event stream */
+  body.mobile-stream .left-panel{
+    display:block!important;
+    position:absolute!important;
+    top:1252px!important;
+    left:24px!important;
+    right:24px!important;
+    bottom:auto!important;
+    width:auto!important;
+    height:270px!important;
+    z-index:50!important;
+  }
+  body.mobile-stream .event-feed{
+    height:100%!important;
+    border-radius:15px!important;
+    background:rgba(18,14,11,.94)!important;
+    border:1px solid rgba(237,230,216,.11)!important;
+  }
+  body.mobile-stream .event-feed .feed-head{
+    padding:11px 15px!important;
+    font-size:11px!important;
+    letter-spacing:2px!important;
+    background:rgba(232,184,75,.045);
+    color:#f1c45a!important;
+  }
+  body.mobile-stream .ticker{
+    font-size:12px!important;
+    line-height:1.4!important;
+    padding:7px 15px!important;
+  }
+  body.mobile-stream .ticker div{
+    padding:6px 0!important;
+    border-bottom:1px solid rgba(237,230,216,.07)!important;
+  }
+
+  /* HYPE CHAT */
+  body.mobile-stream .chat-panel{
+    display:flex!important;
+    position:absolute!important;
+    top:1538px!important;
+    left:24px!important;
+    right:24px!important;
+    bottom:auto!important;
+    width:auto!important;
+    height:128px!important;
+    z-index:50!important;
+    border-radius:15px!important;
+    background:rgba(18,14,11,.94)!important;
+    border:1px solid rgba(237,230,216,.11)!important;
+  }
+  body.mobile-stream .chat-head{
+    padding:9px 14px!important;
+    font-size:10px!important;
+    letter-spacing:2px!important;
+  }
+  body.mobile-stream .chat-body{
+    padding:8px 12px!important;
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+    justify-content:flex-start!important;
+    gap:5px!important;
+    overflow:hidden!important;
+  }
+  body.mobile-stream .chat-msg{
+    width:100%!important;
+    font-size:11px!important;
+    padding:5px 9px!important;
+    border-radius:7px!important;
+    background:rgba(255,255,255,.035)!important;
+  }
+  body.mobile-stream .chat-msg:nth-child(n+5){display:none!important;}
+
+  body.mobile-stream .disclaimer{
+    top:1680px!important;
+    bottom:auto!important;
+    left:28px!important;
+    font-size:8px!important;
+    color:rgba(237,230,216,.3)!important;
+    z-index:52!important;
+  }
+
+  /* BUTTON DECK — compact and stream-visible in this redesign */
+  body.mobile-stream .controls{
+    display:flex!important;
+    position:absolute!important;
+    left:24px!important;
+    right:24px!important;
+    bottom:24px!important;
+    height:190px!important;
+    padding:12px!important;
+    gap:8px!important;
+    flex-wrap:wrap!important;
+    align-content:center!important;
+    justify-content:center!important;
+    border:1px solid rgba(237,230,216,.11);
+    border-radius:15px;
+    background:rgba(18,14,11,.96)!important;
+    z-index:80!important;
+  }
+  body.mobile-stream .controls select,
+  body.mobile-stream .controls button{
+    height:46px!important;
+    font-size:11px!important;
+    padding:8px 14px!important;
+    border-radius:8px!important;
+  }
+  body.mobile-stream .controls select{
+    min-width:150px!important;
+    background:#211b16!important;
+  }
+  body.mobile-stream .controls button.primary{
+    min-width:180px!important;
+  }
+  body.mobile-stream .controls .loop-toggle{
+    width:100%!important;
+    justify-content:center!important;
+    font-size:10px!important;
+  }
+  body.mobile-stream .controls .stream-toggle{
+    display:none!important;
+  }
+
+  /* Hide non-essential desktop-only elements in the portrait composition */
+  body.mobile-stream .lb-drop{display:none!important;}
+  body.mobile-stream .subscribe-callout{display:none!important;}
+  body.mobile-stream .corner-handle{
+    right:28px!important;
+    bottom:202px!important;
+    font-size:9px!important;
+    opacity:.7;
+    z-index:81!important;
+  }
+
+  /* Make stream mode keep the new portrait UI visible. */
+  body.mobile-stream.stream-mode .hud,
+  body.mobile-stream.stream-mode .controls,
+  body.mobile-stream.stream-mode .stream-toggle{
+    opacity:1!important;
+    pointer-events:auto!important;
+  }
+  body.mobile-stream.stream-mode .stream-toggle{display:none!important;}
+
+  /* Winner overlay */
+  body.mobile-stream .winner-screen{
+    width:1080px!important;
+    height:1920px!important;
+    z-index:200!important;
+  }
+  body.mobile-stream .winner-flag{font-size:150px!important;}
+  body.mobile-stream .winner-name{font-size:54px!important;}
+
 </style>
 </head>
 <body>
@@ -790,8 +1096,8 @@
 
 <div class="right-panel">
   <div class="champions-panel">
-    <h3>🏆 All-Time Champions</h3>
-    <div class="sub">Wins are saved on this device</div>
+    <h3>🏆 TOP 4 LEADERBOARD</h3>
+    <div class="sub">WHO WILL FINISH #1?</div>
     <div id="lbList"><div class="lb-empty">No champions crowned yet.</div></div>
   </div>
 </div>
