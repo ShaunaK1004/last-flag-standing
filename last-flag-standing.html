@@ -13,16 +13,22 @@
     background:radial-gradient(ellipse at 50% 0%, #1a2456 0%, #0a0e2a 55%, #060815 100%);
     font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
     display:flex;align-items:center;justify-content:center;overflow:hidden;}
-  /* True Shorts frame: fill the available viewport instead of leaving desktop/phone letterbox space. */
+  /* YouTube Live / OBS native vertical frame.
+     The game is authored on a 600x1066.667 design canvas (exact 9:16) and
+     scaled uniformly to the browser-source viewport. This keeps every font,
+     panel, canvas and overlay proportional instead of leaving the old 600px
+     desktop-sized stage floating inside a 1080x1920 source. */
   .stage{
-    width:min(100vw, calc(100vh * 9 / 16), 600px);
+    width:600px;
+    height:1066.666667px;
     aspect-ratio:9/16;
-    height:auto;
+    flex:0 0 auto;
     position:relative;
     display:flex;
     flex-direction:column;
     padding:6px 6px 5px;
     overflow:hidden;
+    transform-origin:center center;
   }
 
   .leaderboard{
@@ -65,7 +71,7 @@
      qualified leaderboard above and the elimination history below. */
   canvas{
     display:block;
-    width:min(100%,420px);
+    width:min(100%,520px);
     height:auto;
     max-height:100%;
     object-fit:contain;
@@ -658,6 +664,18 @@ function getImg(code){
 }
 function rand(a,b){ return a+Math.random()*(b-a); }
 function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=arr[i]; arr[i]=arr[j]; arr[j]=t; } return arr; }
+
+// Scale the fixed 9:16 design canvas uniformly to the actual browser/OBS source.
+// For an OBS Browser Source set the source to 1080 x 1920: scale becomes exactly 1.8,
+// so the stage occupies the entire source with zero top/bottom/side letterboxing.
+function fitVerticalStreamFrame(){
+  const stage=document.getElementById('stage');
+  const designW=600, designH=1066.666667;
+  const scale=Math.min(window.innerWidth/designW, window.innerHeight/designH);
+  stage.style.transform='scale('+Math.max(0.01,scale)+')';
+}
+fitVerticalStreamFrame();
+window.addEventListener('resize', fitVerticalStreamFrame);
 
 function initGame(){
   if(cycleRevealTimer){ clearTimeout(cycleRevealTimer); cycleRevealTimer=null; }
