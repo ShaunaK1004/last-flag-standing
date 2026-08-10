@@ -1,1967 +1,2391 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LAST FLAG STANDING — Arena</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 <style>
   :root{
-    --ink:#100D0A;
-    --stone:#221D18;
-    --sand:#C08552;
-    --gold:#E8B84B;
-    --ember:#D9481D;
-    --bone:#EDE6D8;
-    --line: rgba(237,230,216,0.12);
-  }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{
-    margin:0;height:100%;background:radial-gradient(120% 120% at 50% -10%, #241d16 0%, #100D0A 55%, #0a0806 100%);
-    color:var(--bone);
-    font-family:'Oswald',sans-serif;
-    overflow:hidden;
-    user-select:none;
-    -webkit-user-select:none;
-  }
-  img, canvas{-webkit-user-drag:none; user-drag:none;}
-  .hud{
-    position:fixed; top:0; left:0; right:0; z-index:20;
-    display:flex; align-items:center; justify-content:space-between;
-    padding:16px 22px;
-    background:linear-gradient(180deg, rgba(16,13,10,0.92), rgba(16,13,10,0));
-    pointer-events:none;
-  }
-  .hud *{pointer-events:auto;}
-  .brand{
-    font-family:'Anton',sans-serif;
-    font-size:22px; letter-spacing:1.5px;
-    color:var(--gold);
-    text-shadow:0 0 18px rgba(232,184,75,0.35);
-  }
-  .brand span{color:var(--bone);}
-  .live-badge{
-    display:inline-flex; align-items:center; gap:5px;
-    font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:1.5px;
-    background:rgba(217,72,29,0.16); border:1px solid rgba(217,72,29,0.5);
-    color:#ff6a4a; padding:3px 8px; border-radius:3px; margin-left:10px;
-    vertical-align:middle;
-  }
-  .live-dot{width:6px;height:6px;border-radius:50%;background:#ff4d4d;box-shadow:0 0 8px #ff4d4d; animation: pulse 1.4s infinite;}
-  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
-
-  .stream-toggle{
-    position:fixed; top:16px; right:172px; z-index:25;
-    font-family:'Oswald',sans-serif; font-weight:600; letter-spacing:1px; text-transform:uppercase;
-    font-size:12px; background:var(--stone); color:var(--bone); border:1px solid var(--line);
-    padding:9px 14px; border-radius:3px; cursor:pointer;
-  }
-  .stream-toggle:hover{border-color:var(--gold); color:var(--gold);}
-  .stream-toggle.active{background:var(--ember); border-color:transparent; color:var(--bone);}
-
-  body.stream-mode .hud, body.stream-mode .controls, body.stream-mode .stream-toggle{
-    opacity:0; pointer-events:none; transition: opacity .5s ease;
-  }
-  body.stream-mode.ui-visible .hud, body.stream-mode.ui-visible .controls,
-  body.stream-mode.ui-visible .stream-toggle{
-    opacity:1; pointer-events:auto;
-  }
-  body.stream-mode{cursor:none;}
-  body.stream-mode.ui-visible{cursor:default;}
-  body.stream-mode .chat-panel, body.stream-mode .left-panel, body.stream-mode .right-panel, body.stream-mode .stage-banner, body.stream-mode .disclaimer{
-    opacity:1; pointer-events:auto; /* always keep on-screen viewer-facing elements visible */
-  }
-
-  @media (max-width: 640px){
-    /* Folded into the .controls strip on mobile (see below) instead of
-       floating separately, so it can't collide with the chat panel. */
-    .controls .stream-toggle{
-      position:static; top:auto; right:auto; bottom:auto;
-      font-size:10px; padding:6px 10px; flex:0 0 auto; white-space:nowrap;
-    }
-  }
-  .stat-row{display:flex; gap:22px; align-items:baseline;}
-  .stat{text-align:right;}
-  .stat .n{font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600; color:var(--bone);}
-  .stat .l{font-size:11px; letter-spacing:2px; text-transform:uppercase; color:#8a8072;}
-
-  @media (max-width: 640px){
-    .hud{flex-wrap:wrap; padding:10px 12px 8px; gap:6px 0; row-gap:6px;}
-    .brand{flex:1 1 100%; font-size:14px; letter-spacing:0.75px;}
-    .live-badge{font-size:9px; padding:2px 6px; margin-left:6px;}
-    .stat-row{flex:1 1 100%; justify-content:space-between; gap:10px;}
-    .stat .n{font-size:14px;}
-    .stat .l{font-size:8px; letter-spacing:1px;}
-  }
-
-  /* Navbar leaderboard stat — desktop keeps the plain "Gate Speed" readout;
-     on mobile that slot is swapped for a compact champions button that
-     periodically pops its own dropdown instead of a permanent side panel. */
-  .lb-stat{ display:none; }
-  @media (max-width: 640px){
-    .gate-stat{ display:none; }
-    .lb-stat{
-      display:flex; flex-direction:column; align-items:flex-end;
-      background:none; border:none; padding:0; cursor:pointer;
-      font-family:inherit; color:inherit;
-    }
-    .lb-stat .n{font-size:14px;}
-    .lb-stat .l{font-size:8px; letter-spacing:1px;}
-  }
-
-  /* Opaque, narrow dropdown — anchored top-right under the navbar so it
-     stays clear of the arena's central spin, only ever shown briefly. */
-  .lb-drop{
-    position:fixed; top:84px; right:8px; z-index:26;
-    width:150px; max-width:44vw;
-    background:rgba(12,10,8,0.97); border:1px solid var(--line); border-radius:8px;
-    box-shadow:0 8px 24px rgba(0,0,0,0.55);
-    padding:8px 9px 6px;
-    opacity:0; transform:translateY(-6px);
-    pointer-events:none;
-    transition: opacity .3s ease, transform .3s ease;
-  }
-  .lb-drop.show{ opacity:1; transform:translateY(0); pointer-events:auto; }
-  .lb-drop .lb-drop-head{
-    font-family:'Anton',sans-serif; letter-spacing:0.5px; color:var(--gold);
-    font-size:11px; margin-bottom:5px; display:flex; align-items:center; justify-content:space-between;
-  }
-  .lb-drop #lbListMobile .lb-row{ padding:4px 1px; gap:4px; }
-  .lb-drop #lbListMobile .lb-name{ font-size:10px; gap:4px; }
-  .lb-drop #lbListMobile .lb-name .lb-flag{ font-size:12px; }
-  .lb-drop #lbListMobile .lb-wins{ font-size:10px; }
-  .lb-drop #lbListMobile .lb-empty{ font-size:10px; }
-  .lb-drop #lbListMobile{ max-height:170px; overflow-y:auto; }
-  @media (min-width: 641px){ .lb-drop{ display:none; } }
-
-  .stage-banner{
-    position:fixed; top:100px; left:50%; z-index:22;
-    transform: translate(-50%, -10px);
-    font-family:'Anton',sans-serif;
-    font-size:34px; letter-spacing:3px;
-    color:var(--gold);
-    text-shadow: 0 0 22px rgba(232,184,75,0.6), 0 2px 0 rgba(0,0,0,0.5);
-    opacity:0; pointer-events:none;
-    transition: opacity .35s ease, transform .35s ease;
-    text-align:center;
-    white-space:nowrap;
-  }
-  .stage-banner.show{
-    opacity:1; transform: translate(-50%, 0);
-  }
-  @media (max-width: 640px){
-    .stage-banner{font-size:20px; top:88px;}
-  }
-
-  .arena-wrap{
-    position:absolute; top:70px; left:0; right:0; bottom:172px; z-index:2;
-    display:flex; align-items:center; justify-content:center;
-  }
-  /* Mobile: inset the arena between the feed/champions columns so the
-     spinning ring never sits underneath them (they no longer overlap). */
-  @media (max-width: 640px){
-    /* Champions column is gone on mobile (leaderboard now lives in the navbar
-       dropdown instead), and the feed strip stacks directly above the chat
-       bar at the bottom — so the arena reclaims practically the entire
-       width and the whole area below the navbar for the main rotation.
-       Bottom is calc'd flush against the top of the feed strip (one gap
-       above it) so no vertical space goes unused. */
-    .arena-wrap{
-      top:52px; left:0; right:0;
-      bottom:0;
-    }
-  }
-  /* Stacking: #bgfx (z0, embers/glow) sits behind .arena-wrap (z2), which sits
-     behind the HUD/controls/panels (z15-30+). screen blend lets embers glow
-     over the dark gradient without washing out the arena drawn on top of it. */
-  #bgfx{
-    position:fixed; inset:0; z-index:0; pointer-events:none;
-    mix-blend-mode: screen;
-  }
-  canvas{display:block;}
-
-  .controls{
-    position:fixed; bottom:0; left:0; right:0; z-index:20;
-    display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap;
-    padding:18px 20px 22px;
-    background:linear-gradient(0deg, rgba(16,13,10,0.95), rgba(16,13,10,0));
-  }
-  button{
-    font-family:'Oswald',sans-serif; font-weight:600; letter-spacing:1px; text-transform:uppercase;
-    font-size:13px;
-    background:var(--stone);
-    color:var(--bone);
-    border:1px solid var(--line);
-    padding:11px 18px;
-    border-radius:3px;
-    cursor:pointer;
-    transition: all .15s ease;
-  }
-  button:hover{border-color:var(--gold); color:var(--gold);}
-  button.primary{
-    background:linear-gradient(180deg, var(--ember), #B23A17);
-    border-color:transparent; color:var(--bone);
-  }
-  button.primary:hover{filter:brightness(1.12); color:var(--bone);}
-  button:focus-visible{outline:2px solid var(--gold); outline-offset:2px;}
-
-  select{
-    font-family:'JetBrains Mono',monospace; font-size:12px;
-    background:var(--stone); color:var(--bone); border:1px solid var(--line);
-    padding:10px 12px; border-radius:3px;
-  }
-
-  /* Mobile: every control (both dropdowns, Start/Pause/Reset, auto-loop)
-     collapses into one small horizontally-scrollable strip so nothing wraps
-     into extra rows. Sits directly under the Arena Hype chat panel.
-     Height is fixed (not padding-derived) so the stack above it — chat
-     panel, then feed strip, then the arena — can be positioned with exact
-     calc() math instead of guessed pixel gaps. */
-  :root{
-    --m-controls-h: 44px;
-    --m-chat-h: 64px;
-    --m-feed-h: 168px;
-    --m-gap: 6px;
-  }
-  @media (max-width: 640px){
-    .controls{
-      justify-content:flex-start; flex-wrap:nowrap;
-      overflow-x:auto; -webkit-overflow-scrolling:touch;
-      gap:6px; padding:0 8px;
-      height:var(--m-controls-h);
-      box-sizing:border-box;
-    }
-    .controls::-webkit-scrollbar{ display:none; }
-    .controls select{
-      font-size:10px; padding:6px 8px; flex:0 0 auto; min-width:0;
-    }
-    .controls button{
-      font-size:10px; padding:6px 10px; flex:0 0 auto; white-space:nowrap;
-    }
-    .controls .loop-toggle{
-      font-size:9px; gap:4px; flex:0 0 auto; white-space:nowrap;
-    }
-  }
-  @media (max-width: 400px){
-    :root{ --m-feed-h: 140px; }
-  }
-
-  /* Left-hand column: sits in the open space beside the arena, holds the
-     always-on event feed. Anchored by top+bottom (not a fixed height) so it
-     can never drift down into the chat panel. */
-  .left-panel{
-    position:fixed; top:96px; left:16px; bottom:196px; z-index:16;
-    width:250px;
-    display:flex; flex-direction:column; gap:12px;
-    pointer-events:none;
-  }
-  .left-panel > *{ pointer-events:auto; }
-  @media (max-width: 640px){
-    /* Thin horizontal strip stacked exactly one gap above the Arena Hype
-       chat bar — full width, out of the animation's way, not eating a side
-       column. bottom = controls height + gap + chat height + gap, so it
-       always sits flush regardless of viewport, no drift. */
-    .left-panel{display:none;
-    }
-  }
-
-  /* Right-hand column: mirrors the left panel on the opposite side of the
-     arena, holds the always-on champions table. Same anchoring logic. */
-  .right-panel{
-    position:fixed; top:96px; right:16px; bottom:196px; z-index:16;
-    width:250px;
-    display:flex; flex-direction:column; gap:12px;
-    pointer-events:none;
-  }
-  .right-panel > *{ pointer-events:auto; }
-  @media (max-width: 640px){
-    /* Always-on champions table is desktop-only real estate — on mobile the
-       leaderboard moves into the navbar dropdown (see .lb-stat / .lb-drop)
-       instead, so this column is fully removed to free the screen for the
-       arena. */
-    .right-panel{ display:none; }
-  }
-
-  .event-feed{
-    background:rgba(20,16,12,0.78); border:1px solid var(--line); border-radius:8px;
-    backdrop-filter: blur(6px);
-    display:flex; flex-direction:column;
-    min-height:0; flex:1 1 auto;
-    overflow:hidden;
-  }
-  .event-feed .feed-head{
-    padding:7px 10px; border-bottom:1px solid var(--line); flex-shrink:0;
-    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1.5px;
-    text-transform:uppercase; color:var(--gold);
-  }
-  .ticker{
-    font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#a89a83;
-    letter-spacing:0.3px; line-height:1.4;
-    padding:8px 10px; overflow-y:auto; min-height:0;
-  }
-  .ticker::-webkit-scrollbar{width:4px;}
-  .ticker::-webkit-scrollbar-thumb{background:var(--stone); border-radius:4px;}
-  .ticker div{padding:4px 0; border-bottom:1px dashed var(--line);}
-  .ticker div:last-child{border-bottom:none;}
-  .ticker b{color:var(--gold);}
-  @media (max-width: 640px){
-    /* Detailed vertical feed, contained inside its own scrollable box —
-       newest entry on top, full "Country swept out — N remain" line per
-       row, same as the desktop layout, just sized to fit the mobile strip. */
-    .event-feed{
-      display:flex; flex-direction:column; height:100%;
-    }
-    .event-feed .feed-head{
-      padding:6px 10px; font-size:9px; flex-shrink:0;
-      border-bottom:1px solid var(--line);
-    }
-    .ticker{
-      display:block;
-      flex:1 1 auto; min-height:0;
-      overflow-y:auto; overflow-x:hidden; white-space:normal;
-      font-size:10.5px; padding:4px 10px;
-    }
-    .ticker div{
-      display:block; white-space:normal;
-      padding:4px 0; border-bottom:1px dashed var(--line);
-      animation: fadeIn .25s ease;
-    }
-    .ticker div:last-child{ border-bottom:none; }
-  }
-
-  /* Live chat panel — horizontal strip below the arena, above controls */
-  .chat-panel{
-    position:fixed; left:16px; right:16px; bottom:82px; z-index:15;
-    height:86px;
-    background:rgba(20,16,12,0.78);
-    border:1px solid var(--line);
-    border-radius:8px;
-    display:flex; flex-direction:column;
-    backdrop-filter: blur(6px);
-    overflow:hidden;
-  }
-  .chat-head{
-    padding:6px 12px; border-bottom:1px solid var(--line);
-    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:1.5px;
-    text-transform:uppercase; color:var(--gold);
-    display:flex; align-items:center; justify-content:space-between;
-    flex-shrink:0;
-  }
-  .chat-head .dot{width:6px;height:6px;border-radius:50%;background:#ff4d4d;box-shadow:0 0 8px #ff4d4d; margin-right:6px; display:inline-block;}
-  .chat-body{
-    flex:1; overflow-x:auto; overflow-y:hidden; padding:8px 10px;
-    display:flex; flex-direction:row; align-items:center; gap:8px;
-    scrollbar-width:thin;
-  }
-  .chat-body::-webkit-scrollbar{height:4px;}
-  .chat-body::-webkit-scrollbar-thumb{background:var(--stone); border-radius:4px;}
-  .chat-msg{
-    font-size:12px; line-height:1.3; white-space:nowrap; flex-shrink:0;
-    background:rgba(255,255,255,0.04); border:1px solid var(--line);
-    padding:5px 10px; border-radius:14px;
-    animation: fadeIn .25s ease;
-  }
-  .chat-msg .u{font-weight:600; margin-right:4px;}
-  @keyframes fadeIn{from{opacity:0; transform:translateX(10px);} to{opacity:1; transform:translateX(0);}}
-  @media (max-width: 640px){
-    .chat-panel{display:none;
-    }
-    .chat-msg{font-size:11px; padding:4px 9px;}
-  }
-
-  /* Always-on disclosure that the hype meter / crowd panel is simulated, not real viewer data */
-  .disclaimer{
-    position:fixed; left:16px; bottom:172px; z-index:16;
-    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.4px;
-    color:rgba(237,230,216,0.4);
-    pointer-events:none;
-  }
-  @media (max-width: 640px){
-    .disclaimer{display:none;
-    }
-  }
-
-  /* Champions table — always visible on-screen, no click required.
-     Direct (unscrolled) view holds exactly 10 rows; the 11th win onward
-     scrolls inside the fixed-height rows box instead of pushing the
-     panel (and everything below it) further down the page. */
-  .champions-panel{
-    background:rgba(16,13,10,0.86); border:1px solid var(--line); border-radius:8px;
-    backdrop-filter: blur(6px);
-    padding:12px 14px 10px;
-    flex:0 0 auto;
-  }
-  .champions-panel h3{
-    font-family:'Anton',sans-serif; letter-spacing:1px; color:var(--gold);
-    font-size:15px; margin:0 0 2px;
-  }
-  .champions-panel .sub{
-    font-family:'JetBrains Mono',monospace; font-size:10px; color:#8a8072; margin-bottom:8px;
-  }
-  #lbList{
-    max-height:390px; /* exactly 10 rows before scrolling kicks in */
-    overflow-y:auto;
-  }
-  #lbList::-webkit-scrollbar{width:4px;}
-  #lbList::-webkit-scrollbar-thumb{background:var(--stone); border-radius:4px;}
-  .lb-row{
-    display:grid; grid-template-columns:1fr auto; align-items:center; gap:10px;
-    padding:8px 2px; border-bottom:1px solid var(--line);
-  }
-  .lb-row:last-child{border-bottom:none;}
-  .lb-name{font-size:13px; display:flex; align-items:center; gap:7px; min-width:0;}
-  .lb-name .lb-flag{font-size:16px; flex-shrink:0;}
-  .lb-name span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .lb-wins{font-family:'JetBrains Mono',monospace; color:var(--gold); font-size:13px; font-weight:600; text-align:right;}
-  .lb-empty{color:#8a8072; font-size:12px; font-family:'JetBrains Mono',monospace;}
-  @media (max-width: 640px){
-    .champions-panel{padding:8px 8px 6px;}
-    .champions-panel h3{font-size:11px;}
-    .champions-panel .sub{font-size:8px; margin-bottom:5px; line-height:1.3;}
-    #lbList{max-height:200px;}
-    .lb-row{padding:5px 1px; gap:4px;}
-    .lb-name{font-size:10px; gap:4px;}
-    .lb-name .lb-flag{font-size:12px;}
-    .lb-wins{font-size:10px;}
-  }
-
-  /* Subscribe lower-third callout */
-  .subscribe-callout{
-    position:fixed; left:16px; bottom:180px; z-index:21;
-    display:flex; align-items:center; gap:12px;
-    background:linear-gradient(100deg, rgba(20,16,12,0.94), rgba(34,29,24,0.94));
-    border:1px solid var(--line); border-left:3px solid var(--ember);
-    border-radius:6px;
-    padding:12px 18px 12px 14px;
-    transform: translateX(-120%);
-    transition: transform .55s cubic-bezier(.2,.8,.2,1);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-  }
-  .subscribe-callout.show{ transform: translateX(0); }
-  .subscribe-callout .bell{
-    font-size:22px; animation: ring 1.8s ease-in-out infinite;
-    filter: drop-shadow(0 0 8px rgba(232,184,75,0.5));
-  }
-  @keyframes ring{
-    0%,100%{ transform: rotate(0deg); }
-    5%{ transform: rotate(14deg); } 10%{ transform: rotate(-12deg); }
-    15%{ transform: rotate(9deg); } 20%{ transform: rotate(-6deg); }
-    25%,100%{ transform: rotate(0deg); }
-  }
-  .subscribe-callout .txt-h{
-    font-family:'Anton',sans-serif; font-size:14px; letter-spacing:0.5px; color:var(--bone);
-  }
-  .subscribe-callout .txt-s{
-    font-family:'JetBrains Mono',monospace; font-size:11px; color:#a89a83; margin-top:2px;
-  }
-  .subscribe-callout .sub-btn{
-    font-family:'Oswald',sans-serif; font-weight:700; letter-spacing:0.5px; text-transform:uppercase;
-    font-size:12px; background:var(--ember); color:var(--bone);
-    padding:8px 14px; border-radius:3px; margin-left:6px; white-space:nowrap;
-  }
-  @media (max-width: 640px){
-    .subscribe-callout{ left:10px; bottom:160px; padding:10px 14px 10px 12px; gap:9px; }
-    .subscribe-callout .txt-h{font-size:12px;}
-    .subscribe-callout .txt-s{display:none;}
-    .subscribe-callout .sub-btn{font-size:11px; padding:7px 10px;}
-  }
-
-  .winner-screen{
-    position:fixed; inset:0; z-index:50;
-    display:none; align-items:center; justify-content:center; flex-direction:column;
-    background:radial-gradient(60% 60% at 50% 40%, rgba(232,184,75,0.14), rgba(16,13,10,0.96) 65%);
-    text-align:center;
-  }
-  .winner-screen.show{display:flex;}
-  .winner-flag{font-size:120px; line-height:1; filter:drop-shadow(0 0 40px rgba(232,184,75,0.5));}
-  .winner-title{
-    font-family:'Anton',sans-serif; font-size:14px; letter-spacing:6px;
-    color:var(--ember); text-transform:uppercase; margin-top:18px;
-  }
-  .winner-name{
-    font-family:'Anton',sans-serif; font-size:48px; color:var(--bone); margin-top:6px;
-    letter-spacing:1px;
-  }
-  .winner-sub{
-    font-family:'JetBrains Mono',monospace; color:#a89a83; font-size:13px; margin-top:10px;
-  }
-  .winner-next{
-    font-family:'JetBrains Mono',monospace; color:var(--gold); font-size:13px; margin-top:16px;
-    letter-spacing:1px;
-  }
-
-  .loop-toggle{
-    display:flex; align-items:center; gap:6px;
-    font-family:'JetBrains Mono',monospace; font-size:11px; color:#a89a83;
-    letter-spacing:0.5px; user-select:none; cursor:pointer;
-  }
-  .loop-toggle input{accent-color:var(--gold); cursor:pointer;}
-
-  /* Locked composition: pins the whole page to a fixed logical size (default
-     1920x1080, override with ?w=&h=) and scales it to fit whatever window/
-     OBS source it's actually rendered in — so the layout never reflows. */
-  html{ background:#0a0806; }
-  body.canvas-locked{
-    width:1920px; height:1080px;
-    transform-origin: 0 0;
-    overflow:hidden;
-  }
-
-  /* Optional persistent stream-branding corner tag, set via ?handle= */
-  .corner-handle{
-    position:fixed; right:16px; bottom:16px; z-index:21;
-    font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:0.5px;
-    color:var(--gold); background:rgba(16,13,10,0.65);
-    border:1px solid var(--line); border-radius:4px;
-    padding:6px 10px; pointer-events:none;
-  }
-
-
-  /* ===== Portrait 9:16 STREAM COMPOSITION =====
-     Activated by ?w=1080&h=1920 (or any portrait locked canvas).
-     This is intentionally independent of viewport media queries so OBS Browser
-     Source gets the same vertical composition even when the source is rendered
-     on a desktop monitor. Desktop/16:9 composition remains untouched. */
-  body.mobile-stream{
-    width:1080px;
-    height:1920px;
-    overflow:hidden;
-  }
-
-  body.mobile-stream .hud{
-    position:absolute;
-    top:0; left:0; right:0;
-    height:92px;
-    padding:18px 28px 8px;
-    z-index:30;
-  }
-  body.mobile-stream .brand{
-    font-size:24px;
-    letter-spacing:1.2px;
-  }
-  body.mobile-stream .stat-row{
-    gap:28px;
-  }
-  body.mobile-stream .stat .n{font-size:20px;}
-  body.mobile-stream .stat .l{font-size:9px;}
-
-  /* Standing / champions table at the top */
-  body.mobile-stream .right-panel{
-    display:block!important;
-    position:absolute!important;
-    top:98px!important;
-    left:28px!important;
-    right:28px!important;
-    width:auto!important;
-    height:270px!important;
-    padding:0!important;
-    z-index:18;
-  }
-  body.mobile-stream .champions-panel{
-    width:100%;
-    height:100%;
-    padding:16px 20px 12px;
-    border-radius:12px;
-  }
-  body.mobile-stream .champions-panel h3{
-    font-size:21px;
-    margin-bottom:3px;
-  }
-  body.mobile-stream .champions-panel .sub{
-    font-size:11px;
-    margin-bottom:8px;
-  }
-  body.mobile-stream #lbList{
-    max-height:205px;
-    overflow:hidden;
-  }
-  body.mobile-stream .lb-row{
-    padding:7px 3px;
-  }
-  body.mobile-stream .lb-name{font-size:15px;}
-  body.mobile-stream .lb-name .lb-flag{font-size:18px;}
-  body.mobile-stream .lb-wins{font-size:14px;}
-
-  /* Main animation — large square region in the middle */
-  body.mobile-stream .arena-wrap{
-    display:flex!important;
-    position:absolute!important;
-    top:382px!important;
-    left:0!important;
-    right:0!important;
-    bottom:auto!important;
-    width:1080px!important;
-    height:900px!important;
-    z-index:2;
-    align-items:center!important;
-    justify-content:center!important;
-  }
-  body.mobile-stream .arena-wrap canvas{
-    width:900px!important;
-    height:900px!important;
-    max-width:none!important;
-    max-height:none!important;
-  }
-  body.mobile-stream .stage-banner{
-    top:398px;
-    font-size:28px;
-    z-index:22;
-  }
-
-  /* Arena feed below the animation */
-  body.mobile-stream .left-panel{
-    display:block!important;
-    position:absolute!important;
-    top:1298px!important;
-    left:28px!important;
-    right:28px!important;
-    bottom:auto!important;
-    width:auto!important;
-    height:250px!important;
-    z-index:17;
-  }
-  body.mobile-stream .event-feed{
-    height:100%;
-    border-radius:12px;
-  }
-  body.mobile-stream .event-feed .feed-head{
-    padding:10px 14px;
-    font-size:12px;
-  }
-  body.mobile-stream .ticker{
-    font-size:12px;
-    line-height:1.35;
-    padding:7px 14px;
-  }
-  body.mobile-stream .ticker div{padding:5px 0;}
-
-  /* Arena hype chat directly below the feed */
-  body.mobile-stream .chat-panel{
-    display:flex!important;
-    position:absolute!important;
-    top:1560px!important;
-    left:28px!important;
-    right:28px!important;
-    bottom:auto!important;
-    width:auto!important;
-    height:155px!important;
-    z-index:17;
-    border-radius:12px;
-  }
-  body.mobile-stream .chat-head{
-    padding:9px 14px;
-    font-size:12px;
-  }
-  body.mobile-stream .chat-body{
-    padding:10px 12px;
-    gap:8px;
-    flex-wrap:nowrap;
-  }
-  body.mobile-stream .chat-msg{
-    font-size:12px;
-    padding:6px 10px;
-  }
-
-  body.mobile-stream .disclaimer{
-    display:block!important;
-    left:30px;
-    top:1725px;
-    bottom:auto;
-    font-size:9px;
-    z-index:18;
-  }
-
-  /* Keep controls available at the very bottom for local testing.
-     Stream Mode fades them out, so they do not appear in the YouTube feed. */
-  body.mobile-stream .controls{
-    position:absolute;
-    left:0; right:0; bottom:0;
-    height:72px;
-    padding:8px 18px;
-    z-index:30;
-  }
-  body.mobile-stream .controls button,
-  body.mobile-stream .controls select{
-    font-size:11px;
-    padding:7px 10px;
-  }
-
-  body.mobile-stream .subscribe-callout{
-    left:28px;
-    bottom:95px;
-    z-index:35;
-  }
-  body.mobile-stream .corner-handle{
-    right:24px;
-    bottom:22px;
-  }
-
-  /* Winner screen naturally remains full 1080x1920. */
-
-  /* ===== Mobile Stream Layout V2 ===== */
-@media (max-width:640px){
-  body:not(.canvas-locked){
-    overflow:auto;
-  }
-  .hud{
-    position:relative!important;
-  }
-  .left-panel,
-  .right-panel,
-  .chat-panel,
-  .arena-wrap{
-    position:relative!important;
-    left:auto!important;
-    right:auto!important;
-    top:auto!important;
-    bottom:auto!important;
-    width:100%!important;
-    margin:0 auto!important;
-  }
-
-  .right-panel{display:block!important;order:1;padding:8px 10px;}
-  .arena-wrap{
-    order:2;
-    height:58vh!important;
-    min-height:420px;
-    display:flex!important;
-    align-items:center;
-    justify-content:center;
-  }
-  .left-panel{
-    display:block!important;
-    order:3;
-    padding:8px 10px;
-    height:170px!important;
-  }
-  .chat-panel{
-    display:flex!important;
-    order:4;
-    height:90px!important;
-    margin:8px 10px 0;
-  }
-  body{
+    --bg-deep:#0a0e2a; --panel:#131a3f; --panel-border:#3b4d9e;
+    --neon:#e8ecff; --gold:#f2c14e; --danger:#ff5d5d; --alive:#4ade80; --out:#7a8bbf;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;
+    background:radial-gradient(ellipse at 50% 0%, #1a2456 0%, #0a0e2a 55%, #060815 100%);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  /* True Shorts frame: fill the available viewport instead of leaving desktop/phone letterbox space. */
+  .stage{
+    width:min(100vw, calc(100vh * 9 / 16), 600px);
+    aspect-ratio:9/16;
+    height:auto;
+    position:relative;
     display:flex;
     flex-direction:column;
-  }
-}
-
-
-  /* ============================================================
-     VERTICAL LIVE REDESIGN — 1080 x 1920
-     Fresh presentation layer. Matter.js/game logic remains intact.
-     ============================================================ */
-  body.mobile-stream{
-    width:1080px!important;
-    height:1920px!important;
-    background:
-      radial-gradient(85% 38% at 50% 45%, rgba(232,184,75,.10), transparent 65%),
-      radial-gradient(70% 25% at 50% 100%, rgba(217,72,29,.12), transparent 70%),
-      #080706!important;
-    color:#f4efe5;
+    padding:6px 6px 5px;
+    overflow:hidden;
   }
 
-  body.mobile-stream::before{
-    content:"";
-    position:absolute;
-    inset:0;
-    z-index:1;
-    pointer-events:none;
-    background:
-      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
-    background-size:54px 54px;
-    mask-image:linear-gradient(to bottom, rgba(0,0,0,.8), transparent 96%);
+  .leaderboard{
+    flex:0 0 auto;
+    background:rgba(19,26,63,0.88);
+    border:1.5px solid var(--panel-border);
+    border-radius:10px;
+    padding:7px 9px 6px;
+    box-shadow:0 0 18px rgba(80,110,255,0.25) inset,0 0 12px rgba(80,110,255,0.15);
+  }
+  .lb-title{text-align:center;color:var(--neon);font-weight:700;font-size:12px;letter-spacing:2.4px;margin-bottom:6px;
+    text-shadow:0 0 8px rgba(255,255,255,0.5);}
+  .lb-title span{color:#8fa3ff;font-size:10.5px;letter-spacing:1px;margin-left:6px;}
+  .lb-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;}
+  .lb-row{display:flex;align-items:center;justify-content:space-between;background:rgba(50,65,140,0.25);
+    border-radius:4px;padding:3px 6px;font-size:10.5px;color:#d7deff;}
+  .lb-row .rank{color:#7d90d6;width:22px;flex-shrink:0;font-weight:600;}
+  .lb-row .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;}
+  .lb-row .st{font-weight:700;font-size:9.5px;letter-spacing:0.5px;}
+  .st.alive{color:var(--alive);} .st.out{color:var(--out);} .st.win{color:var(--gold);}
+  .flagmini{width:14px;height:10px;object-fit:cover;border-radius:1px;margin-right:2px;vertical-align:middle;}
+  .empty-row{grid-column:1/-1;text-align:center;color:#7d90d6;font-size:10.5px;padding:6px 0;font-style:italic;}
+
+  .round-info{text-align:center;color:#8fa3ff;letter-spacing:2.1px;font-size:10.5px;margin:5px 0 2px;font-weight:600;flex:0 0 auto;}
+  .round-info b{color:#eef1ff;}
+  .phase-tag{display:inline-block;padding:1px 8px;border-radius:8px;font-size:9.5px;letter-spacing:1.5px;font-weight:800;margin-left:6px;}
+  .phase-tag.qual{background:rgba(80,120,255,0.2);color:#8fb0ff;}
+  .phase-tag.final{background:rgba(255,93,93,0.2);color:#ff8080;}
+
+  .arena-wrap{
+    position:relative;
+    flex:1 1 auto;
+    min-height:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin:1px 0 0;
+  }
+  /* Give the circular arena the central visual weight while preserving room for the
+     qualified leaderboard above and the elimination history below. */
+  canvas{
+    display:block;
+    width:min(100%,420px);
+    height:auto;
+    max-height:100%;
+    object-fit:contain;
   }
 
-  body.mobile-stream .hud{
-    top:0!important; left:0!important; right:0!important;
-    height:104px!important;
-    padding:18px 28px 12px!important;
-    background:linear-gradient(180deg, rgba(8,7,6,.98), rgba(8,7,6,.65), transparent)!important;
-    z-index:80!important;
-  }
-  body.mobile-stream .brand{
-    font-size:25px!important;
-    letter-spacing:1.8px!important;
-  }
-  body.mobile-stream .stat-row{gap:20px!important;}
-  body.mobile-stream .stat .n{font-size:19px!important;}
-  body.mobile-stream .stat .l{font-size:9px!important;}
+  .hazard-row{display:flex;justify-content:center;margin:3px 0 3px;flex:0 0 auto;}
+  .hazard-pill{border:1.5px solid var(--danger);color:var(--danger);background:rgba(255,93,93,0.08);
+    border-radius:20px;padding:4px 14px;font-size:10.5px;font-weight:700;letter-spacing:1.3px;
+    box-shadow:0 0 14px rgba(255,93,93,0.35);transition:all 0.4s ease;}
+  .hazard-pill.calm{border-color:#f2c14e;color:#f2c14e;box-shadow:0 0 14px rgba(242,193,78,0.3);background:rgba(242,193,78,0.08);}
+  .hazard-pill.solar{border-color:#ff9d3d;color:#ffd27a;background:rgba(255,130,30,.09);box-shadow:0 0 18px rgba(255,120,30,.45);}
+  .hazard-pill.blackhole{border-color:#a77cff;color:#d8c7ff;background:rgba(100,55,180,.12);box-shadow:0 0 18px rgba(135,90,255,.5);}
+  .hazard-pill.invasion{border-color:#6ee7ff;color:#b9f5ff;background:rgba(20,160,220,.10);box-shadow:0 0 20px rgba(50,210,255,.5);}
+  .hazard-pill.vortex{border-color:#b56cff;color:#e2ccff;background:rgba(130,55,220,.10);box-shadow:0 0 20px rgba(160,90,255,.5);}
+  .hazard-pill.wormhole{border-color:#55e5ff;color:#c9fbff;background:rgba(30,160,220,.10);box-shadow:0 0 20px rgba(60,220,255,.5);}
+  .hazard-pill.starburst{border-color:#ffe27a;color:#fff2b8;background:rgba(255,190,50,.10);box-shadow:0 0 20px rgba(255,205,80,.5);}
+  .hazard-pill.comet{border-color:#78d9ff;color:#d8f6ff;background:rgba(50,150,220,.10);box-shadow:0 0 20px rgba(90,200,255,.5);}
+  .hazard-pill.planet{border-color:#ff9c63;color:#ffd7bd;background:rgba(220,90,40,.10);box-shadow:0 0 20px rgba(255,120,60,.45);}
+  .hazard-pill.orbital{border-color:#a8c6ff;color:#e1eaff;background:rgba(70,110,220,.10);box-shadow:0 0 20px rgba(100,150,255,.45);}
+  .hazard-pill.redgiant{border-color:#ff6b45;color:#ffd0c3;background:rgba(255,70,30,.11);box-shadow:0 0 20px rgba(255,75,35,.5);}
 
-  /* TOP 4 — compact, prominent, always visible */
-  body.mobile-stream .right-panel{
-    display:block!important;
-    position:absolute!important;
-    top:108px!important;
-    left:24px!important;
-    right:24px!important;
-    width:auto!important;
-    height:286px!important;
-    z-index:50!important;
-  }
-  body.mobile-stream .champions-panel{
-    height:100%!important;
-    padding:18px 20px 14px!important;
-    border:1px solid rgba(232,184,75,.28)!important;
-    border-radius:16px!important;
-    background:
-      linear-gradient(145deg, rgba(30,24,18,.96), rgba(12,10,8,.96))!important;
-    box-shadow:
-      0 14px 40px rgba(0,0,0,.45),
-      inset 0 1px 0 rgba(255,255,255,.035)!important;
-  }
-  body.mobile-stream .champions-panel h3{
-    font-size:22px!important;
-    letter-spacing:1.2px!important;
-    color:#f1c45a!important;
-    margin:0!important;
-  }
-  body.mobile-stream .champions-panel .sub{
-    font-size:10px!important;
-    letter-spacing:1.6px!important;
-    color:#887d6d!important;
-    margin:3px 0 10px!important;
-  }
-  body.mobile-stream #lbList{
-    max-height:212px!important;
-    overflow:hidden!important;
-    display:grid!important;
-    grid-template-columns:1fr 1fr!important;
-    gap:6px!important;
-  }
-  body.mobile-stream #lbList .lb-row{
-    min-height:58px!important;
-    padding:8px 10px!important;
-    border:1px solid rgba(237,230,216,.09)!important;
-    border-radius:9px!important;
-    background:rgba(255,255,255,.035)!important;
-    grid-template-columns:1fr auto!important;
-  }
-  body.mobile-stream #lbList .lb-row:nth-child(n+5){display:none!important;}
-  body.mobile-stream #lbList .lb-row:first-child{
-    border-color:rgba(232,184,75,.42)!important;
-    background:rgba(232,184,75,.08)!important;
-  }
-  body.mobile-stream .lb-name{font-size:14px!important;gap:6px!important;}
-  body.mobile-stream .lb-name .lb-flag{font-size:18px!important;}
-  body.mobile-stream .lb-wins{font-size:15px!important;color:#f1c45a!important;}
+  .progress-track{height:5px;border-radius:4px;background:#1c2554;overflow:hidden;margin:1px 4px 3px;flex:0 0 auto;}
+  .progress-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#f2c14e,#ffdf8a);width:100%;transition:width 0.2s linear;}
+  .flags-counter{text-align:center;color:#9fb0ea;font-size:10.5px;letter-spacing:1.8px;margin-bottom:4px;font-weight:600;flex:0 0 auto;}
+  .flags-counter b{color:#eef1ff;}
 
-  /* CENTER ROTATION ARENA */
-  body.mobile-stream .arena-wrap{
-    display:flex!important;
-    position:absolute!important;
-    top:410px!important;
-    left:180px!important;
-    width:720px!important;
-    height:720px!important;
-    z-index:5!important;
-    align-items:center!important;
-    justify-content:center!important;
-    background:
-      radial-gradient(circle at center, rgba(232,184,75,.055), transparent 55%);
+  .elim-label{color:#7d90d6;font-size:9.5px;letter-spacing:1.8px;font-weight:700;margin:0 2px 3px;display:flex;justify-content:space-between;}
+  .elim-tray{
+    flex:0 0 auto;
+    border:1.5px solid var(--panel-border);
+    border-radius:8px;
+    background:rgba(19,26,63,0.68);
+    padding:5px;
+    height:74px;
+    overflow:hidden;
+    display:flex;
+    flex-wrap:wrap;
+    align-content:flex-start;
+    gap:3px;
   }
-  body.mobile-stream .arena-wrap::before{
-    content:"";
-    position:absolute;
-    width:710px;height:710px;
-    border-radius:50%;
-    border:1px solid rgba(232,184,75,.16);
-    box-shadow:
-      0 0 70px rgba(232,184,75,.06),
-      inset 0 0 70px rgba(217,72,29,.035);
-    pointer-events:none;
-  }
-  body.mobile-stream .arena-wrap::after{
-    content:"LIVE ROTATION ARENA";
-    position:absolute;
-    top:18px;
-    left:50%;
-    transform:translateX(-50%);
-    font-family:'JetBrains Mono',monospace;
-    font-size:11px;
-    letter-spacing:3px;
-    color:rgba(237,230,216,.45);
-    white-space:nowrap;
-    pointer-events:none;
-  }
-  body.mobile-stream .arena-wrap canvas{
-    width:720px!important;
-    height:720px!important;
-    max-width:none!important;
-    max-height:none!important;
-    border-radius:50%;
-    filter:drop-shadow(0 0 28px rgba(232,184,75,.12));
-  }
-  body.mobile-stream .stage-banner{
-    top:438px!important;
-    font-size:30px!important;
-    letter-spacing:4px!important;
-    z-index:25!important;
+  .elim-chip{display:flex;align-items:center;gap:2px;font-size:8.5px;color:#aab6e6;
+    animation:chipIn 0.4s cubic-bezier(.34,1.56,.64,1) both;}
+  .elim-chip img{width:15px;height:10px;object-fit:cover;border-radius:1px;}
+  .elim-chip b{color:#f2c14e;font-size:8px;}
+  @keyframes chipIn{
+    0%{ transform:translateY(-14px) scale(0.4); opacity:0; }
+    60%{ transform:translateY(2px) scale(1.15); opacity:1; }
+    100%{ transform:translateY(0) scale(1); opacity:1; }
   }
 
-  /* FEED — large readable event stream */
-  body.mobile-stream .left-panel{
-    display:block!important;
-    position:absolute!important;
-    top:1252px!important;
-    left:24px!important;
-    right:24px!important;
-    bottom:auto!important;
-    width:auto!important;
-    height:270px!important;
-    z-index:50!important;
-  }
-  body.mobile-stream .event-feed{
-    height:100%!important;
-    border-radius:15px!important;
-    background:rgba(18,14,11,.94)!important;
-    border:1px solid rgba(237,230,216,.11)!important;
-  }
-  body.mobile-stream .event-feed .feed-head{
-    padding:11px 15px!important;
-    font-size:11px!important;
-    letter-spacing:2px!important;
-    background:rgba(232,184,75,.045);
-    color:#f1c45a!important;
-  }
-  body.mobile-stream .ticker{
-    font-size:12px!important;
-    line-height:1.4!important;
-    padding:7px 15px!important;
-  }
-  body.mobile-stream .ticker div{
-    padding:6px 0!important;
-    border-bottom:1px solid rgba(237,230,216,.07)!important;
-  }
+  .toast{position:absolute;top:44%;left:50%;transform:translate(-50%,-50%) scale(0.8);
+    background:rgba(10,14,42,0.96);border:2px solid var(--gold);border-radius:14px;padding:22px 30px;text-align:center;
+    box-shadow:0 0 50px rgba(242,193,78,0.7);opacity:0;pointer-events:none;transition:all 0.4s cubic-bezier(.34,1.56,.64,1);z-index:20;
+    overflow:hidden;}
+  .toast.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  .toast .swirl{position:absolute;top:50%;left:50%;width:200px;height:200px;margin:-100px 0 0 -100px;border-radius:50%;
+    background:conic-gradient(from 0deg, rgba(242,193,78,0.03), rgba(242,193,78,0.4), rgba(242,193,78,0.03));
+    filter:blur(3px); animation:spin 4s linear infinite;}
+  .toast img{width:72px;height:50px;object-fit:cover;border-radius:5px;margin-bottom:9px;box-shadow:0 0 26px 8px rgba(242,193,78,0.8);position:relative;z-index:1;}
+  .toast .champ-label{color:var(--gold);font-size:13px;letter-spacing:5px;font-weight:700;position:relative;z-index:1;}
+  .toast .champ-name{color:#fff;font-size:22px;font-weight:800;margin-top:5px;position:relative;z-index:1;}
+  .toast .champ-sub{color:#9fb0ea;font-size:10px;margin-top:7px;letter-spacing:1px;position:relative;z-index:1;}
 
-  /* HYPE CHAT */
-  body.mobile-stream .chat-panel{
-    display:flex!important;
-    position:absolute!important;
-    top:1538px!important;
-    left:24px!important;
-    right:24px!important;
-    bottom:auto!important;
-    width:auto!important;
-    height:128px!important;
-    z-index:50!important;
-    border-radius:15px!important;
-    background:rgba(18,14,11,.94)!important;
-    border:1px solid rgba(237,230,216,.11)!important;
-  }
-  body.mobile-stream .chat-head{
-    padding:9px 14px!important;
-    font-size:10px!important;
-    letter-spacing:2px!important;
-  }
-  body.mobile-stream .chat-body{
-    padding:8px 12px!important;
-    display:flex!important;
-    flex-direction:column!important;
-    align-items:stretch!important;
-    justify-content:flex-start!important;
-    gap:5px!important;
-    overflow:hidden!important;
-  }
-  body.mobile-stream .chat-msg{
-    width:100%!important;
-    font-size:11px!important;
-    padding:5px 9px!important;
-    border-radius:7px!important;
-    background:rgba(255,255,255,.035)!important;
-  }
-  body.mobile-stream .chat-msg:nth-child(n+5){display:none!important;}
+  .elim-flash{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;pointer-events:none;opacity:0;transition:opacity 0.3s ease;z-index:15;
+    background:radial-gradient(ellipse at 50% 50%, rgba(20,10,40,0.55) 0%, rgba(8,10,30,0.25) 70%, transparent 100%);}
+  .elim-flash.show{opacity:1;}
+  .elim-flash .swirl{position:absolute;width:170px;height:170px;border-radius:50%;
+    background:conic-gradient(from 0deg, rgba(140,110,255,0.05), rgba(140,110,255,0.35), rgba(140,110,255,0.05));
+    filter:blur(2px); animation:spin 3s linear infinite;}
+  @keyframes spin{ from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+  .elim-flash .ttl{color:var(--danger);font-weight:800;font-size:22px;letter-spacing:2px;
+    text-shadow:0 0 16px rgba(255,93,93,0.9);margin-bottom:10px;z-index:1;}
+  .elim-flash img{width:78px;height:54px;object-fit:cover;border-radius:5px;z-index:1;
+    box-shadow:0 0 30px 10px rgba(255,255,255,0.25);}
+  .elim-flash .nm{color:#fff;font-weight:800;font-size:16px;letter-spacing:1px;margin-top:9px;z-index:1;}
+  .elim-flash .rank{color:var(--gold);font-weight:700;font-size:11.5px;margin-top:4px;letter-spacing:1px;z-index:1;}
+  .elim-flash .nxt{color:#8fa3ff;font-size:10px;letter-spacing:1.5px;margin-top:8px;z-index:1;}
+  .elim-flash.qualified .ttl{color:var(--alive);text-shadow:0 0 16px rgba(74,222,128,0.9);}
+  .elim-flash.qualified .swirl{background:conic-gradient(from 0deg, rgba(74,222,128,0.05), rgba(74,222,128,0.35), rgba(74,222,128,0.05));}
+  .elim-flash.qualified img{box-shadow:0 0 30px 10px rgba(74,222,128,0.35);}
 
-  body.mobile-stream .disclaimer{
-    top:1680px!important;
-    bottom:auto!important;
-    left:28px!important;
-    font-size:8px!important;
-    color:rgba(237,230,216,.3)!important;
-    z-index:52!important;
-  }
+  .podium-reveal{position:absolute;inset:0;z-index:60;display:none;overflow:hidden;
+    background:radial-gradient(ellipse at 50% 12%,#26346e 0%,#0b1030 48%,#050716 100%);
+    color:#fff;text-align:center;padding:18px 14px 12px;}
+  .podium-reveal.show{display:flex;flex-direction:column;animation:revealBg .8s ease both;}
+  @keyframes revealBg{from{opacity:0}to{opacity:1}}
+  .confetti{position:absolute;inset:-10%;pointer-events:none;background-image:
+    radial-gradient(circle,#f2c14e 0 2px,transparent 3px),radial-gradient(circle,#7dd3fc 0 2px,transparent 3px),
+    radial-gradient(circle,#ff7b7b 0 2px,transparent 3px);background-size:53px 67px,71px 83px,89px 61px;
+    animation:confettiFall 7s linear infinite;opacity:.65;}
+  @keyframes confettiFall{from{transform:translateY(-50px)}to{transform:translateY(120px)}}
+  .reveal-kicker{position:relative;z-index:2;color:#8fa3ff;font-size:9px;letter-spacing:2.6px;font-weight:800;margin-top:4px;}
+  .reveal-title{position:relative;z-index:2;color:#f2c14e;font-size:25px;font-weight:900;letter-spacing:2px;margin-top:7px;text-shadow:0 0 18px rgba(242,193,78,.65);}
+  .reveal-sub{position:relative;z-index:2;color:#d9e0ff;font-size:11px;margin-top:3px;letter-spacing:1.2px;}
+  .reveal-flag{position:relative;z-index:2;width:76px;height:51px;object-fit:cover;border-radius:4px;margin:16px auto 5px;box-shadow:0 0 30px rgba(255,255,255,.35);animation:flagPop .8s cubic-bezier(.2,1.4,.4,1) both;}
+  @keyframes flagPop{from{transform:scale(.35) translateY(20px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+  .reveal-name{position:relative;z-index:2;font-size:21px;font-weight:900;letter-spacing:1.5px;}
+  .reveal-medal{position:relative;z-index:2;font-size:32px;margin-top:5px;filter:drop-shadow(0 0 8px rgba(255,255,255,.35));}
+  .reveal-podiums{position:relative;z-index:2;height:180px;margin:12px auto 6px;width:100%;max-width:360px;display:flex;align-items:flex-end;justify-content:center;gap:5px;}
+  .pod{width:31%;border-radius:8px 8px 3px 3px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:7px;box-shadow:0 -8px 25px rgba(255,255,255,.12) inset;}
+  .pod .pod-flag{width:42px;height:28px;object-fit:cover;border-radius:3px;box-shadow:0 0 10px rgba(255,255,255,.25);}
+  .pod .pod-name{font-size:8px;font-weight:800;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:92%;}
+  .pod .pod-rank{font-size:27px;font-weight:900;margin-top:auto;margin-bottom:8px;}
+  .pod.silver{height:112px;background:linear-gradient(#d7dce5,#707784);color:#111;}
+  .pod.gold{height:150px;background:linear-gradient(#ffe48a,#b97805);color:#17100a;}
+  .pod.bronze{height:88px;background:linear-gradient(#eaa16e,#8a482a);color:#17100a;}
+  .pod.show{opacity:1;transform:translateY(0);transition:all .65s cubic-bezier(.2,1.35,.4,1);}
+  .leader-final{position:relative;z-index:2;margin:8px auto 0;width:100%;max-width:370px;border:1px solid #334b9b;border-radius:9px;background:rgba(10,15,45,.72);padding:7px;box-shadow:0 0 18px rgba(70,100,255,.18) inset;}
+  .leader-final-title{font-size:11px;font-weight:900;letter-spacing:2px;color:#eef1ff;margin-bottom:5px;}
+  .leader-final-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 5px;max-height:205px;overflow:hidden;}
+  .final-row{height:19px;display:flex;align-items:center;gap:3px;border-radius:3px;padding:1px 4px;background:rgba(50,65,140,.25);font-size:7.5px;color:#dce3ff;}
+  .final-row .frank{width:18px;color:#8495d7;font-weight:800;}.final-row img{width:16px;height:10px;object-fit:cover;border-radius:1px}.final-row .fn{flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.final-row .fm{font-size:9px;}
+  .reveal-continue{position:relative;z-index:2;color:#8294d3;font-size:8px;letter-spacing:1.5px;margin-top:5px;}
+  .podium-reveal.final .reveal-title{font-size:22px;}
+  .podium-reveal.final .reveal-flag{width:68px;height:45px;margin-top:8px;}
+  .podium-reveal.final .reveal-name{font-size:19px;}
+  .podium-reveal.final .reveal-podiums{height:130px;margin-top:7px;}
+  .podium-reveal.final .pod.silver{height:78px}.podium-reveal.final .pod.gold{height:108px}.podium-reveal.final .pod.bronze{height:61px}
+  .podium-reveal.final .leader-final-grid{max-height:300px;}
+  .podium-reveal.final .final-row{height:12px;font-size:6.2px;padding:0 3px;}
+  .podium-reveal.final .final-row .frank{width:17px;}
+  .podium-reveal.final .final-row img{width:15px;height:9px;}
+  .podium-reveal.final .final-row .fm{font-size:7px;}
+  .podium-reveal.final .leader-alltime{margin-top:5px;}
+  .podium-reveal.final .alltime-grid{max-height:96px;}
+  .podium-reveal.final .alltime-row{height:13px;font-size:6.5px;}
 
-  /* BUTTON DECK — compact and stream-visible in this redesign */
-  body.mobile-stream .controls{
-    display:flex!important;
-    position:absolute!important;
-    left:24px!important;
-    right:24px!important;
-    bottom:24px!important;
-    height:190px!important;
-    padding:12px!important;
-    gap:8px!important;
-    flex-wrap:wrap!important;
-    align-content:center!important;
-    justify-content:center!important;
-    border:1px solid rgba(237,230,216,.11);
-    border-radius:15px;
-    background:rgba(18,14,11,.96)!important;
-    z-index:80!important;
-  }
-  body.mobile-stream .controls select,
-  body.mobile-stream .controls button{
-    height:46px!important;
-    font-size:11px!important;
-    padding:8px 14px!important;
-    border-radius:8px!important;
-  }
-  body.mobile-stream .controls select{
-    min-width:150px!important;
-    background:#211b16!important;
-  }
-  body.mobile-stream .controls button.primary{
-    min-width:180px!important;
-  }
-  body.mobile-stream .controls .loop-toggle{
-    width:100%!important;
-    justify-content:center!important;
-    font-size:10px!important;
-  }
-  body.mobile-stream .controls .stream-toggle{
-    display:none!important;
-  }
 
-  /* Hide non-essential desktop-only elements in the portrait composition */
-  body.mobile-stream .lb-drop{display:none!important;}
-  body.mobile-stream .subscribe-callout{display:none!important;}
-  body.mobile-stream .corner-handle{
-    right:28px!important;
-    bottom:202px!important;
-    font-size:9px!important;
-    opacity:.7;
-    z-index:81!important;
-  }
+  .leader-alltime{position:relative;z-index:2;margin:6px auto 0;width:100%;max-width:370px;border:1px solid rgba(242,193,78,.5);border-radius:9px;background:rgba(10,15,45,.82);padding:6px;box-shadow:0 0 18px rgba(242,193,78,.12) inset;}
+  .leader-alltime-title{font-size:9px;font-weight:900;letter-spacing:1.8px;color:#f2c14e;margin-bottom:4px;}
+  .alltime-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 5px;max-height:112px;overflow:hidden;}
+  .alltime-row{height:15px;display:flex;align-items:center;gap:3px;border-radius:3px;padding:1px 4px;background:rgba(80,65,30,.18);font-size:7px;color:#dce3ff;}
+  .alltime-row .arank{width:16px;color:#f2c14e;font-weight:900}.alltime-row img{width:16px;height:10px;object-fit:cover;border-radius:1px}.alltime-row .aname{flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.alltime-row .wins{font-size:7.5px;color:#f2c14e;font-weight:900;}
+  .alltime-row.current{box-shadow:0 0 8px rgba(242,193,78,.25) inset;border:1px solid rgba(242,193,78,.2);}
+  .cycle-note{position:relative;z-index:2;color:#8fa3ff;font-size:7px;letter-spacing:1.3px;margin-top:4px;}
+  .watermark{position:absolute;bottom:2px;right:8px;color:rgba(255,255,255,0.15);font-size:9px;letter-spacing:1px;}
 
-  /* Make stream mode keep the new portrait UI visible. */
-  body.mobile-stream.stream-mode .hud,
-  body.mobile-stream.stream-mode .controls,
-  body.mobile-stream.stream-mode .stream-toggle{
-    opacity:1!important;
-    pointer-events:auto!important;
-  }
-  body.mobile-stream.stream-mode .stream-toggle{display:none!important;}
+  .sound-gate{position:absolute;top:0;left:0;right:0;z-index:80;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(8,10,30,0.96),rgba(8,10,30,0.85));padding:9px 10px;cursor:pointer;
+    border-bottom:1px solid rgba(242,193,78,0.4);transition:opacity .3s ease, transform .3s ease;}
+  .sound-gate.hidden{opacity:0;pointer-events:none;transform:translateY(-100%);}
+  .sound-gate span{color:#f2c14e;font-size:11px;font-weight:800;letter-spacing:1.2px;}
 
-  /* Winner overlay */
-  body.mobile-stream .winner-screen{
-    width:1080px!important;
-    height:1920px!important;
-    z-index:200!important;
-  }
-  body.mobile-stream .winner-flag{font-size:150px!important;}
-  body.mobile-stream .winner-name{font-size:54px!important;}
-
+  .countdown-overlay{position:absolute;inset:0;z-index:70;display:none;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(6,8,25,0.72);}
+  .countdown-overlay.show{display:flex;}
+  .countdown-label{color:#8fa3ff;font-size:11px;letter-spacing:2.6px;font-weight:800;margin-bottom:10px;}
+  .countdown-num{color:#f2c14e;font-size:64px;font-weight:900;text-shadow:0 0 30px rgba(242,193,78,0.8);
+    animation:countPop .55s cubic-bezier(.2,1.5,.4,1) both;}
+  @keyframes countPop{ 0%{transform:scale(0.4);opacity:0;} 60%{transform:scale(1.15);opacity:1;} 100%{transform:scale(1);opacity:1;} }
 </style>
 </head>
 <body>
+<div class="stage" id="stage">
 
-<canvas id="bgfx"></canvas>
+  <div class="sound-gate" id="soundGate"><span>&#128266; TAP TO ENABLE LIVE COMMENTARY</span></div>
 
-<div class="subscribe-callout" id="subscribeCallout">
-  <div class="bell">🔔</div>
-  <div>
-    <div class="txt-h">New champion every few minutes</div>
-    <div class="txt-s">Subscribe so you never miss a battle</div>
+  <div class="leaderboard">
+    <div class="lb-title" id="lbTitle">LAST FLAG STANDING <span id="lbPage">1/1</span></div>
+    <div class="lb-grid" id="lbGrid"></div>
   </div>
-  <div class="sub-btn">Subscribe</div>
-</div>
 
-<div class="hud">
-  <div class="brand">LAST FLAG <span>STANDING</span> <span class="live-badge"><span class="live-dot"></span>24/7 ARENA</span></div>
-  <div class="stat-row">
-    <div class="stat"><div class="n" id="statRound" style="font-size:15px; letter-spacing:1px;">—</div><div class="l">Stage</div></div>
-    <div class="stat"><div class="n" id="statAlive">0</div><div class="l">Remaining</div></div>
-    <div class="stat"><div class="n" id="statRadius">100%</div><div class="l">Arena</div></div>
-    <div class="stat gate-stat"><div class="n" id="statGap">1.0x</div><div class="l">Gate Speed</div></div>
-    <div class="stat lb-stat" id="lbStat"><div class="n">🏆</div><div class="l">Leaders</div></div>
+  <div class="round-info">
+    <span id="phaseText">QUALIFYING ROUND 1/50</span>
+    <span class="phase-tag qual" id="phaseTag">QUALIFYING</span>
   </div>
-</div>
+  <div class="round-info" style="margin-top:0;font-size:12px;letter-spacing:3px;">LAST FLAG STANDING &middot; <b id="clock">00:45</b></div>
 
-<div class="lb-drop" id="lbDrop">
-  <div class="lb-drop-head"><span>🏆 Champions</span></div>
-  <div id="lbListMobile"><div class="lb-empty">No champions crowned yet.</div></div>
-</div>
-
-<div class="stage-banner" id="stageBanner"></div>
-
-<div class="left-panel">
-  <div class="event-feed">
-    <div class="feed-head">Arena Feed</div>
-    <div class="ticker" id="ticker"></div>
+  <div class="arena-wrap">
+    <canvas id="arena" width="370" height="420"></canvas>
+    <div class="elim-flash" id="elimFlash">
+      <div class="swirl"></div>
+      <div class="ttl" id="elimFlashTtl">ELIMINATED</div>
+      <img id="elimFlashImg" src="">
+      <div class="nm" id="elimFlashName">-</div>
+      <div class="rank" id="elimFlashRank"></div>
+      <div class="nxt" id="elimFlashNxt">NEXT STAGE STARTING...</div>
+    </div>
+    <div class="toast" id="toast">
+      <div class="swirl"></div>
+      <img id="toastImg" src="">
+      <div class="champ-label">CHAMPION</div>
+      <div class="champ-name" id="toastName">-</div>
+      <div class="champ-sub">Session complete - resetting...</div>
+    </div>
   </div>
-</div>
 
-<div class="right-panel">
-  <div class="champions-panel">
-    <h3>🏆 TOP 4 LEADERBOARD</h3>
-    <div class="sub">WHO WILL FINISH #1?</div>
-    <div id="lbList"><div class="lb-empty">No champions crowned yet.</div></div>
+  <div class="hazard-row"><div class="hazard-pill calm" id="hazardPill">CALM ARENA</div></div>
+  <div class="progress-track"><div class="progress-fill" id="progFill"></div></div>
+  <div class="flags-counter" id="flagsCounter">0 / 0 FLAGS</div>
+
+  <div class="elim-label"><span id="trayLabel">ELIMINATED</span><span id="elimCount">0</span></div>
+  <div class="elim-tray" id="elimTray"></div>
+
+  <div class="podium-reveal" id="podiumReveal">
+    <div class="confetti"></div>
+    <div class="reveal-kicker" id="revealKicker">LAST FLAG STANDING</div>
+    <div class="reveal-title" id="revealTitle">THIRD PLACE</div>
+    <div class="reveal-sub" id="revealSub">THE FINAL SURVIVOR BATTLE</div>
+    <img class="reveal-flag" id="revealFlag" src="">
+    <div class="reveal-name" id="revealName">-</div>
+    <div class="reveal-medal" id="revealMedal">🥉</div>
+    <div class="reveal-podiums" id="revealPodiums"></div>
+    <div class="leader-final" id="leaderFinal" style="display:none;">
+      <div class="leader-final-title" id="leaderFinalTitle">FINAL LEADERBOARD · TOP 50</div>
+      <div class="leader-final-grid" id="leaderFinalGrid"></div>
+      <div class="reveal-continue" id="finalContinue">TOP 50 COMPLETE · NEXT CYCLE STARTING...</div>
+    </div>
+    <div class="leader-alltime" id="leaderAllTime" style="display:none;">
+      <div class="leader-alltime-title">ALL-TIME TOP 50 WINNERS · <span id="allTimeCycles">0</span> CYCLES</div>
+      <div class="alltime-grid" id="allTimeGrid"></div>
+      <div class="cycle-note">CHAMPIONS ARE RETAINED ACROSS LIVE CYCLES</div>
+    </div>
   </div>
-</div>
 
-<div class="chat-panel">
-  <div class="chat-head"><span><span class="dot"></span>ARENA HYPE</span><span id="viewerCount">— hype</span></div>
-  <div class="chat-body" id="chatBody"></div>
-</div>
-<div class="disclaimer">Arena hype &amp; crowd messages are simulated for atmosphere — not real viewer data.</div>
-
-<div class="arena-wrap">
-  <canvas id="arena"></canvas>
-</div>
-
-<div class="winner-screen" id="winnerScreen">
-  <div class="winner-flag" id="winnerFlag">🏳️</div>
-  <div class="winner-title">Champion of the Arena</div>
-  <div class="winner-name" id="winnerName">—</div>
-  <div class="winner-sub" id="winnerSub"></div>
-  <div class="winner-next" id="winnerNext">Next battle in <span id="countdownN">8</span>s</div>
-  <div style="margin-top:22px;">
-    <button class="primary" id="rematchBtn">Start Next Battle Now</button>
+  <div class="countdown-overlay" id="countdownOverlay">
+    <div class="countdown-label">NEXT TOURNAMENT STARTS IN</div>
+    <div class="countdown-num" id="countdownNum">5</div>
   </div>
-</div>
 
-<div class="controls" id="controls">
-  <select id="sizeSelect">
-    <option value="16">16 Flags</option>
-    <option value="24">24 Flags</option>
-    <option value="40">40 Flags</option>
-    <option value="60">60 Flags</option>
-    <option value="115" selected>All 115+</option>
-  </select>
-  <select id="speedSelect">
-    <option value="0.6">Slow</option>
-    <option value="1">Normal</option>
-    <option value="1.8" selected>Fast</option>
-  </select>
-  <button class="primary" id="startBtn">Start Battle</button>
-  <button id="pauseBtn">Pause</button>
-  <button id="resetBtn">Reset</button>
-  <label class="loop-toggle"><input type="checkbox" id="autoLoopCheck" checked> Championship Mode</label>
-  <button class="stream-toggle" id="streamToggle" title="Toggle clean stream mode (hides controls, for OBS capture)">🎥 Stream Mode</button>
+  <div class="watermark">@LastFlagStandingYT (prototype)</div>
 </div>
 
 <script>
-const { Engine, World, Bodies, Body, Common } = Matter;
+const { Engine, World, Bodies, Body } = Matter;
 
-// ---------- Stream config (read once, up front, before anything sizes itself) ----------
-const params = new URLSearchParams(location.search);
-const wantsStreamMode = params.get('stream') === '1';
-const wantsLocked = wantsStreamMode && params.get('lock') !== '0';
-const LOCK_W = parseInt(params.get('w'), 10) || 1920;
-const LOCK_H = parseInt(params.get('h'), 10) || 1080;
-const streamHandle = params.get('handle');   // e.g. ?handle=@yourchannel
-const ctaTitle = params.get('ctaTitle');     // overrides the subscribe-callout headline
-const ctaSub = params.get('ctaSub');         // overrides the subscribe-callout subtext
-  const portraitStream = wantsLocked && LOCK_H > LOCK_W;
-
-function applyLockedScale(){
-  if(!wantsLocked) return;
-  const scale = Math.min(window.innerWidth / LOCK_W, window.innerHeight / LOCK_H);
-  const offsetX = (window.innerWidth - LOCK_W*scale) / 2;
-  const offsetY = (window.innerHeight - LOCK_H*scale) / 2;
-  document.body.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
-}
-if(wantsLocked){
-  document.body.classList.add('canvas-locked');
-  if(portraitStream) document.body.classList.add('mobile-stream');
-  applyLockedScale();
-  window.addEventListener('resize', applyLockedScale);
-}
-
-// ---------- Full country pool (115+) ----------
-const COUNTRIES = [
-["🇺🇸","USA"],["🇨🇦","Canada"],["🇲🇽","Mexico"],["🇧🇷","Brazil"],["🇦🇷","Argentina"],
-["🇨🇱","Chile"],["🇨🇴","Colombia"],["🇵🇪","Peru"],["🇻🇪","Venezuela"],["🇪🇨","Ecuador"],
-["🇺🇾","Uruguay"],["🇵🇾","Paraguay"],["🇧🇴","Bolivia"],["🇨🇷","Costa Rica"],["🇵🇦","Panama"],
-["🇬🇹","Guatemala"],["🇭🇳","Honduras"],["🇸🇻","El Salvador"],["🇳🇮","Nicaragua"],["🇩🇴","Dominican Rep."],
-["🇨🇺","Cuba"],["🇯🇲","Jamaica"],["🇹🇹","Trinidad & Tobago"],
-["🇬🇧","UK"],["🇮🇪","Ireland"],["🇫🇷","France"],["🇩🇪","Germany"],["🇮🇹","Italy"],
-["🇪🇸","Spain"],["🇵🇹","Portugal"],["🇳🇱","Netherlands"],["🇧🇪","Belgium"],["🇨🇭","Switzerland"],
-["🇦🇹","Austria"],["🇸🇪","Sweden"],["🇳🇴","Norway"],["🇩🇰","Denmark"],["🇫🇮","Finland"],
-["🇮🇸","Iceland"],["🇵🇱","Poland"],["🇨🇿","Czechia"],["🇸🇰","Slovakia"],["🇭🇺","Hungary"],
-["🇷🇴","Romania"],["🇧🇬","Bulgaria"],["🇬🇷","Greece"],["🇭🇷","Croatia"],["🇸🇮","Slovenia"],
-["🇷🇸","Serbia"],["🇺🇦","Ukraine"],["🇧🇾","Belarus"],["🇱🇹","Lithuania"],["🇱🇻","Latvia"],
-["🇪🇪","Estonia"],["🇲🇹","Malta"],["🇱🇺","Luxembourg"],["🇲🇨","Monaco"],["🇦🇩","Andorra"],
-["🇷🇺","Russia"],["🇹🇷","Turkiye"],["🇮🇱","Israel"],["🇸🇦","Saudi Arabia"],["🇦🇪","UAE"],
-["🇶🇦","Qatar"],["🇰🇼","Kuwait"],["🇧🇭","Bahrain"],["🇴🇲","Oman"],["🇯🇴","Jordan"],
-["🇱🇧","Lebanon"],["🇮🇶","Iraq"],["🇪🇬","Egypt"],
-["🇿🇦","South Africa"],["🇳🇬","Nigeria"],["🇰🇪","Kenya"],["🇬🇭","Ghana"],["🇲🇦","Morocco"],
-["🇩🇿","Algeria"],["🇹🇳","Tunisia"],["🇪🇹","Ethiopia"],["🇺🇬","Uganda"],["🇹🇿","Tanzania"],
-["🇸🇳","Senegal"],["🇨🇮","Ivory Coast"],["🇨🇲","Cameroon"],["🇿🇼","Zimbabwe"],["🇿🇲","Zambia"],
-["🇲🇿","Mozambique"],["🇷🇼","Rwanda"],["🇳🇦","Namibia"],["🇧🇼","Botswana"],
-["🇮🇳","India"],["🇨🇳","China"],["🇯🇵","Japan"],["🇰🇷","S. Korea"],["🇮🇩","Indonesia"],
-["🇵🇭","Philippines"],["🇻🇳","Vietnam"],["🇹🇭","Thailand"],["🇲🇾","Malaysia"],["🇸🇬","Singapore"],
-["🇲🇲","Myanmar"],["🇰🇭","Cambodia"],["🇱🇦","Laos"],["🇧🇩","Bangladesh"],["🇵🇰","Pakistan"],
-["🇱🇰","Sri Lanka"],["🇳🇵","Nepal"],["🇧🇹","Bhutan"],["🇲🇳","Mongolia"],["🇰🇿","Kazakhstan"],
-["🇺🇿","Uzbekistan"],
-["🇦🇺","Australia"],["🇳🇿","New Zealand"],["🇫🇯","Fiji"],["🇵🇬","Papua New Guinea"]
+const ALL_COUNTRIES = [
+["af","Afghanistan"],["al","Albania"],["dz","Algeria"],["ad","Andorra"],["ao","Angola"],
+["ag","Antigua & Barbuda"],["ar","Argentina"],["am","Armenia"],["au","Australia"],["at","Austria"],
+["az","Azerbaijan"],["bs","Bahamas"],["bh","Bahrain"],["bd","Bangladesh"],["bb","Barbados"],
+["by","Belarus"],["be","Belgium"],["bz","Belize"],["bj","Benin"],["bt","Bhutan"],
+["bo","Bolivia"],["ba","Bosnia"],["bw","Botswana"],["br","Brazil"],["bn","Brunei"],
+["bg","Bulgaria"],["bf","Burkina Faso"],["bi","Burundi"],["cv","Cabo Verde"],["kh","Cambodia"],
+["cm","Cameroon"],["ca","Canada"],["cf","Central African Rep."],["td","Chad"],["cl","Chile"],
+["cn","China"],["co","Colombia"],["km","Comoros"],["cg","Congo"],["cd","DR Congo"],
+["cr","Costa Rica"],["ci","Cote d'Ivoire"],["hr","Croatia"],["cu","Cuba"],["cy","Cyprus"],
+["cz","Czechia"],["dk","Denmark"],["dj","Djibouti"],["dm","Dominica"],["do","Dominican Rep."],
+["ec","Ecuador"],["eg","Egypt"],["sv","El Salvador"],["gq","Eq. Guinea"],["er","Eritrea"],
+["ee","Estonia"],["sz","Eswatini"],["et","Ethiopia"],["fj","Fiji"],["fi","Finland"],
+["fr","France"],["ga","Gabon"],["gm","Gambia"],["ge","Georgia"],["de","Germany"],
+["gh","Ghana"],["gr","Greece"],["gd","Grenada"],["gt","Guatemala"],["gn","Guinea"],
+["gw","Guinea-Bissau"],["gy","Guyana"],["ht","Haiti"],["hn","Honduras"],["hu","Hungary"],
+["is","Iceland"],["in","India"],["id","Indonesia"],["ir","Iran"],["iq","Iraq"],
+["ie","Ireland"],["il","Israel"],["it","Italy"],["jm","Jamaica"],["jp","Japan"],
+["jo","Jordan"],["kz","Kazakhstan"],["ke","Kenya"],["ki","Kiribati"],["kp","N. Korea"],
+["kr","S. Korea"],["kw","Kuwait"],["kg","Kyrgyzstan"],["la","Laos"],["lv","Latvia"],
+["lb","Lebanon"],["ls","Lesotho"],["lr","Liberia"],["ly","Libya"],["li","Liechtenstein"],
+["lt","Lithuania"],["lu","Luxembourg"],["mg","Madagascar"],["mw","Malawi"],["my","Malaysia"],
+["mv","Maldives"],["ml","Mali"],["mt","Malta"],["mh","Marshall Is."],["mr","Mauritania"],
+["mu","Mauritius"],["mx","Mexico"],["fm","Micronesia"],["md","Moldova"],["mc","Monaco"],
+["mn","Mongolia"],["me","Montenegro"],["ma","Morocco"],["mz","Mozambique"],["mm","Myanmar"],
+["na","Namibia"],["nr","Nauru"],["np","Nepal"],["nl","Netherlands"],["nz","New Zealand"],
+["ni","Nicaragua"],["ne","Niger"],["ng","Nigeria"],["mk","N. Macedonia"],["no","Norway"],
+["om","Oman"],["pk","Pakistan"],["pw","Palau"],["pa","Panama"],["pg","Papua New Guinea"],
+["py","Paraguay"],["pe","Peru"],["ph","Philippines"],["pl","Poland"],["pt","Portugal"],
+["qa","Qatar"],["ro","Romania"],["ru","Russia"],["rw","Rwanda"],["kn","St Kitts & Nevis"],
+["lc","St Lucia"],["vc","St Vincent"],["ws","Samoa"],["sm","San Marino"],["st","Sao Tome"],
+["sa","Saudi Arabia"],["sn","Senegal"],["rs","Serbia"],["sc","Seychelles"],["sl","Sierra Leone"],
+["sg","Singapore"],["sk","Slovakia"],["si","Slovenia"],["sb","Solomon Is."],["so","Somalia"],
+["za","South Africa"],["ss","South Sudan"],["es","Spain"],["lk","Sri Lanka"],["sd","Sudan"],
+["sr","Suriname"],["se","Sweden"],["ch","Switzerland"],["sy","Syria"],["tj","Tajikistan"],
+["tz","Tanzania"],["th","Thailand"],["tl","Timor-Leste"],["tg","Togo"],["to","Tonga"],
+["tt","Trinidad & Tobago"],["tn","Tunisia"],["tr","Turkiye"],["tm","Turkmenistan"],["tv","Tuvalu"],
+["ug","Uganda"],["ua","Ukraine"],["ae","UAE"],["gb","UK"],["us","USA"],
+["uy","Uruguay"],["uz","Uzbekistan"],["vu","Vanuatu"],["va","Vatican"],["ve","Venezuela"],
+["vn","Vietnam"],["ye","Yemen"],["zm","Zambia"],["zw","Zimbabwe"],["ps","Palestine"]
 ];
 
-// ---------- Mobile perf mode ----------
-// Desktop stays on full native devicePixelRatio (it already runs smooth).
-// Mobile GPUs choke on 115+ flags at DPR 2-3x plus per-object shadowBlur,
-// so on mobile we cap the render DPR and drop the more expensive glow
-// effects once the flag count gets high. Recomputed on resize/rotation.
-function isMobileViewport(){ return window.matchMedia('(max-width: 640px)').matches; }
-let MOBILE = isMobileViewport();
-function currentDPR(){ return MOBILE ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1); }
-let DPR = currentDPR();
+const ARENA_R = 178, CENTER = {x:185,y:210};
+const FLAG_W = 15, FLAG_H = 10, BODY_R = 8;
+const QUAL_ROUNDS_TOTAL = 50;
+const ALL_TIME_STORAGE_KEY = 'lastFlagStanding_allTimeWinners_v1';
+let allTimeWins = loadAllTimeWins();
+let completedTop50s = Object.values(allTimeWins).reduce(function(sum,v){ return sum + v; }, 0);
+let cycleRevealTimer = null;
 
-// ---------- Ambient background FX: embers + mouse-parallax glow ----------
-const bgfx = document.getElementById('bgfx');
-const bgCtx = bgfx.getContext('2d');
-let bgW, bgH;
-function sizeBgfx(){
-  const w = wantsLocked ? LOCK_W : window.innerWidth;
-  const h = wantsLocked ? LOCK_H : window.innerHeight;
-  bgW = bgfx.width = w * DPR;
-  bgH = bgfx.height = h * DPR;
-  bgfx.style.width = w + 'px';
-  bgfx.style.height = h + 'px';
-}
-window.addEventListener('resize', ()=>{ MOBILE = isMobileViewport(); DPR = currentDPR(); sizeBgfx(); });
-sizeBgfx();
-
-let mouseX = (wantsLocked ? LOCK_W : window.innerWidth)/2, mouseY = (wantsLocked ? LOCK_H : window.innerHeight)/2;
-let glowX = mouseX * DPR, glowY = mouseY * DPR;
-document.addEventListener('mousemove', (e)=>{ mouseX = e.clientX; mouseY = e.clientY; });
-
-const EMBER_COUNT = MOBILE ? 24 : 55; // fewer ambient embers on mobile — they redraw with a shadowBlur every frame regardless of arena state, so this is a steady cost independent of flag count
-function makeEmber(){
-  return {
-    x: Math.random() * bgW,
-    y: bgH + Math.random()*80,
-    r: (1 + Math.random()*2.2) * DPR,
-    speed: (0.25 + Math.random()*0.8) * DPR,
-    drift: (Math.random()-0.5) * 0.5 * DPR,
-    flicker: Math.random()*Math.PI*2,
-    hue: 18 + Math.random()*32
-  };
-}
-const embers = [];
-for(let i=0;i<EMBER_COUNT;i++){
-  const e = makeEmber();
-  e.y = Math.random()*bgH; // spread across screen on first paint
-  embers.push(e);
-}
-
-function stepBgfx(){
-  bgCtx.clearRect(0,0,bgW,bgH);
-
-  // mouse-parallax glow, eased toward the pointer for a floaty feel
-  glowX += (mouseX*DPR - glowX) * 0.035;
-  glowY += (mouseY*DPR - glowY) * 0.035;
-  const glowR = Math.max(bgW,bgH) * 0.42;
-  const grad = bgCtx.createRadialGradient(glowX, glowY, 0, glowX, glowY, glowR);
-  grad.addColorStop(0, 'rgba(217,72,29,0.10)');
-  grad.addColorStop(0.5, 'rgba(232,184,75,0.035)');
-  grad.addColorStop(1, 'rgba(232,184,75,0)');
-  bgCtx.fillStyle = grad;
-  bgCtx.fillRect(0,0,bgW,bgH);
-
-  embers.forEach(e=>{
-    e.y -= e.speed;
-    e.x += e.drift + Math.sin(e.flicker) * 0.3;
-    e.flicker += 0.035;
-    if(e.y < -20){
-      Object.assign(e, makeEmber());
-      e.y = bgH + 10;
-    }
-    const alpha = 0.22 + 0.35 * (0.5 + 0.5*Math.sin(e.flicker*1.6));
-    bgCtx.beginPath();
-    bgCtx.arc(e.x, e.y, e.r, 0, Math.PI*2);
-    bgCtx.fillStyle = `hsla(${e.hue}, 85%, 58%, ${alpha})`;
-    if(!MOBILE){
-      // shadowBlur per-ember is the priciest part of this loop — skip it on
-      // mobile where it competes with the 115-flag physics/render each frame
-      bgCtx.shadowColor = `hsla(${e.hue}, 90%, 55%, 0.85)`;
-      bgCtx.shadowBlur = 6 * DPR;
-    }
-    bgCtx.fill();
-  });
-  bgCtx.shadowBlur = 0;
-
-  requestAnimationFrame(stepBgfx);
-}
-stepBgfx();
-
-// ---------- Periodic subscribe callout ----------
-const subscribeCalloutEl = document.getElementById('subscribeCallout');
-let subscribeTimer = null;
-function showSubscribeCallout(){
-  // don't pop it up over the winner screen, or while stream-mode UI is hidden
-  if(document.getElementById('winnerScreen').classList.contains('show')) return;
-  if(document.body.classList.contains('stream-mode') && !document.body.classList.contains('ui-visible')) return;
-  subscribeCalloutEl.classList.add('show');
-  setTimeout(()=> subscribeCalloutEl.classList.remove('show'), 6000);
-}
-function armSubscribeCallout(){
-  clearInterval(subscribeTimer);
-  subscribeTimer = setInterval(showSubscribeCallout, 45000);
-}
-setTimeout(showSubscribeCallout, 10000); // first nudge shortly after load
-armSubscribeCallout();
-
-// ---------- Flag rendering: Windows Chrome/Edge shows flag emoji as plain text
-// codes instead of the flag itself, so pull real flag images instead of
-// relying on the OS emoji font, both on canvas and in the DOM. No external
-// JS library needed — flag emoji are just two Unicode "regional indicator"
-// characters, so we compute their codepoints ourselves and fetch the
-// matching image straight from jsDelivr's twemoji asset mirror. Falls back
-// to the plain emoji glyph if an image never loads. ----------
-const FLAG_IMG_BASE = 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/';
-function flagCodepoints(emoji){
-  return Array.from(emoji).map(c => c.codePointAt(0).toString(16)).join('-');
-}
-const FLAG_IMG_CACHE = {};
-function getFlagImg(emoji){
-  if(FLAG_IMG_CACHE[emoji]) return FLAG_IMG_CACHE[emoji];
-  const img = new Image();
-  img.onerror = () => { img._failed = true; };
-  img.src = FLAG_IMG_BASE + flagCodepoints(emoji) + '.png';
-  FLAG_IMG_CACHE[emoji] = img;
-  return img;
-}
-// Replaces any flag-emoji pair found in an HTML string with an <img> tag,
-// for the DOM spots (chat, ticker, leaderboard, winner screen) that build
-// their text as strings rather than drawing on canvas.
-function renderFlags(html){
-  return html.replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu, (m) => {
-    const img = getFlagImg(m);
-    return `<img src="${img.src}" alt="${m}" style="width:1em;height:1em;vertical-align:-0.15em;object-fit:contain;">`;
-  });
-}
-COUNTRIES.forEach(c => getFlagImg(c[0])); // warm the image cache up front
-// ---------- Canvas / engine setup ----------
-const canvas = document.getElementById('arena');
-const ctx = canvas.getContext('2d');
-let W, H, center, arenaRadius;
-
-function sizeCanvas(){
-  const wrap = document.querySelector('.arena-wrap');
-  W = canvas.width = wrap.clientWidth * DPR;
-  H = canvas.height = wrap.clientHeight * DPR;
-  canvas.style.width = wrap.clientWidth + 'px';
-  canvas.style.height = wrap.clientHeight + 'px';
-  center = { x: W/2, y: H/2 };
-  arenaRadius = Math.min(W, H) * 0.42;
-}
-window.addEventListener('resize', ()=>{ sizeCanvas(); });
-
-let engine, world;
-let flags = [];
-let round = 0;
-let totalFlags = 0;
-let currentStage = null;
-let safeRadius = 1;
-let shrinkTarget = 1;
-let running = false;
-let paused = false;
-let animId = null;
-let speedMult = 1.8;
-let lastShrink = 0;
-let tickerEl = document.getElementById('ticker');
-const stageBannerEl = document.getElementById('stageBanner');
-
-function stageLabel(remaining, total){
-  if(remaining <= 1) return 'CHAMPION';
-  if(remaining <= 2) return 'FINAL — ROUND OF 2';
-  if(remaining <= 4) return 'SEMIFINALS — ROUND OF 4';
-  if(remaining <= 8) return 'QUARTERFINALS — ROUND OF 8';
-  if(remaining <= 16) return 'ROUND OF 16';
-  if(remaining <= 32) return 'ROUND OF 32';
-  return `ROUND OF ${total}`;
-}
-function announceStage(label){
-  stageBannerEl.textContent = label;
-  stageBannerEl.classList.add('show');
-  clearTimeout(announceStage._t);
-  announceStage._t = setTimeout(()=> stageBannerEl.classList.remove('show'), 1900);
-}
-
-// Rotating boundary gate
-let gapAngle = 0;
-let gapWidth = 0.5;          // radians, angular width of the opening
-let gapSpeed = 0.012;        // radians per physics tick, ramps up each round
-let gapSpin = 1;             // direction, flips sometimes for chaos
-
-function pushTicker(msg){
-  const p = document.createElement('div');
-  p.innerHTML = renderFlags(msg);
-  // Newest entry on top, oldest trimmed off the bottom — same detailed
-  // vertical list on mobile and desktop.
-  tickerEl.prepend(p);
-  tickerEl.scrollTop = 0;
-  while(tickerEl.children.length > 30) tickerEl.removeChild(tickerEl.lastChild);
-}
-
-// ---------- Simulated live chat ----------
-const chatBody = document.getElementById('chatBody');
-const viewerCountEl = document.getElementById('viewerCount');
-const CHAT_NAMES = [
-  "flagfan_92","turbo_watcher","xX_arena_Xx","citrusVibes","noona_k","mel_streams",
-  "gg_wp_07","late_night_lurker","couchgeneral","zz_top_hat","random_viewer","emberfox",
-  "quiet_potato","northwind","sofa_general","clip_it","chromabyte","tinyrocket",
-  "who_dis","pixel_pete","wanderlust22","cafe_owl","midnight_snack","glassjaw",
-  "yeti_mode","paper_crane","rustbucket","echo_lark","3am_gang","sunny_d"
-];
-const CHAT_HYPE = [
-  "LETS GOOOO", "no way this is actually insane", "the physics on this is so smooth",
-  "chat we are SO back", "who's still got their pick alive", "this stream never gets old",
-  "clip that last hit 😭", "the shrinking zone is brutal today", "day 47 of watching this instead of working",
-  "ok THAT was close", "run it back after this one", "the algorithm brought me here and I'm not leaving"
-];
-function chatMsgFor(country, emoji, kind){
-  const bank = {
-    cheer: [
-      `${emoji} ${country} LETS GOOO`, `cheering for ${emoji}${country}!!`,
-      `${country} is built different`, `who else rooting for ${country} 🙌`,
-      `${country} to the FINALS 🔥`, `${emoji}${emoji}${emoji}`
-    ],
-    death: [
-      `NOOO not ${emoji}${country} 😭`, `GG ${country} 🫡`, `${country} we hardly knew ye`,
-      `rip ${emoji}${country}, gone too soon`, `well that's my pick eliminated`
-    ],
-    win: [
-      `${emoji}${country} CHAMPIONS 🏆🏆🏆`, `CALLED IT. ${country} #1`,
-      `${country} DESERVED THAT`, `${emoji} on top, as expected`
-    ]
-  };
-  const arr = bank[kind];
-  return arr[Math.floor(Math.random()*arr.length)];
-}
-function pushChat(text, opts={}){
-  const row = document.createElement('div');
-  row.className = 'chat-msg';
-  const name = opts.name || CHAT_NAMES[Math.floor(Math.random()*CHAT_NAMES.length)];
-  const hue = (name.split('').reduce((a,c)=>a+c.charCodeAt(0),0) * 37) % 360;
-  row.innerHTML = renderFlags(`<span class="u" style="color:hsl(${hue} 70% 68%)">${name}:</span><span>${text}</span>`);
-  chatBody.appendChild(row);
-  chatBody.scrollLeft = chatBody.scrollWidth;
-  while(chatBody.children.length > 40) chatBody.removeChild(chatBody.firstChild);
-}
-let chatTimer = null;
-function startChat(){
-  stopChat();
-  viewerCountEl.textContent = (1200 + Math.floor(Math.random()*4000)).toLocaleString() + ' hype';
-  chatTimer = setInterval(()=>{
-    if(paused || !running) return;
-    const alive = flags.filter(f=>f.alive);
-    if(!alive.length) return;
-    const roll = Math.random();
-    if(roll < 0.55){
-      const f = alive[Math.floor(Math.random()*alive.length)];
-      pushChat(chatMsgFor(f.name, f.emoji, 'cheer'));
-    } else {
-      pushChat(CHAT_HYPE[Math.floor(Math.random()*CHAT_HYPE.length)]);
-    }
-  }, 900 / Math.max(0.5, speedMult));
-}
-function stopChat(){ if(chatTimer) clearInterval(chatTimer); }
-
-// ---------- Leaderboard (persistent, local to this browser/machine) ----------
-const lbList = document.getElementById('lbList');
-const LB_KEY = 'lfs_leaderboard_v1';
-function getWinsStore(){
+function loadAllTimeWins(){
   try{
-    const raw = localStorage.getItem(LB_KEY);
-    return raw ? JSON.parse(raw) : {};
-  }catch(e){ console.error('leaderboard read failed', e); return {}; }
+    const raw = localStorage.getItem(ALL_TIME_STORAGE_KEY);
+    if(!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  }catch(e){ return {}; }
 }
-function setWinsStore(store){
-  try{ localStorage.setItem(LB_KEY, JSON.stringify(store)); }
-  catch(e){ console.error('leaderboard save failed', e); }
+function saveAllTimeWins(){
+  try{ localStorage.setItem(ALL_TIME_STORAGE_KEY, JSON.stringify(allTimeWins)); }catch(e){}
 }
-function recordWin(countryName, emoji){
-  const store = getWinsStore();
-  const current = store[countryName]?.wins || 0;
-  store[countryName] = { wins: current + 1, emoji, name: countryName };
-  setWinsStore(store);
-  loadLeaderboard();
+function recordTop50Winner(champ){
+  if(!champ) return;
+  allTimeWins[champ.code] = (allTimeWins[champ.code] || 0) + 1;
+  completedTop50s += 1;
+  saveAllTimeWins();
 }
-const lbListMobile = document.getElementById('lbListMobile');
-function loadLeaderboard(){
-  const store = getWinsStore();
-  const entries = Object.values(store);
-  if(!entries.length){
-    lbList.innerHTML = '<div class="lb-empty">No champions crowned yet.</div>';
-    if(lbListMobile) lbListMobile.innerHTML = '<div class="lb-empty">No champions crowned yet.</div>';
+function sortedAllTimeWinners(){
+  return Object.keys(allTimeWins).map(function(code){
+    const country = ALL_COUNTRIES.find(function(c){return c[0]===code;});
+    return {code:code,name:country ? country[1] : code.toUpperCase(),wins:allTimeWins[code]};
+  }).sort(function(a,b){ return b.wins-a.wins || a.name.localeCompare(b.name); });
+}
+
+// ============================================================
+// LIVE COMMENTARY / AUDIO ENGINE
+// Web Speech API for voice lines (no external audio files needed),
+// Web Audio API for synthesized crowd + piano stings. Browsers block
+// audio/speech until a user gesture, so everything below is gated
+// behind the "TAP TO ENABLE" bar - the game itself runs fine either way.
+// ============================================================
+let audioEnabled = false;
+let audioCtx = null;
+let maleVoice = null, femaleVoice = null;
+
+function pickVoices(){
+  const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  if(!voices.length) return;
+  const enVoices = voices.filter(function(v){ return /^en/i.test(v.lang); });
+  const pool = enVoices.length ? enVoices : voices;
+  const femaleHints = /female|zira|samantha|victoria|susan|karen|moira|tessa|fiona|kate|serena|allison|ava|salli|joanna|kendra|kimberly|google us english|google uk english female/i;
+  const maleHints = /male|david|mark|guy|daniel|fred|alex|george|ryan|matthew|justin|joey|google uk english male/i;
+  femaleVoice = pool.find(function(v){ return femaleHints.test(v.name); })
+    || pool.find(function(v){ return !maleHints.test(v.name); })
+    || pool[0];
+  maleVoice = pool.find(function(v){ return maleHints.test(v.name); })
+    || pool.find(function(v){ return v!==femaleVoice; })
+    || pool[0];
+}
+if(window.speechSynthesis){
+  window.speechSynthesis.onvoiceschanged = pickVoices;
+  pickVoices();
+}
+
+// opts: {voice:'male'|'female', rate, pitch, onend}
+// onend ALWAYS fires (even with audio off/unavailable/on error) so any code
+// that waits on speech completion to advance the visuals never stalls.
+function speak(text, opts){
+  opts = opts || {};
+  if(!audioEnabled || !window.speechSynthesis){
+    if(opts.onend) setTimeout(opts.onend, 0);
     return;
   }
-  entries.sort((a,b)=> (b.wins||0) - (a.wins||0));
-  // 2-column row: country (flag+name) | win count. First 10 sit directly
-  // visible with no scrolling; #lbList's own max-height (10 rows) takes
-  // over automatically once an 11th champion is crowned.
-  const rowsHtml = renderFlags(entries.map(e=>`
-    <div class="lb-row">
-      <div class="lb-name"><span class="lb-flag">${e.emoji||'🏳️'}</span><span>${e.name}</span></div>
-      <div class="lb-wins">${e.wins}</div>
-    </div>`).join(''));
-  lbList.innerHTML = rowsHtml;
-  // Mobile dropdown only needs the top 5 — it's a brief popover, not a full table.
-  if(lbListMobile){
-    const topHtml = renderFlags(entries.slice(0,5).map(e=>`
-      <div class="lb-row">
-        <div class="lb-name"><span class="lb-flag">${e.emoji||'🏳️'}</span><span>${e.name}</span></div>
-        <div class="lb-wins">${e.wins}</div>
-      </div>`).join(''));
-    lbListMobile.innerHTML = topHtml;
+  const u = new SpeechSynthesisUtterance(text);
+  const chosen = opts.voice==='male' ? maleVoice : femaleVoice;
+  if(chosen) u.voice = chosen;
+  // Slower, clearer pacing so lines finish speaking before the visuals move on,
+  // rather than the round racing ahead of the commentary.
+  u.rate = opts.rate || (opts.voice==='male' ? 1.08 : 0.98);
+  u.pitch = opts.pitch || (opts.voice==='male' ? 0.92 : 1.08);
+  u.volume = 1;
+  u.onend = function(){ if(opts.onend) opts.onend(); };
+  u.onerror = function(){ if(opts.onend) opts.onend(); };
+  window.speechSynthesis.speak(u);
+}
+
+function ensureAudioCtx(){
+  if(!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(AC) audioCtx = new AC();
+  }
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// Short synthesized applause/cheer/whoop burst - layered filtered noise + a
+// couple of pitch-swept "whoop" tones, since no external SFX files are used.
+function playCheer(big){
+  if(!audioEnabled) return;
+  const ctx = ensureAudioCtx(); if(!ctx) return;
+  const dur = big ? 2.1 : 1.3;
+  const now = ctx.currentTime;
+
+  const bufSize = ctx.sampleRate * dur;
+  const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for(let i=0;i<bufSize;i++){ data[i] = (Math.random()*2-1) * (1-i/bufSize) * 0.9; }
+  const noise = ctx.createBufferSource(); noise.buffer = buf;
+  const bp = ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; bp.Q.value=0.7;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(big ? 0.55 : 0.35, now+0.12);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now+dur);
+  noise.connect(bp); bp.connect(gain); gain.connect(ctx.destination);
+  noise.start(now); noise.stop(now+dur);
+
+  const whoops = big ? 4 : 2;
+  for(let w=0; w<whoops; w++){
+    const t0 = now + rand(0.05, dur*0.6);
+    const osc = ctx.createOscillator(); osc.type='triangle';
+    const og = ctx.createGain();
+    const startF = rand(500,700), endF = startF + rand(250,420);
+    osc.frequency.setValueAtTime(startF, t0);
+    osc.frequency.linearRampToValueAtTime(endF, t0+0.35);
+    og.gain.setValueAtTime(0.0001, t0);
+    og.gain.exponentialRampToValueAtTime(0.16, t0+0.08);
+    og.gain.exponentialRampToValueAtTime(0.0001, t0+0.5);
+    osc.connect(og); og.connect(ctx.destination);
+    osc.start(t0); osc.stop(t0+0.55);
   }
 }
 
-// ---------- Mobile navbar leaderboard dropdown ----------
-// Replaces the always-on champions column on small screens: the "Leaders"
-// stat pops an opaque, narrow dropdown at intervals (and on tap), then
-// closes itself so it never sits over the arena for long.
-const lbDropEl = document.getElementById('lbDrop');
-const lbStatEl = document.getElementById('lbStat');
-let lbDropHideTimer = null;
-function showLbDrop(duration = 4000){
-  if(!lbDropEl) return;
-  loadLeaderboard();
-  lbDropEl.classList.add('show');
-  clearTimeout(lbDropHideTimer);
-  lbDropHideTimer = setTimeout(()=> lbDropEl.classList.remove('show'), duration);
-}
-if(lbStatEl){
-  lbStatEl.addEventListener('click', ()=>{
-    if(lbDropEl.classList.contains('show')){
-      clearTimeout(lbDropHideTimer);
-      lbDropEl.classList.remove('show');
-    } else {
-      showLbDrop(5000);
-    }
+// Bright short piano-ish victory flourish (triangle-wave notes with a fast
+// attack / slow decay envelope) for when the final leaderboard appears.
+function playPianoSting(){
+  if(!audioEnabled) return;
+  const ctx = ensureAudioCtx(); if(!ctx) return;
+  const now = ctx.currentTime;
+  const notes = [523.25,659.25,783.99,1046.50,783.99,1046.50]; // C5 E5 G5 C6 G5 C6
+  notes.forEach(function(freq,i){
+    const t0 = now + i*0.16;
+    const osc = ctx.createOscillator(); osc.type='triangle';
+    osc.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.28, t0+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+1.1);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(t0); osc.stop(t0+1.15);
   });
 }
-// Auto-pop periodically on mobile only, so it never interferes with desktop.
-setInterval(()=>{
-  if(MOBILE) showLbDrop(4000);
-}, 18000);
 
-// ---------- Simulation setup ----------
-function setup(count){
-  cancelAnimationFrame(animId);
-  engine = Engine.create();
-  engine.gravity.y = 0;
-  world = engine.world;
-  flags = [];
-  round = 0;
-  safeRadius = 1;
-  shrinkTarget = 1;
-  gapAngle = Math.random() * Math.PI * 2;
-  gapWidth = 0.5;
-  gapSpeed = 0.012;
-  gapSpin = 1;
-  paused = false;
-  document.getElementById('winnerScreen').classList.remove('show');
-  tickerEl.innerHTML = '';
-  chatBody.innerHTML = '';
-
-  const pool = Common.shuffle(COUNTRIES.slice());
-  const n = Math.min(count, pool.length);
-  totalFlags = n;
-  currentStage = null;
-  stageBannerEl.classList.remove('show');
-  const r = Math.max(11, Math.min(24, 340 / Math.sqrt(n)));
-
-  for(let i=0;i<n;i++){
-    const angle = (i / n) * Math.PI * 2;
-    const dist = arenaRadius * 0.55 * Math.random();
-    const x = center.x + Math.cos(angle) * dist;
-    const y = center.y + Math.sin(angle) * dist;
-    const body = Bodies.circle(x, y, r, {
-      restitution: 0.92,
-      friction: 0,
-      frictionAir: 0.001,
-      density: 0.001,
-      label: pool[i][1]
-    });
-    const speed = 2.2;
-    Body.setVelocity(body, {
-      x: (Math.random()-0.5)*speed*2,
-      y: (Math.random()-0.5)*speed*2
-    });
-    World.add(world, body);
-    flags.push({ body, emoji: pool[i][0], name: pool[i][1], r, alive:true });
-  }
-
-  updateStats();
-  render();
+function playCountdownBeep(){
+  if(!audioEnabled) return;
+  const ctx = ensureAudioCtx(); if(!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator(); osc.type='sine'; osc.frequency.value=880;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.3, now+0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, now+0.18);
+  osc.connect(g); g.connect(ctx.destination);
+  osc.start(now); osc.stop(now+0.2);
 }
 
-function updateStats(){
-  const remaining = flags.filter(f=>f.alive).length;
-  const stage = stageLabel(remaining, totalFlags);
-  document.getElementById('statRound').textContent = stage;
-  document.getElementById('statAlive').textContent = remaining;
-  document.getElementById('statRadius').textContent = Math.round(safeRadius*100)+'%';
-  document.getElementById('statGap').textContent = (gapSpeed/0.012).toFixed(1)+'x';
+// Speaks a line and calls cb once it's actually finished (not on a guessed
+// timer) - bounded by minMs (never rush past this even if speech is fast/off)
+// and maxMs (never stall past this even if a voice engine hangs). This is what
+// keeps the visuals from racing ahead of - or lagging behind - the commentary.
+function speakTimed(text, opts, minMs, maxMs, cb){
+  const start = Date.now();
+  let done = false;
+  function finish(){
+    if(done) return; done = true;
+    const elapsed = Date.now() - start;
+    const remaining = Math.max(0, minMs - elapsed);
+    setTimeout(cb, remaining);
+  }
+  const merged = Object.assign({}, opts, {onend:finish});
+  speak(text, merged);
+  setTimeout(finish, maxMs);
+}
 
-  if(stage !== currentStage){
-    if(currentStage !== null){
-      announceStage(stage);
-      pushTicker(`🏆 <b>${stage}</b> begins — ${remaining} left`);
-      pushChat(`here we go, ${stage.split(' — ')[0].toLowerCase()}!!`, { name: 'stream_mod' });
+document.getElementById('soundGate').addEventListener('click', function(){
+  audioEnabled = true;
+  ensureAudioCtx();
+  if(window.speechSynthesis){
+    // Unlocks TTS on browsers that require a gesture-triggered utterance first.
+    const warm = new SpeechSynthesisUtterance(' ');
+    warm.volume = 0;
+    window.speechSynthesis.speak(warm);
+  }
+  document.getElementById('soundGate').classList.add('hidden');
+});
+
+// Called by the engine (see startSurvivorFocus/advanceSurvivorFocus) each time
+// the "final few" spotlight lands on a new flag - announces the survivor.
+// Sets focusSpeechDone=false until the line finishes, so the visual spotlight
+// waits for the name to actually finish being spoken before moving on.
+window.onSurvivorFocus = function(entry, count, idx, total){
+  if(!entry) return;
+  focusSpeechDone = false;
+  speak(entry.name + ' survives!', {voice:'female', rate:0.98, onend:function(){ focusSpeechDone = true; }});
+};
+
+function announceRoundStart(kind, num){
+  // Energetic male "race starter" voice, kept separate from the female
+  // play-by-play commentator used for survives/eliminated/wins/podium.
+  if(kind==='qualifying'){
+    speak('Round ' + num + '! Ready... go!', {voice:'male', rate:1.1});
+  } else {
+    speak('Elimination stage ' + num + '! Ready... go!', {voice:'male', rate:1.1});
+  }
+}
+
+function runNextCycleCountdown(onDone){
+  const overlay = document.getElementById('countdownOverlay');
+  const numEl = document.getElementById('countdownNum');
+  let n = 5;
+  overlay.classList.add('show');
+  function tick(){
+    numEl.textContent = n;
+    numEl.style.animation = 'none'; void numEl.offsetWidth; numEl.style.animation = 'countPop .55s cubic-bezier(.2,1.5,.4,1) both';
+    playCountdownBeep();
+    speak(String(n), {voice:'male', rate:1.05});
+    n--;
+    if(n >= 0){
+      setTimeout(tick, 850);
+    } else {
+      setTimeout(function(){
+        overlay.classList.remove('show');
+        onDone();
+      }, 700);
     }
-    currentStage = stage;
+  }
+  tick();
+}
+
+let engine, world;
+let battlers = [];
+let phase = 'qualifying';
+let qualPool = [];
+let qualRound = 0;
+let finalistsList = [];
+let finalPool = [];
+let placements = [];
+let stageNum = 0;
+let battleMode = null;
+let transitioning = false;
+let gapAngle = 0, gapWidth = Math.PI/6, gapSpeed = 0.014, gapDir = 1;
+let battleStartCount = 0;
+let focusActive = false, focusQueue = [], focusIndex = 0, focusTimer = 0, focusCount = 0, focusDone = false;
+const SURVIVOR_FOCUS_COUNTS = [4];
+const SURVIVOR_FOCUS_TIME = 0.72;   // fallback pacing when audio is off/unavailable
+const FOCUS_MIN_TIME = 0.5;         // always hold at least this long, even if speech is instant
+const FOCUS_MAX_TIME = 3.4;         // safety cap so a stuck utterance can't stall the round
+let focusSpeechDone = true;
+// Fixed hazard cycle. Starburst is intentionally removed.
+// We keep CALM ARENA as the 12th round type, but every new Top-50 cycle
+// starts fresh at round type #1: ASTEROID BELT.
+let hazards = [
+  {name:"ASTEROID BELT", cls:"danger"},
+  {name:"ALIEN CROSSFIRE", cls:"danger"},
+  {name:"SOLAR FLARE", cls:"solar"},
+  {name:"BLACK HOLE", cls:"blackhole"},
+  {name:"ALIEN INVASION", cls:"invasion"},
+  {name:"GRAVITY VORTEX", cls:"vortex"},
+  {name:"WORMHOLE", cls:"wormhole"},
+  {name:"COMET CHASE", cls:"comet"},
+  {name:"PLANETARY GRAVITY", cls:"planet"},
+  {name:"ORBITAL STRIKE", cls:"orbital"},
+  {name:"RED GIANT", cls:"redgiant"},
+  {name:"CALM ARENA", cls:"calm"}
+];
+let hazardIdx = 0;
+let hazardCycleIndex = 0;
+let asteroids = [];
+let solarFlares = [];
+let solarFlareCount = 0, solarFlareTarget = 0, solarFlareNext = 0;
+let blackHoles = [];
+let alienUFOs = [];
+let alienWaveCount = 0, alienWaveTarget = 0, alienNext = Infinity;
+let alienWavePhase = "idle", alienWaveTimer = 0;
+let blackHoleWaveCount = 0, blackHoleWaveTarget = 0, blackHoleNext = 0, blackHoleActiveUntil = 0, blackHoleCooldownUntil = 0;
+let vortexes = [], vortexCount = 0, vortexTarget = 0, vortexNext = Infinity, vortexUntil = 0;
+let wormholes = null, wormholeCount = 0, wormholeTarget = 0, wormholeNext = Infinity, wormholeUntil = 0;
+let wormholeTransfers = [];
+let wormholeMilestone10 = false, wormholeMilestone4 = false;
+let starbursts = [], starburstCount = 0, starburstTarget = 0, starburstNext = Infinity;
+let starburstMilestone = false;
+let starburstFinishHold = 0;
+let comets = [], cometCount = 0, cometTarget = 0, cometNext = Infinity;
+let cometMilestone = false;
+let gravityPlanet = null, gravityPlanetCount = 0, gravityPlanetTarget = 0, gravityPlanetNext = Infinity, gravityPlanetUntil = 0;
+let orbitalStrikes = [], orbitalStrikeCount = 0, orbitalStrikeTarget = 0, orbitalStrikeNext = Infinity;
+let orbitalSatellite = null;
+let redGiant = null, redGiantCount = 0, redGiantTarget = 0, redGiantNext = Infinity, redGiantUntil = 0;
+let redGiantMilestone = false;
+let crossfireAngle = 0;
+let lastTs = null, tGlobal = 0;
+let lbPageIdx = 0, lbTimer = 0;
+let roundElapsed = 0;
+let roundKO = [];       // this qualifying round's heat-losers, live (resets each round)
+let finalSlate = [];    // fixed 50-entry finals ladder: {code,name,status:'alive'|'out'}
+
+// pacing / clock
+const QUAL_ROUND_BUDGET = 18;   // seconds of "natural" physics before fast catch-up kicks in
+const FINAL_STAGE_BUDGET = 18;  // seconds - finals breathe longer before the single elimination
+let clockLeft = QUAL_ROUND_BUDGET;
+let forceTimer = 0;
+let escapeTarget = null;
+let escapeGuideTime = 0;
+let escapeDelay = 0;
+
+// low-count presentation
+const NAME_LABEL_THRESHOLD = 10;
+
+const imgCache = {};
+function flagUrl(code){ return "https://flagcdn.com/w80/" + code + ".png"; }
+function getImg(code){
+  if(!imgCache[code]){ const im=new Image(); im.crossOrigin="anonymous"; im.src=flagUrl(code); imgCache[code]=im; }
+  return imgCache[code];
+}
+function rand(a,b){ return a+Math.random()*(b-a); }
+function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=arr[i]; arr[i]=arr[j]; arr[j]=t; } return arr; }
+
+function initGame(){
+  if(cycleRevealTimer){ clearTimeout(cycleRevealTimer); cycleRevealTimer=null; }
+  if(window.speechSynthesis) window.speechSynthesis.cancel();
+  document.getElementById('countdownOverlay').classList.remove('show');
+  const podium=document.getElementById('podiumReveal');
+  podium.classList.remove('show','final');
+  document.getElementById('leaderFinal').style.display='none';
+  document.getElementById('leaderAllTime').style.display='none';
+  engine = Engine.create(); engine.gravity.x=0; engine.gravity.y=0; world=engine.world;
+  qualPool = shuffle(ALL_COUNTRIES.map(function(c){ return {code:c[0],name:c[1]}; }));
+  qualRound = 0;
+  finalistsList = [];
+  finalPool = [];
+  placements = [];
+  stageNum = 0;
+  phase = 'qualifying';
+  document.getElementById('toast').classList.remove('show');
+  startQualifyingRound();
+}
+
+function clearBattlers(){
+  battlers.forEach(function(b){ World.remove(world,b.body); });
+  battlers = [];
+
+  if(hazards[hazardIdx].name==="GRAVITY VORTEX"){
+    vortexes.forEach(function(v){
+      ctx.save(); ctx.translate(v.x,v.y); ctx.rotate(v.spin);
+      for(let k=0;k<5;k++){
+        ctx.beginPath();ctx.strokeStyle='rgba(180,105,255,'+(0.48-k*.07)+')';ctx.lineWidth=3;
+        ctx.shadowColor='#a45cff';ctx.shadowBlur=16;
+        ctx.arc(0,0,v.r+8+k*9,0.2+k*.35,Math.PI*1.7+k*.5);ctx.stroke();
+      }
+      const g=ctx.createRadialGradient(0,0,2,0,0,v.r*1.8);
+      g.addColorStop(0,'#05010b');g.addColorStop(.45,'#12051f');g.addColorStop(1,'rgba(150,70,255,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,v.r*1.8,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="WORMHOLE" && wormholes){
+    [wormholes.a,wormholes.b].forEach(function(w,i){
+      ctx.save();ctx.translate(w.x,w.y);ctx.rotate(w.pulse*.15);
+      for(let k=0;k<4;k++){
+        ctx.beginPath();ctx.strokeStyle=i?'rgba(75,180,255,.65)':'rgba(180,90,255,.65)';ctx.lineWidth=3;
+        ctx.shadowColor=i?'#45cfff':'#a75cff';ctx.shadowBlur=14;
+        ctx.ellipse(0,0,w.r+7+k*5,w.r*.45+3+k*3,0,0,Math.PI*2);ctx.stroke();
+      }
+      ctx.fillStyle='#02030a';ctx.beginPath();ctx.arc(0,0,w.r*.75,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+
+  if(hazards[hazardIdx].name==="WORMHOLE" && wormholeTransfers.length){
+    wormholeTransfers.forEach(function(t){
+      const q=Math.min(1,t.age/t.dur), e=q<.5?2*q*q:1-Math.pow(-2*q+2,2)/2;
+      const dx=t.to.x-t.from.x,dy=t.to.y-t.from.y;
+      const px=t.from.x+dx*e, py=t.from.y+dy*e;
+      const arc=Math.sin(q*Math.PI)*22;
+      const nx=-dy/(Math.hypot(dx,dy)||1), ny=dx/(Math.hypot(dx,dy)||1);
+      ctx.save();
+      ctx.translate(px+nx*arc,py+ny*arc);
+      const fade=Math.sin(Math.PI*q);
+      ctx.globalAlpha=.25+.75*fade;
+      ctx.shadowColor='#7be8ff';ctx.shadowBlur=22;
+      ctx.strokeStyle='rgba(150,245,255,.85)';ctx.lineWidth=3;
+      ctx.beginPath();ctx.arc(0,0,18+10*Math.sin(q*Math.PI),0,Math.PI*2);ctx.stroke();
+      const img=getImg(t.code), fw=FLAG_W*1.8,fh=FLAG_H*1.8;
+      if(img.complete&&img.naturalWidth>0) ctx.drawImage(img,-fw/2,-fh/2,fw,fh);
+      ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="STARBURST"){
+    starbursts.forEach(function(st){
+      ctx.save();ctx.translate(st.x,st.y);ctx.rotate(st.rot);
+      const alpha=Math.max(0,1-st.age/1.65);
+      const rays=8;
+      for(let i=0;i<rays;i++){
+        const a=i*Math.PI*2/rays;
+        ctx.strokeStyle='rgba(255,225,105,'+(0.72*alpha)+')';ctx.lineWidth=5;ctx.shadowColor='#ffd75c';ctx.shadowBlur=18;
+        ctx.beginPath();ctx.moveTo(Math.cos(a)*10,Math.sin(a)*10);ctx.lineTo(Math.cos(a)*st.r,Math.sin(a)*st.r);ctx.stroke();
+      }
+      const g=ctx.createRadialGradient(0,0,2,0,0,35);
+      g.addColorStop(0,'#fffde0');g.addColorStop(.35,'#ffe67a');g.addColorStop(1,'rgba(255,170,30,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,30,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="COMET CHASE"){
+    comets.forEach(function(c){
+      ctx.save();
+      const p=bezierPoint(c,c.t), p2=bezierPoint(c,Math.max(0,c.t-.10));
+      const ang=Math.atan2(p.y-p2.y,p.x-p2.x);
+      ctx.translate(p.x,p.y);ctx.rotate(ang);
+      const grad=ctx.createLinearGradient(-c.trail,0,12,0);
+      grad.addColorStop(0,'rgba(70,190,255,0)');grad.addColorStop(.55,'rgba(100,210,255,.25)');grad.addColorStop(1,'rgba(230,250,255,.95)');
+      ctx.strokeStyle=grad;ctx.lineWidth=10;ctx.lineCap='round';ctx.shadowColor='#66d9ff';ctx.shadowBlur=20;
+      ctx.beginPath();ctx.moveTo(-c.trail,0);ctx.lineTo(12,0);ctx.stroke();
+      ctx.fillStyle='#fff';ctx.shadowColor='#baf4ff';ctx.shadowBlur=25;ctx.beginPath();ctx.arc(10,0,7,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="PLANETARY GRAVITY" && gravityPlanet){
+    const p=gravityPlanet, pulse=1+.05*Math.sin(p.pulse*3);
+    ctx.save();ctx.shadowColor='#ff8b55';ctx.shadowBlur=25;
+    const g=ctx.createRadialGradient(p.x-p.r*.3,p.y-p.r*.3,2,p.x,p.y,p.r*1.5);
+    g.addColorStop(0,'#ffd2a2');g.addColorStop(.35,'#e77a3d');g.addColorStop(.75,'#7b321d');g.addColorStop(1,'rgba(255,90,30,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,p.r*1.5*pulse,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,160,95,.28)';ctx.lineWidth=2;
+    for(let k=0;k<3;k++){ctx.beginPath();ctx.arc(p.x,p.y,p.r+25+k*20,p.pulse+k, p.pulse+k+Math.PI*1.35);ctx.stroke();}
+    ctx.restore();
+  }
+
+  if(hazards[hazardIdx].name==="ORBITAL STRIKE" && orbitalSatellite){
+    // Persistent satellite: compact body + solar panels, visibly orbiting the ring.
+    const a=orbitalSatellite.angle;
+    const sx=CENTER.x+Math.cos(a)*(ARENA_R+30), sy=CENTER.y+Math.sin(a)*(ARENA_R+30);
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(a+Math.PI/2);
+    ctx.fillStyle='#7e8fae';ctx.strokeStyle='#d9e5ff';ctx.lineWidth=1.5;
+    ctx.fillRect(-22,-5,15,10);ctx.fillRect(7,-5,15,10);ctx.strokeRect(-22,-5,15,10);ctx.strokeRect(7,-5,15,10);
+    ctx.fillStyle='#dce9ff';ctx.shadowColor='#9cc7ff';ctx.shadowBlur=12;ctx.fillRect(-6,-6,12,12);
+    ctx.fillStyle='#566b8d';ctx.fillRect(-2,-11,4,5);ctx.restore();
+    orbitalStrikes.forEach(function(st){
+      const dx=Math.cos(st.angle)*ARENA_R*1.55,dy=Math.sin(st.angle)*ARENA_R*1.55;
+      const fade=1-Math.min(1,st.age/st.dur);
+      ctx.save();ctx.strokeStyle='rgba(150,215,255,'+(0.2+0.8*fade)+')';ctx.lineWidth=4;ctx.shadowColor='#73bfff';ctx.shadowBlur=20;
+      ctx.beginPath();ctx.moveTo(st.x,st.y);ctx.lineTo(st.x+dx,st.y+dy);ctx.stroke();ctx.restore();
+      ctx.save();ctx.translate(st.x,st.y);ctx.rotate(st.angle+Math.PI/2);
+      ctx.fillStyle='#8798b8';ctx.strokeStyle='#e5efff';ctx.lineWidth=1.3;ctx.fillRect(-18,-4,12,8);ctx.fillRect(6,-4,12,8);ctx.strokeRect(-18,-4,12,8);ctx.strokeRect(6,-4,12,8);
+      ctx.fillStyle='#dff3ff';ctx.shadowColor='#7ecbff';ctx.shadowBlur=16;ctx.fillRect(-5,-5,10,10);ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="RED GIANT" && redGiant){
+    const p=redGiant, pulse=1+.08*Math.sin(p.pulse*5);
+    ctx.save();ctx.shadowColor='#ff4f28';ctx.shadowBlur=35;
+    const g=ctx.createRadialGradient(p.x-p.r*.25,p.y-p.r*.25,3,p.x,p.y,p.r*2.1);
+    g.addColorStop(0,'#fff0b0');g.addColorStop(.25,'#ffad4d');g.addColorStop(.55,'#ff4b2e');g.addColorStop(1,'rgba(255,45,20,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,p.r*2.1*pulse,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,110,65,.32)';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(CENTER.x,CENTER.y,ARENA_R-18-55*Math.min(1,p.pulse/2.3),0,Math.PI*2);ctx.stroke();
+    ctx.restore();
+  }
+
+  asteroids.forEach(function(a){ World.remove(world,a.body); });
+  asteroids = [];
+  solarFlares = [];
+  blackHoles = [];
+  alienUFOs = []; alienWaveCount = 0; alienWaveTarget = 0; alienNext = Infinity; alienWavePhase = "idle"; alienWaveTimer = 0;
+  solarFlareCount = 0; solarFlareTarget = 0; solarFlareNext = 0;
+  blackHoleWaveCount = 0; blackHoleWaveTarget = 0; blackHoleNext = 0; blackHoleActiveUntil = 0; blackHoleCooldownUntil = 0;
+}
+
+function spawnBattlers(list){
+  clearBattlers();
+  list.forEach(function(c){
+    const ang = rand(0,Math.PI*2), r = rand(0,ARENA_R*0.72);
+    const x = CENTER.x+Math.cos(ang)*r, y = CENTER.y+Math.sin(ang)*r;
+    const body = Bodies.circle(x,y,BODY_R,{restitution:1,friction:0,frictionAir:0,frictionStatic:0,inertia:Infinity});
+    const spd = rand(3.2,4.6); // faster base speed = faster-paced heats, matches source pace
+    const a2 = rand(0,Math.PI*2);
+    Body.setVelocity(body,{x:Math.cos(a2)*spd, y:Math.sin(a2)*spd});
+    World.add(world,body);
+    battlers.push({body:body, code:c.code, name:c.name, wobble:Math.random()*10});
+  });
+  gapAngle = rand(0,Math.PI*2);
+  battleStartCount = list.length;
+  focusActive = false;
+  focusQueue = [];
+  focusIndex = 0;
+  focusTimer = 0;
+  focusCount = 0;
+  focusDone = false;
+  clockLeft = (battleMode === 'oneEliminated') ? FINAL_STAGE_BUDGET : QUAL_ROUND_BUDGET;
+  forceTimer = 0;
+  escapeTarget = null;
+  escapeGuideTime = 0;
+}
+
+function startQualifyingRound(){
+  qualRound++;
+  if(qualRound > QUAL_ROUNDS_TOTAL || qualPool.length===0){ startFinals(); return; }
+  // ENTIRE remaining pool fights each round - only the winner leaves the pool.
+  // Everyone else who loses this heat is still in qualPool untouched, ready for next round.
+  battleMode = 'oneRemains';
+  roundKO = [];
+  spawnBattlers(qualPool);
+  hazardIdx = hazardCycleIndex % hazards.length;
+  hazardCycleIndex = (hazardCycleIndex + 1) % hazards.length;
+  applyHazard();
+  roundElapsed = 0;
+  updatePhaseUI();
+  renderTray(true);
+  lbPageIdx = 0; renderTopBox();
+  announceRoundStart('qualifying', qualRound);
+}
+
+function startFinals(){
+  phase = 'finals';
+  // Every fresh Top-50 starts its hazard sequence at ASTEROID BELT.
+  hazardCycleIndex = 0;
+  finalPool = finalistsList.map(function(c){ return {code:c.code,name:c.name}; });
+  finalSlate = finalPool.map(function(c){ return {code:c.code,name:c.name,status:'alive'}; });
+  stageNum = 0;
+  renderTray(true);
+  startFinalStage();
+}
+
+function startFinalStage(){
+  stageNum++;
+  if(finalPool.length <= 1){ crownChampion(); return; }
+  battleMode = 'oneEliminated';
+  spawnBattlers(finalPool);
+  hazardIdx = hazardCycleIndex % hazards.length;
+  hazardCycleIndex = (hazardCycleIndex + 1) % hazards.length;
+  applyHazard();
+  roundElapsed = 0;
+  updatePhaseUI();
+  lbPageIdx = 0; renderTopBox();
+  announceRoundStart('finals', stageNum);
+}
+
+function crownChampion(){
+  phase = 'champion';
+  const champ = finalPool[0] || finalistsList[finalistsList.length-1];
+  if(!placements.some(function(p){return p.rank===1;})) placements.push({code:champ.code,name:champ.name,rank:1});
+  recordTop50Winner(champ);
+  transitioning = true;
+  startPodiumReveal(champ);
+}
+
+function finalRankedList(champ){
+  const byRank={};
+  placements.forEach(function(p){byRank[p.rank]=p;});
+  byRank[1]=champ;
+  const out=[];
+  for(let r=1;r<=finalistsList.length;r++){
+    const p=byRank[r];
+    if(p) out.push({code:p.code,name:p.name,rank:r});
+  }
+  return out;
+}
+
+function startPodiumReveal(champ){
+  const second=placements.find(function(p){return p.rank===2;}) || null;
+  const third=placements.find(function(p){return p.rank===3;}) || null;
+  const overlay=document.getElementById('podiumReveal');
+  overlay.classList.add('show');
+  overlay.classList.remove('final');
+  document.getElementById('leaderFinal').style.display='none';
+  showPodiumPlace('THIRD PLACE',third,'🥉',function(){
+    showPodiumPlace('SECOND PLACE',second,'🥈',function(){
+      showPodiumPlace('CHAMPION',champ,'🥇',function(){
+        renderFinalLeaderboard(champ,second,third);
+      });
+    });
+  });
+}
+
+function showPodiumPlace(title,entry,medal,done){
+  if(!entry){ done(); return; }
+  const flag=document.getElementById('revealFlag');
+  document.getElementById('revealTitle').textContent=title;
+  document.getElementById('revealSub').textContent=title==='CHAMPION'?'THE LAST FLAG STANDING':'FINAL PODIUM REVEAL';
+  flag.src=flagUrl(entry.code);
+  document.getElementById('revealName').textContent=entry.name.toUpperCase();
+  document.getElementById('revealMedal').textContent=medal;
+  flag.style.animation='none'; void flag.offsetWidth; flag.style.animation='flagPop .8s cubic-bezier(.2,1.4,.4,1) both';
+  const minHold = title==='THIRD PLACE'?2300:(title==='SECOND PLACE'?2300:2800);
+  const maxHold = minHold + 2400; // safety cap if speech stalls
+  let line;
+  if(title==='THIRD PLACE') line = 'In third place... ' + entry.name + '!';
+  else if(title==='SECOND PLACE') line = 'In second place... ' + entry.name + '!';
+  else line = 'And your champion... ' + entry.name + '!';
+  playCheer(title==='CHAMPION');
+  // Advances to the next podium spot only once the name has actually finished
+  // being spoken (bounded by minHold/maxHold), so longer country names never
+  // get cut off by the reveal moving on too soon.
+  speakTimed(line, {voice:'female', rate: title==='CHAMPION'?0.92:0.95}, minHold, maxHold, done);
+}
+
+function renderFinalLeaderboard(champ,second,third){
+  const overlay=document.getElementById('podiumReveal');
+  overlay.classList.add('final');
+  playPianoSting();
+  document.getElementById('revealKicker').textContent='LAST FLAG STANDING · CYCLE '+completedTop50s;
+  document.getElementById('revealTitle').textContent='CHAMPION';
+  document.getElementById('revealSub').textContent='FINAL PODIUM · TOP 50 WINNER';
+  document.getElementById('revealFlag').src=flagUrl(champ.code);
+  document.getElementById('revealName').textContent=champ.name.toUpperCase();
+  document.getElementById('revealMedal').textContent='🥇';
+  const podiums=document.getElementById('revealPodiums');
+  podiums.innerHTML='';
+  function pod(entry,cls,rank){
+    if(!entry)return '';
+    return '<div class="pod '+cls+' show"><img class="pod-flag" src="'+flagUrl(entry.code)+'"><div class="pod-name">'+entry.name.toUpperCase()+'</div><div class="pod-rank">'+rank+'</div></div>';
+  }
+  podiums.innerHTML=pod(second,'silver',2)+pod(champ,'gold',1)+pod(third,'bronze',3);
+  const ranked=finalRankedList(champ);
+  const grid=document.getElementById('leaderFinalGrid'); grid.innerHTML='';
+  ranked.forEach(function(p){
+    const d=document.createElement('div'); d.className='final-row';
+    const medal=p.rank===1?'🥇':p.rank===2?'🥈':p.rank===3?'🥉':'';
+    d.innerHTML='<span class="frank">#'+p.rank+'</span><img src="'+flagUrl(p.code)+'"><span class="fn">'+p.name+'</span><span class="fm">'+medal+'</span>';
+    grid.appendChild(d);
+  });
+  document.getElementById('leaderFinalTitle').textContent='FINAL LEADERBOARD · TOP 50 · CYCLE '+completedTop50s;
+  document.getElementById('finalContinue').textContent='CYCLE '+completedTop50s+' COMPLETE · NEXT QUALIFICATION STARTING...';
+  document.getElementById('leaderFinal').style.display='block';
+
+  const at=document.getElementById('leaderAllTime');
+  const ag=document.getElementById('allTimeGrid');
+  ag.innerHTML='';
+  const winners=sortedAllTimeWinners();
+  winners.forEach(function(w,i){
+    const d=document.createElement('div'); d.className='alltime-row'+(w.code===champ.code?' current':'');
+    const suffix=w.wins===1?'WIN':'WINS';
+    d.innerHTML='<span class="arank">#'+(i+1)+'</span><img src="'+flagUrl(w.code)+'"><span class="aname">'+w.name+'</span><span class="wins">'+w.wins+' '+suffix+'</span>';
+    ag.appendChild(d);
+  });
+  document.getElementById('allTimeCycles').textContent=completedTop50s;
+  at.style.display='block';
+  transitioning=false;
+
+  // Keep the completed result visible for the live audience, then run a spoken
+  // "5, 4, 3, 2, 1" countdown before starting a fresh 195-country qualification
+  // cycle (all-time winner record is preserved across cycles).
+  cycleRevealTimer=setTimeout(function(){
+    cycleRevealTimer=null;
+    runNextCycleCountdown(initGame);
+  }, 4000);
+}
+
+function applyHazard(){
+  const h = hazards[hazardIdx];
+  const pill = document.getElementById('hazardPill');
+  pill.textContent = h.name;
+  pill.className = "hazard-pill " + (h.cls||"");
+
+  if(hazards[hazardIdx].name==="GRAVITY VORTEX"){
+    vortexes.forEach(function(v){
+      ctx.save(); ctx.translate(v.x,v.y); ctx.rotate(v.spin);
+      for(let k=0;k<5;k++){
+        ctx.beginPath();ctx.strokeStyle='rgba(180,105,255,'+(0.48-k*.07)+')';ctx.lineWidth=3;
+        ctx.shadowColor='#a45cff';ctx.shadowBlur=16;
+        ctx.arc(0,0,v.r+8+k*9,0.2+k*.35,Math.PI*1.7+k*.5);ctx.stroke();
+      }
+      const g=ctx.createRadialGradient(0,0,2,0,0,v.r*1.8);
+      g.addColorStop(0,'#05010b');g.addColorStop(.45,'#12051f');g.addColorStop(1,'rgba(150,70,255,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,v.r*1.8,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="WORMHOLE" && wormholes){
+    [wormholes.a,wormholes.b].forEach(function(w,i){
+      ctx.save();ctx.translate(w.x,w.y);ctx.rotate(w.pulse*.15);
+      for(let k=0;k<4;k++){
+        ctx.beginPath();ctx.strokeStyle=i?'rgba(75,180,255,.65)':'rgba(180,90,255,.65)';ctx.lineWidth=3;
+        ctx.shadowColor=i?'#45cfff':'#a75cff';ctx.shadowBlur=14;
+        ctx.ellipse(0,0,w.r+7+k*5,w.r*.45+3+k*3,0,0,Math.PI*2);ctx.stroke();
+      }
+      ctx.fillStyle='#02030a';ctx.beginPath();ctx.arc(0,0,w.r*.75,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="STARBURST"){
+    starbursts.forEach(function(st){
+      ctx.save();ctx.translate(st.x,st.y);ctx.rotate(st.rot);
+      const alpha=Math.max(0,1-st.age/1.65);
+      const rays=8;
+      for(let i=0;i<rays;i++){
+        const a=i*Math.PI*2/rays;
+        ctx.strokeStyle='rgba(255,225,105,'+(0.72*alpha)+')';ctx.lineWidth=5;ctx.shadowColor='#ffd75c';ctx.shadowBlur=18;
+        ctx.beginPath();ctx.moveTo(Math.cos(a)*10,Math.sin(a)*10);ctx.lineTo(Math.cos(a)*st.r,Math.sin(a)*st.r);ctx.stroke();
+      }
+      const g=ctx.createRadialGradient(0,0,2,0,0,35);
+      g.addColorStop(0,'#fffde0');g.addColorStop(.35,'#ffe67a');g.addColorStop(1,'rgba(255,170,30,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,30,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="COMET CHASE"){
+    comets.forEach(function(c){
+      ctx.save();
+      const p=bezierPoint(c,c.t), p2=bezierPoint(c,Math.max(0,c.t-.10));
+      const ang=Math.atan2(p.y-p2.y,p.x-p2.x);
+      ctx.translate(p.x,p.y);ctx.rotate(ang);
+      const grad=ctx.createLinearGradient(-c.trail,0,12,0);
+      grad.addColorStop(0,'rgba(70,190,255,0)');grad.addColorStop(.55,'rgba(100,210,255,.25)');grad.addColorStop(1,'rgba(230,250,255,.95)');
+      ctx.strokeStyle=grad;ctx.lineWidth=10;ctx.lineCap='round';ctx.shadowColor='#66d9ff';ctx.shadowBlur=20;
+      ctx.beginPath();ctx.moveTo(-c.trail,0);ctx.lineTo(12,0);ctx.stroke();
+      ctx.fillStyle='#fff';ctx.shadowColor='#baf4ff';ctx.shadowBlur=25;ctx.beginPath();ctx.arc(10,0,7,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="PLANETARY GRAVITY" && gravityPlanet){
+    const p=gravityPlanet, pulse=1+.05*Math.sin(p.pulse*3);
+    ctx.save();ctx.shadowColor='#ff8b55';ctx.shadowBlur=25;
+    const g=ctx.createRadialGradient(p.x-p.r*.3,p.y-p.r*.3,2,p.x,p.y,p.r*1.5);
+    g.addColorStop(0,'#ffd2a2');g.addColorStop(.35,'#e77a3d');g.addColorStop(.75,'#7b321d');g.addColorStop(1,'rgba(255,90,30,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,p.r*1.5*pulse,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,160,95,.28)';ctx.lineWidth=2;
+    for(let k=0;k<3;k++){ctx.beginPath();ctx.arc(p.x,p.y,p.r+25+k*20,p.pulse+k, p.pulse+k+Math.PI*1.35);ctx.stroke();}
+    ctx.restore();
+  }
+
+  if(hazards[hazardIdx].name==="ORBITAL STRIKE" && orbitalSatellite){
+    // Persistent satellite: compact body + solar panels, visibly orbiting the ring.
+    const a=orbitalSatellite.angle;
+    const sx=CENTER.x+Math.cos(a)*(ARENA_R+30), sy=CENTER.y+Math.sin(a)*(ARENA_R+30);
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(a+Math.PI/2);
+    ctx.fillStyle='#7e8fae';ctx.strokeStyle='#d9e5ff';ctx.lineWidth=1.5;
+    ctx.fillRect(-22,-5,15,10);ctx.fillRect(7,-5,15,10);ctx.strokeRect(-22,-5,15,10);ctx.strokeRect(7,-5,15,10);
+    ctx.fillStyle='#dce9ff';ctx.shadowColor='#9cc7ff';ctx.shadowBlur=12;ctx.fillRect(-6,-6,12,12);
+    ctx.fillStyle='#566b8d';ctx.fillRect(-2,-11,4,5);ctx.restore();
+    orbitalStrikes.forEach(function(st){
+      const dx=Math.cos(st.angle)*ARENA_R*1.55,dy=Math.sin(st.angle)*ARENA_R*1.55;
+      const fade=1-Math.min(1,st.age/st.dur);
+      ctx.save();ctx.strokeStyle='rgba(150,215,255,'+(0.2+0.8*fade)+')';ctx.lineWidth=4;ctx.shadowColor='#73bfff';ctx.shadowBlur=20;
+      ctx.beginPath();ctx.moveTo(st.x,st.y);ctx.lineTo(st.x+dx,st.y+dy);ctx.stroke();ctx.restore();
+      ctx.save();ctx.translate(st.x,st.y);ctx.rotate(st.angle+Math.PI/2);
+      ctx.fillStyle='#8798b8';ctx.strokeStyle='#e5efff';ctx.lineWidth=1.3;ctx.fillRect(-18,-4,12,8);ctx.fillRect(6,-4,12,8);ctx.strokeRect(-18,-4,12,8);ctx.strokeRect(6,-4,12,8);
+      ctx.fillStyle='#dff3ff';ctx.shadowColor='#7ecbff';ctx.shadowBlur=16;ctx.fillRect(-5,-5,10,10);ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="RED GIANT" && redGiant){
+    const p=redGiant, pulse=1+.08*Math.sin(p.pulse*5);
+    ctx.save();ctx.shadowColor='#ff4f28';ctx.shadowBlur=35;
+    const g=ctx.createRadialGradient(p.x-p.r*.25,p.y-p.r*.25,3,p.x,p.y,p.r*2.1);
+    g.addColorStop(0,'#fff0b0');g.addColorStop(.25,'#ffad4d');g.addColorStop(.55,'#ff4b2e');g.addColorStop(1,'rgba(255,45,20,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,p.r*2.1*pulse,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,110,65,.32)';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(CENTER.x,CENTER.y,ARENA_R-18-55*Math.min(1,p.pulse/2.3),0,Math.PI*2);ctx.stroke();
+    ctx.restore();
+  }
+
+  asteroids.forEach(function(a){ World.remove(world,a.body); });
+  asteroids = [];
+  solarFlares = [];
+  blackHoles = [];
+  alienUFOs = []; alienWaveCount = 0; alienWaveTarget = 0; alienNext = Infinity; alienWavePhase = "idle"; alienWaveTimer = 0;
+  solarFlareCount = 0;
+  solarFlareTarget = h.name === "SOLAR FLARE" ? Math.floor(rand(3,6)) : 0;
+  solarFlareNext = h.name === "SOLAR FLARE" ? rand(0.8,1.4) : Infinity;
+  blackHoleWaveCount = 0;
+  blackHoleWaveTarget = h.name === "BLACK HOLE" ? Math.floor(rand(4,7)) : 0;
+  blackHoleNext = h.name === "BLACK HOLE" ? rand(0.6,1.0) : Infinity;
+  blackHoleActiveUntil = 0;
+  blackHoleCooldownUntil = 0;
+  alienUFOs = [];
+  alienWaveCount = 0;
+  alienWaveTarget = h.name === "ALIEN INVASION" ? Math.floor(rand(2,4)) : 0;
+  alienNext = h.name === "ALIEN INVASION" ? rand(0.9,1.5) : Infinity;
+  alienWavePhase = "idle";
+  alienWaveTimer = 0;
+  vortexes=[]; vortexCount=0; vortexTarget=h.name==="GRAVITY VORTEX"?Math.floor(rand(2,5)):0; vortexNext=h.name==="GRAVITY VORTEX"?rand(.8,1.5):Infinity; vortexUntil=0;
+  wormholes=null; wormholeTransfers=[]; wormholeCount=0; wormholeTarget=h.name==="WORMHOLE"?4:0; wormholeNext=h.name==="WORMHOLE"?rand(.9,1.3):Infinity; wormholeUntil=0; wormholeMilestone10=false; wormholeMilestone4=false;
+  starbursts=[]; starburstCount=0; starburstTarget=h.name==="STARBURST"?2:0; starburstNext=h.name==="STARBURST"?0.65:Infinity; starburstMilestone=false; starburstFinishHold=h.name==="STARBURST"?5.6:0;
+  comets=[]; cometCount=0; cometTarget=h.name==="COMET CHASE"?2:0; cometNext=h.name==="COMET CHASE"?0.8:Infinity; cometMilestone=false;
+  gravityPlanet=null; gravityPlanetCount=0; gravityPlanetTarget=h.name==="PLANETARY GRAVITY"?Math.floor(rand(2,5)):0; gravityPlanetNext=h.name==="PLANETARY GRAVITY"?rand(.8,1.4):Infinity; gravityPlanetUntil=0;
+  orbitalStrikes=[]; orbitalStrikeCount=0; orbitalStrikeTarget=h.name==="ORBITAL STRIKE"?999:0; orbitalStrikeNext=h.name==="ORBITAL STRIKE"?1.8:Infinity; orbitalSatellite=h.name==="ORBITAL STRIKE"?{angle:rand(0,Math.PI*2),speed:0.42,fireNext:1.8,phase:rand(0,Math.PI*2)}:null;
+  redGiant=null; redGiantCount=0; redGiantTarget=h.name==="RED GIANT"?2:0; redGiantNext=h.name==="RED GIANT"?rand(1.0,1.6):Infinity; redGiantUntil=0; redGiantMilestone=false;
+  if(h.name==="ASTEROID BELT"){
+    for(let i=0;i<5;i++){
+      const ang=rand(0,Math.PI*2), r=rand(ARENA_R*0.3,ARENA_R*0.8);
+      const b = Bodies.circle(CENTER.x+Math.cos(ang)*r, CENTER.y+Math.sin(ang)*r, rand(9,14),
+        {restitution:1,friction:0,frictionAir:0,inertia:Infinity});
+      Body.setVelocity(b,{x:rand(-1,1),y:rand(-1,1)});
+      World.add(world,b); asteroids.push({body:b});
+    }
   }
 }
 
-// ---------- Elimination particle bursts (drawn on the arena canvas) ----------
-let particles = [];
-function burst(x, y, colorBase){
-  const count = 16 + Math.floor(Math.random()*10);
+function scaleForCount(n){
+  // fewer flags remaining = bigger, easier-to-read sprites (confirmed in source: flags
+  // visibly grow from tiny at 50 remaining to large by the time only a handful are left).
+  if(n>=40) return 1;
+  if(n<=4) return 2.6;
+  const t = 1 - (n-4)/36; // 0 at n=40, 1 at n=4
+  return 1 + t*1.6;
+}
+
+function angDiff(a,b){ let d=(a-b)%(Math.PI*2); if(d>Math.PI)d-=Math.PI*2; if(d<-Math.PI)d+=Math.PI*2; return d; }
+function inGap(angle){ return Math.abs(angDiff(angle,gapAngle)) < gapWidth/2; }
+
+function startSurvivorFocus(count){
+  if(focusActive || focusDone || transitioning || !SURVIVOR_FOCUS_COUNTS.includes(count)) return;
+  focusActive = true;
+  focusCount = count;
+  focusQueue = battlers.slice();
+  focusIndex = 0;
+  focusTimer = 0;
+  const first = focusQueue[0];
+  if(first && typeof window.onSurvivorFocus === 'function'){
+    window.onSurvivorFocus(first, count, 1, focusQueue.length);
+  }
+}
+
+function advanceSurvivorFocus(dt){
+  if(!focusActive) return;
+  focusTimer += dt;
+  // Wait for the spoken name to actually finish (focusSpeechDone) rather than a
+  // fixed timer, so the visuals never race ahead of the commentary. Always hold
+  // a minimum beat even if speech is instant/off, and never stall past the cap
+  // (e.g. if a voice engine hangs) so the round can't get stuck.
+  const ready = focusTimer >= FOCUS_MIN_TIME && (focusSpeechDone || focusTimer >= FOCUS_MAX_TIME);
+  if(ready){
+    focusTimer = 0;
+    focusIndex++;
+    if(focusIndex >= focusQueue.length){
+      focusActive = false;
+      focusQueue = [];
+      focusIndex = 0;
+      focusCount = 0;
+      focusDone = true;
+      return;
+    }
+    const next = focusQueue[focusIndex];
+    if(next && typeof window.onSurvivorFocus === 'function'){
+      window.onSurvivorFocus(next, focusCount, focusIndex+1, focusQueue.length);
+    }
+  }
+}
+
+function clearHazardEffects(){
+  solarFlares=[]; blackHoles=[]; alienUFOs=[]; vortexes=[]; wormholes=null; wormholeTransfers=[]; starbursts=[]; comets=[]; gravityPlanet=null; orbitalStrikes=[]; orbitalSatellite=null; redGiant=null; asteroids.forEach(function(a){ try{World.remove(world,a.body);}catch(err){} }); asteroids=[];
+}
+
+function onBattlerOut(entry){
+  if(escapeTarget===entry) escapeTarget=null;
+  battlers = battlers.filter(function(b){ return b!==entry; });
+  World.remove(world, entry.body);
+
+  if(battleMode === 'oneRemains'){
+    // Lost this heat, but stays in qualPool untouched - gets another shot next round.
+    // Drops straight into the ELIMINATED box below - no overlay, keeps qualifying fast.
+    roundKO.push({code:entry.code,name:entry.name});
+    renderTray();
+    if(battlers.length === 1){
+      transitioning = true;
+      const winner = battlers[0];
+      finalistsList.push({code:winner.code,name:winner.name});
+      qualPool = qualPool.filter(function(c){ return c.code !== winner.code; });
+      renderTopBox();
+      showQualifiedOverlay(winner, finalistsList.length);
+      clearHazardEffects();
+      // Timing follows the spoken line (bounded 1400-3200ms) so a long country
+      // name never gets cut off by the round moving on before it finishes.
+      speakTimed(winner.name + ' wins!', {voice:'female', rate:1.0}, 1400, 3200, function(){
+        document.getElementById('elimFlash').classList.remove('show','qualified');
+        transitioning=false; startQualifyingRound();
+      });
+    }
+  } else if(battleMode === 'oneEliminated'){
+    const rank = finalPool.length;
+    finalPool = finalPool.filter(function(f){ return f.code!==entry.code; });
+    placements.push({code:entry.code,name:entry.name,rank:rank});
+    const slateEntry = finalSlate.find(function(f){ return f.code===entry.code; });
+    if(slateEntry) slateEntry.status = 'out';
+    showEliminationOverlay(entry, rank);
+    clearHazardEffects();
+    renderTray();
+    renderTopBox();
+    transitioning = true;
+    speakTimed(entry.name + ' eliminated!', {voice:'female', rate:1.0}, 1400, 3200, function(){
+      document.getElementById('elimFlash').classList.remove('show');
+      transitioning=false; startFinalStage();
+    });
+  }
+}
+
+function showEliminationOverlay(entry, rank){
+  const el = document.getElementById('elimFlash');
+  el.classList.remove('qualified');
+  document.getElementById('elimFlashTtl').textContent = 'ELIMINATED';
+  document.getElementById('elimFlashImg').src = flagUrl(entry.code);
+  document.getElementById('elimFlashName').textContent = entry.name.toUpperCase();
+  document.getElementById('elimFlashRank').textContent = "#" + rank + " \u00b7 " + (rank-1) + " FLAGS LEFT";
+  document.getElementById('elimFlashNxt').textContent = 'NEXT STAGE STARTING...';
+  el.classList.add('show');
+}
+
+function showQualifiedOverlay(entry, roundNum){
+  const el = document.getElementById('elimFlash');
+  el.classList.add('qualified');
+  document.getElementById('elimFlashTtl').textContent = 'QUALIFIED!';
+  document.getElementById('elimFlashImg').src = flagUrl(entry.code);
+  document.getElementById('elimFlashName').textContent = entry.name.toUpperCase();
+  document.getElementById('elimFlashRank').textContent = "ROUND " + roundNum + " WINNER";
+  document.getElementById('elimFlashNxt').textContent = 'NEXT ROUND STARTING...';
+  el.classList.add('show');
+}
+
+function updatePhaseUI(){
+  const tag = document.getElementById('phaseTag');
+  const txt = document.getElementById('phaseText');
+  if(phase==='qualifying'){
+    tag.textContent='QUALIFYING'; tag.className='phase-tag qual';
+    txt.textContent = "QUALIFYING ROUND " + qualRound + "/" + QUAL_ROUNDS_TOTAL;
+  } else if(phase==='finals'){
+    tag.textContent='FINALS'; tag.className='phase-tag final';
+    txt.textContent = "ELIMINATION STAGE " + stageNum + "/49";
+  }
+  document.getElementById('trayLabel').textContent='ELIMINATED';
+  const totalThisPhase = phase==='qualifying' ? qualPool.length : finalPool.length;
+  document.getElementById('flagsCounter').innerHTML = "<b>" + battlers.length + "</b> / <b>" + totalThisPhase + "</b> FLAGS";
+}
+
+let trayShownCount = 0; // how many placements/roundKO entries already rendered
+
+function renderTray(reset){
+  // Bottom box: whoever has just been knocked out - qualifying shows the
+  // CURRENT round's heat-losers (resets each round); finals shows the
+  // permanent session eliminations with their placement rank. Only the newly
+  // arrived chip animates in - existing ones are left alone.
+  const tray = document.getElementById('elimTray');
+  if(reset){ tray.innerHTML=''; trayShownCount=0; }
+
+  if(phase==='qualifying'){
+    for(let i=trayShownCount; i<roundKO.length; i++){
+      const f = roundKO[i];
+      const d=document.createElement('div'); d.className='elim-chip';
+      d.innerHTML='<img src="' + flagUrl(f.code) + '">';
+      tray.insertBefore(d, tray.firstChild);
+    }
+    trayShownCount = roundKO.length;
+    document.getElementById('elimCount').textContent = roundKO.length;
+  } else {
+    for(let i=trayShownCount; i<placements.length; i++){
+      const p = placements[i];
+      const d=document.createElement('div'); d.className='elim-chip';
+      d.innerHTML='<img src="' + flagUrl(p.code) + '"><b>#' + p.rank + '</b>';
+      tray.insertBefore(d, tray.firstChild); // newest first
+    }
+    trayShownCount = placements.length;
+    document.getElementById('elimCount').textContent = placements.length;
+  }
+}
+
+function renderTopBox(){
+  // Top box: qualifying shows accumulated qualifiers ("QUALIFIED FOR FINAL");
+  // finals shows the full 50-slot ranked ladder with ALIVE/OUT, paginated.
+  const grid = document.getElementById('lbGrid');
+  const titleEl = document.getElementById('lbTitle');
+  grid.innerHTML='';
+
+  if(phase==='qualifying'){
+    titleEl.innerHTML = 'QUALIFIED FOR FINAL <span id="lbPage">' + Math.min(finalistsList.length,QUAL_ROUNDS_TOTAL) + '/' + QUAL_ROUNDS_TOTAL + '</span>';
+    if(finalistsList.length===0){
+      grid.innerHTML = '<div class="empty-row">Round 1 in progress...</div>';
+      return;
+    }
+    const perPage=6;
+    const pages = Math.max(1,Math.ceil(finalistsList.length/perPage));
+    if(lbPageIdx>=pages) lbPageIdx=pages-1;
+    const slice = finalistsList.slice(lbPageIdx*perPage, lbPageIdx*perPage+perPage);
+    slice.forEach(function(f,i){
+      const row=document.createElement('div'); row.className='lb-row';
+      row.innerHTML = '<span class="rank">#' + (lbPageIdx*perPage+i+1) + '</span>' +
+        '<img class="flagmini" src="' + flagUrl(f.code) + '"><span class="nm">' + f.name + '</span>' +
+        '<span class="st win">WINNER</span>';
+      grid.appendChild(row);
+    });
+    document.getElementById('lbPage').textContent = (lbPageIdx+1) + '/' + pages;
+  } else {
+    titleEl.innerHTML = 'LAST FLAG STANDING <span id="lbPage">1/1</span>';
+    const perPage=6;
+    const pages = Math.max(1,Math.ceil(finalSlate.length/perPage));
+    if(lbPageIdx>=pages) lbPageIdx=0;
+    const slice = finalSlate.slice(lbPageIdx*perPage, lbPageIdx*perPage+perPage);
+    slice.forEach(function(f,i){
+      const row=document.createElement('div'); row.className='lb-row';
+      row.innerHTML = '<span class="rank">#' + (lbPageIdx*perPage+i+1) + '</span>' +
+        '<img class="flagmini" src="' + flagUrl(f.code) + '"><span class="nm">' + f.name + '</span>' +
+        '<span class="st ' + (f.status==='alive'?'alive':'out') + '">' + (f.status==='alive'?'ALIVE':'OUT') + '</span>';
+      grid.appendChild(row);
+    });
+    document.getElementById('lbPage').textContent = (lbPageIdx+1) + '/' + pages;
+  }
+}
+
+function nearCrossfireLine(pos){
+  const rel={x:pos.x-CENTER.x,y:pos.y-CENTER.y};
+  const a1=crossfireAngle,a2=crossfireAngle+Math.PI/2;
+  function lineDist(theta){ const nx=-Math.sin(theta),ny=Math.cos(theta); return Math.abs(rel.x*nx+rel.y*ny); }
+  return lineDist(a1)<4 || lineDist(a2)<4;
+}
+
+function currentGapWidth(){
+  // Reference behavior: the exit starts tight and grows as the current
+  // elimination round progresses. It never becomes a quarter-circle opening.
+  const start = Math.max(1, battleStartCount);
+  const progress = start <= 1 ? 1 : Math.max(0, Math.min(1, 1 - (battlers.length-1)/(start-1)));
+  const eased = Math.pow(progress, 0.78);
+  const minGap = 0.30;  // ~17 degrees
+  const maxGap = 1.05;  // ~60 degrees, below a quarter-circle
+  const pulse = 0.035*Math.sin(tGlobal*0.75);
+  return Math.max(minGap, Math.min(maxGap, minGap + (maxGap-minGap)*eased + pulse));
+}
+
+function pointSegmentDistance(px,py,ax,ay,bx,by){
+  const abx=bx-ax, aby=by-ay;
+  const ab2=abx*abx+aby*aby || 1;
+  const t=Math.max(0,Math.min(1,((px-ax)*abx+(py-ay)*aby)/ab2));
+  const qx=ax+t*abx, qy=ay+t*aby;
+  return Math.hypot(px-qx,py-qy);
+}
+
+function pushSpecialElim(list, entry){
+  if(!entry || battlers.indexOf(entry)===-1) return;
+  if(battleMode==='oneEliminated' && list.length) return;
+  if(list.indexOf(entry)===-1) list.push(entry);
+}
+
+function spawnSolarFlare(){
+  if(solarFlareCount>=solarFlareTarget) return;
+
+  // Reference behavior: each flare/meteor enters from one screen edge and
+  // travels completely across the frame to the opposite edge. Several can
+  // be visible simultaneously.
+  const W=canvas.width, H=canvas.height;
+  const side=Math.floor(rand(0,4));
+  const margin=110;
+  let sx,sy,ex,ey;
+  if(side===0){ // top -> bottom
+    sx=rand(20,W-20); sy=-margin;
+    ex=rand(20,W-20); ey=H+margin;
+  } else if(side===1){ // right -> left
+    sx=W+margin; sy=rand(20,H-20);
+    ex=-margin; ey=rand(20,H-20);
+  } else if(side===2){ // bottom -> top
+    sx=rand(20,W-20); sy=H+margin;
+    ex=rand(20,W-20); ey=-margin;
+  } else { // left -> right
+    sx=-margin; sy=rand(20,H-20);
+    ex=W+margin; ey=rand(20,H-20);
+  }
+
+  // Bias trajectories so they read as diagonal meteors rather than straight
+  // vertical/horizontal projectiles.
+  if(side===0 || side===2) ex=Math.max(10,Math.min(W-10,ex+rand(-110,110)));
+  else ey=Math.max(10,Math.min(H-10,ey+rand(-110,110)));
+
+  const dx=ex-sx, dy=ey-sy, len=Math.hypot(dx,dy);
+  const speed=rand(230,290);
+  solarFlares.push({
+    x:sx,y:sy,px:sx,py:sy,
+    vx:dx/len*speed,vy:dy/len*speed,
+    life:0,hit:{},trail:105
+  });
+  solarFlareCount++;
+}
+
+function updateSolarFlares(dt,toEliminate){
+  if(hazards[hazardIdx].name!=="SOLAR FLARE") return;
+
+  // The reference shows multiple meteors during one solar-flare event.
+  // Spawn 3-5 total without waiting for the previous meteor to leave.
+  if(solarFlareCount<solarFlareTarget && roundElapsed>=solarFlareNext){
+    spawnSolarFlare();
+    solarFlareNext=roundElapsed+rand(0.55,1.05);
+  }
+
+  for(let i=solarFlares.length-1;i>=0;i--){
+    const f=solarFlares[i];
+    f.px=f.x; f.py=f.y;
+    f.x+=f.vx*dt; f.y+=f.vy*dt; f.life+=dt;
+
+    battlers.forEach(function(entry){
+      if(f.hit[entry.code] || battlers.indexOf(entry)===-1) return;
+      // Test the whole meteor segment for this frame, not only its head.
+      const d=pointSegmentDistance(entry.body.position.x,entry.body.position.y,
+                                   f.px,f.py,f.x,f.y);
+      if(d<13){
+        f.hit[entry.code]=true;
+        pushSpecialElim(toEliminate,entry);
+      }
+    });
+
+    const off=f.x<-130 || f.x>WForFlare || f.y<-130 || f.y>HForFlare;
+    if(off) solarFlares.splice(i,1);
+  }
+}
+
+function spawnBlackHoleWave(){
+  if(blackHoleWaveCount>=blackHoleWaveTarget) return;
+  blackHoles=[];
+  const count=Math.floor(rand(2,4));
   for(let i=0;i<count;i++){
-    const angle = Math.random()*Math.PI*2;
-    const speed = (1.4 + Math.random()*3.4) * DPR;
-    particles.push({
-      x, y,
-      vx: Math.cos(angle)*speed,
-      vy: Math.sin(angle)*speed,
-      r: (1.4 + Math.random()*2.4) * DPR,
-      life: 1,
-      decay: 0.02 + Math.random()*0.02,
-      colorBase
+    const ang=rand(0,Math.PI*2), r=rand(ARENA_R*0.18,ARENA_R*0.68);
+    blackHoles.push({
+      x:CENTER.x+Math.cos(ang)*r,
+      y:CENTER.y+Math.sin(ang)*r,
+      r:rand(13,19), pulse:rand(0,Math.PI*2), hit:{},
+      born:roundElapsed
     });
   }
-}
-function updateAndDrawParticles(){
-  if(!particles.length) return;
-  particles = particles.filter(p => p.life > 0);
-  particles.forEach(p=>{
-    p.x += p.vx; p.y += p.vy;
-    p.vx *= 0.95; p.vy *= 0.95;
-    p.life -= p.decay;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.r * Math.max(0,p.life), 0, Math.PI*2);
-    ctx.fillStyle = `rgba(${p.colorBase}, ${Math.max(0,p.life).toFixed(2)})`;
-    ctx.fill();
-  });
+  blackHoleWaveCount++;
+  blackHoleActiveUntil=roundElapsed+rand(2.0,2.4);
 }
 
-function eliminate(f, cause){
-  if(!f.alive) return;
-  f.alive = false;
-  const { x, y } = f.body.position;
-  burst(x, y, cause === 'gate' ? '217,72,29' : '232,184,75');
-  World.remove(world, f.body);
-  const remaining = flags.filter(x=>x.alive).length;
-  const verb = cause === 'gate' ? 'swept out through the gate' : 'eliminated';
-  pushTicker(`<b>${f.emoji} ${f.name}</b> ${verb} — ${remaining} remain`);
-  pushChat(chatMsgFor(f.name, f.emoji, 'death'));
-}
-
-function step(){
-  if(!paused){
-    Engine.update(engine, 16.6 * speedMult);
-
-    const now = performance.now();
-    const remainingNow = flags.filter(f=>f.alive).length;
-    // once we're down to the round of 32 or fewer, ease difficulty back off
-    // so eliminations in the late rounds are slow enough to actually see
-    const taper = remainingNow <= 32 ? Math.max(0.32, remainingNow / 32) : 1;
-    const roundInterval = (4200 / speedMult) * (remainingNow <= 32 ? 1.4 : 1);
-
-    if(now - lastShrink > roundInterval){
-      lastShrink = now;
-      round++;
-      // ramp difficulty: boundary creeps in slightly, gate spins faster, sometimes reverses —
-      // but scaled down by taper once the bracket thins out
-      shrinkTarget = Math.max(0.55, shrinkTarget - 0.03 * taper);
-      gapSpeed = Math.min(0.05 * taper, gapSpeed + 0.004 * taper);
-      // if the field just thinned past 32, ease an already-fast gate back down
-      if(remainingNow <= 32) gapSpeed = Math.max(0.012, Math.min(gapSpeed, 0.05 * taper));
-
-      // force a direction change less often, and with a gentler kick, once things thin out
-      const flipChance = remainingNow <= 32 ? 0.2 : 0.35;
-      const forceFlipEvery = remainingNow <= 32 ? 5 : 3;
-      const shouldFlip = (round % forceFlipEvery === 0) || Math.random() < flipChance;
-      if(shouldFlip){
-        gapSpin *= -1;
-        flags.forEach(f=>{
-          if(!f.alive) return;
-          const b = f.body;
-          const dx = b.position.x - center.x;
-          const dy = b.position.y - center.y;
-          const dist = Math.sqrt(dx*dx+dy*dy) || 1;
-          const nx = dx/dist, ny = dy/dist;
-          // stronger kick for flags loitering near the center, gentler near the wall,
-          // and overall gentler once the bracket has thinned out
-          const centerness = 1 - Math.min(1, dist / (arenaRadius * safeRadius));
-          const kick = (0.018 + centerness * 0.03) * taper;
-          Body.applyForce(b, b.position, { x: nx*kick, y: ny*kick });
-        });
-        pushTicker(`⚡ The gate reverses — flags surge outward!`);
-      } else {
-        pushTicker(`Round ${round} — the gate spins faster`);
-      }
-    }
-    safeRadius += (shrinkTarget - safeRadius) * 0.03;
-    gapAngle = (gapAngle + gapSpeed * gapSpin * speedMult + Math.PI*2) % (Math.PI*2);
-
-    const hardRBase = arenaRadius * safeRadius;
-    flags.forEach(f=>{
-      if(!f.alive) return;
-      const b = f.body;
-      const dx = b.position.x - center.x;
-      const dy = b.position.y - center.y;
-      const dist = Math.sqrt(dx*dx+dy*dy);
-      const hardR = hardRBase - f.r;
-      if(dist > hardR){
-        // angle of this flag relative to arena center, normalized [0, 2π)
-        const flagAngle = (Math.atan2(dy, dx) + Math.PI*2) % (Math.PI*2);
-        let diff = flagAngle - gapAngle;
-        diff = ((diff + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI;
-
-        if(Math.abs(diff) < gapWidth/2){
-          // lined up with the opening — ejected through the gate
-          eliminate(f, 'gate');
-          return;
+function updateBlackHoles(dt,toEliminate){
+  if(hazards[hazardIdx].name!=="BLACK HOLE") return;
+  if(blackHoles.length===0 && blackHoleWaveCount<blackHoleWaveTarget && roundElapsed>=blackHoleNext){
+    spawnBlackHoleWave();
+  }
+  if(blackHoles.length){
+    blackHoles.forEach(function(h){
+      h.pulse+=dt*3;
+      battlers.forEach(function(entry){
+        if(h.hit[entry.code]) return;
+        const d=Math.hypot(entry.body.position.x-h.x,entry.body.position.y-h.y);
+        if(d<h.r+13){
+          h.hit[entry.code]=true;
+          pushSpecialElim(toEliminate,entry);
+        } else if(d<h.r+55){
+          // Subtle gravitational pull near the event horizon; normal movement still dominates.
+          const dx=h.x-entry.body.position.x, dy=h.y-entry.body.position.y;
+          const mag=Math.max(1,Math.hypot(dx,dy));
+          Body.setVelocity(entry.body,{x:entry.body.velocity.x+dx/mag*0.035,y:entry.body.velocity.y+dy/mag*0.035});
         }
-        // otherwise it's a solid wall: bounce back in
-        const nx = dx/dist, ny = dy/dist;
-        Body.setPosition(b, { x: center.x + nx*hardR, y: center.y + ny*hardR });
-        const vDotN = b.velocity.x*nx + b.velocity.y*ny;
-        Body.setVelocity(b, {
-          x: b.velocity.x - 2*vDotN*nx,
-          y: b.velocity.y - 2*vDotN*ny
-        });
+      });
+    });
+    if(roundElapsed>=blackHoleActiveUntil){
+      blackHoles=[];
+      if(blackHoleWaveCount<blackHoleWaveTarget) blackHoleNext=roundElapsed+rand(0.8,1.2);
+    }
+  }
+}
+
+function spawnAlienInvasion(){
+  if(alienWaveCount>=alienWaveTarget || hazards[hazardIdx].name!=="ALIEN INVASION") return;
+  const W=canvas.width, H=canvas.height;
+  const side=Math.floor(rand(0,4));
+  const armySize=Math.floor(rand(3,5));
+  const centerAng=rand(0,Math.PI*2);
+  alienUFOs=[];
+
+  for(let i=0;i<armySize;i++){
+    const spread=(i-(armySize-1)/2)*0.23;
+    const a=centerAng+spread;
+    const tx=CENTER.x+Math.cos(a)*(ARENA_R+20);
+    const ty=CENTER.y+Math.sin(a)*(ARENA_R+20);
+    let sx,sy;
+    if(side===0){ sx=rand(30,W-30); sy=-85; }
+    else if(side===1){ sx=W+85; sy=rand(40,H-40); }
+    else if(side===2){ sx=rand(30,W-30); sy=H+85; }
+    else { sx=-85; sy=rand(40,H-40); }
+    sx += Math.cos(a+Math.PI/2)*(i-(armySize-1)/2)*18;
+    sy += Math.sin(a+Math.PI/2)*(i-(armySize-1)/2)*18;
+    const opposite={
+      x:CENTER.x-Math.cos(a)*(ARENA_R+24),
+      y:CENTER.y-Math.sin(a)*(ARENA_R+24)
+    };
+    alienUFOs.push({x:sx,y:sy,sx:sx,sy:sy,tx:tx,ty:ty,ex:opposite.x,ey:opposite.y,angle:a,fire:false,hit:{}});
+  }
+  alienWaveCount++;
+  alienWavePhase="enter";
+  alienWaveTimer=0;
+}
+
+function updateAlienInvasion(dt,toEliminate){
+  if(hazards[hazardIdx].name!=="ALIEN INVASION") return;
+
+  if(alienWavePhase==="idle" && alienWaveCount<alienWaveTarget && roundElapsed>=alienNext){
+    spawnAlienInvasion();
+  }
+  if(!alienUFOs.length) return;
+
+  alienWaveTimer += dt;
+  const enterDur=1.05, fireDur=0.95, exitDur=0.9;
+  const exitStart=enterDur+fireDur;
+
+  alienUFOs.forEach(function(u){
+    if(alienWavePhase==="enter"){
+      const t=Math.min(1,alienWaveTimer/enterDur);
+      const e=1-Math.pow(1-t,3);
+      u.x=u.sx+(u.tx-u.sx)*e;
+      u.y=u.sy+(u.ty-u.sy)*e;
+      u.fire=false;
+    } else if(alienWavePhase==="fire"){
+      u.x=u.tx; u.y=u.ty; u.fire=true;
+    } else if(alienWavePhase==="exit"){
+      const t=Math.min(1,(alienWaveTimer-exitStart)/exitDur);
+      const e=t*t;
+      u.x=u.tx+(u.sx-u.tx)*e;
+      u.y=u.ty+(u.sy-u.ty)*e;
+      u.fire=false;
+    }
+  });
+
+  if(alienWavePhase==="enter" && alienWaveTimer>=enterDur){
+    alienWavePhase="fire";
+    alienWaveTimer=0;
+    alienUFOs.forEach(function(u){u.fire=true;});
+  }
+
+  if(alienWavePhase==="fire"){
+    alienUFOs.forEach(function(u){
+      // The laser is a diameter-like beam: UFO -> through centre -> opposite ring.
+      battlers.forEach(function(entry){
+        if(u.hit[entry.code] || battlers.indexOf(entry)===-1) return;
+        const d=pointSegmentDistance(entry.body.position.x,entry.body.position.y,
+          u.x,u.y,u.ex,u.ey);
+        if(d<8){
+          u.hit[entry.code]=true;
+          pushSpecialElim(toEliminate,entry);
+        }
+      });
+    });
+    if(alienWaveTimer>=fireDur){
+      alienWavePhase="exit";
+      alienWaveTimer=exitStart;
+    }
+  } else if(alienWavePhase==="exit" && alienWaveTimer>=exitStart+exitDur){
+    alienUFOs=[];
+    alienWavePhase="idle";
+    if(alienWaveCount<alienWaveTarget) alienNext=roundElapsed+rand(1.1,2.0);
+  }
+}
+
+
+function randomInsideRadius(minR,maxR){
+  const a=rand(0,Math.PI*2), r=rand(minR,maxR);
+  return {x:CENTER.x+Math.cos(a)*r,y:CENTER.y+Math.sin(a)*r};
+}
+
+function spawnVortex(){
+  if(vortexCount>=vortexTarget) return;
+  const p=randomInsideRadius(ARENA_R*.18,ARENA_R*.62);
+  vortexes=[{x:p.x,y:p.y,r:rand(22,29),spin:rand(0,Math.PI*2),hit:{}}];
+  vortexCount++; vortexUntil=roundElapsed+rand(2.1,2.8);
+}
+function updateVortex(dt,toEliminate){
+  if(hazards[hazardIdx].name!=="GRAVITY VORTEX") return;
+  if(!vortexes.length && vortexCount<vortexTarget && roundElapsed>=vortexNext) spawnVortex();
+  vortexes.forEach(v=>{
+    v.spin+=dt*4.5;
+    battlers.forEach(e=>{
+      if(v.hit[e.code]) return;
+      const dx=v.x-e.body.position.x,dy=v.y-e.body.position.y,d=Math.hypot(dx,dy)||1;
+      if(d<v.r+11){v.hit[e.code]=true;pushSpecialElim(toEliminate,e);return;}
+      if(d<v.r+90){
+        const pull=Math.min(.13,(v.r+90-d)/75*.075), tang=.04;
+        Body.setVelocity(e.body,{x:e.body.velocity.x+dx/d*pull-dy/d*tang,y:e.body.velocity.y+dy/d*pull+dx/d*tang});
       }
     });
+  });
+  if(vortexes.length && roundElapsed>=vortexUntil){
+    vortexes=[]; if(vortexCount<vortexTarget)vortexNext=roundElapsed+rand(1,1.7);
+  }
+}
 
-    updateStats();
+function spawnWormhole(force=false){
+  if(wormholeCount>=wormholeTarget) return;
+  let p1,p2,tries=0;
+  do {
+    p1=randomInsideRadius(ARENA_R*.16,ARENA_R*.40);
+    p2=randomInsideRadius(ARENA_R*.66,ARENA_R*.84);
+    tries++;
+  } while(Math.hypot(p1.x-p2.x,p1.y-p2.y)<ARENA_R*.92 && tries<20);
+  wormholes={a:{x:p1.x,y:p1.y,r:20,pulse:0},b:{x:p2.x,y:p2.y,r:20,pulse:Math.PI},hit:{}};
+  wormholeCount++;
+  wormholeUntil=roundElapsed+rand(2.4,3.1);
+}
+function startWormholeTransfer(entry,from,to){
+  wormholeTransfers.push({code:entry.code,name:entry.name,from:{x:from.x,y:from.y},to:{x:to.x,y:to.y},age:0,dur:.72});
+}
+function updateWormhole(dt,toEliminate){
+  if(hazards[hazardIdx].name!=="WORMHOLE") return;
+  // Guaranteed late visualizations: one around 10 flags and another at the top 4.
+  if(!wormholeMilestone10 && battlers.length<=10 && wormholeCount<wormholeTarget){
+    wormholeMilestone10=true; wormholeNext=roundElapsed;
+  }
+  if(!wormholeMilestone4 && battlers.length<=4 && wormholeCount<wormholeTarget){
+    wormholeMilestone4=true; wormholeNext=roundElapsed;
+  }
+  if(!wormholes && wormholeCount<wormholeTarget && roundElapsed>=wormholeNext) spawnWormhole();
+  if(!wormholes) return;
+  wormholes.a.pulse+=dt*5; wormholes.b.pulse+=dt*5;
+  battlers.forEach(e=>{
+    if(wormholes.hit[e.code]) return;
+    const da=Math.hypot(e.body.position.x-wormholes.a.x,e.body.position.y-wormholes.a.y);
+    const db=Math.hypot(e.body.position.x-wormholes.b.x,e.body.position.y-wormholes.b.y);
+    if(da<wormholes.a.r+11){
+      wormholes.hit[e.code]=true;
+      const nearR=Math.hypot(wormholes.b.x-CENTER.x,wormholes.b.y-CENTER.y);
+      if(nearR>ARENA_R*.78){
+        pushSpecialElim(toEliminate,e);
+      } else {
+        startWormholeTransfer(e,wormholes.a,wormholes.b);
+        Body.setPosition(e.body,{x:wormholes.b.x+rand(-6,6),y:wormholes.b.y+rand(-6,6)});
+        Body.setVelocity(e.body,{x:-e.body.velocity.x*.85,y:-e.body.velocity.y*.85});
+      }
+    } else if(db<wormholes.b.r+11){
+      wormholes.hit[e.code]=true;
+      startWormholeTransfer(e,wormholes.b,wormholes.a);
+      Body.setPosition(e.body,{x:wormholes.a.x+rand(-6,6),y:wormholes.a.y+rand(-6,6)});
+      Body.setVelocity(e.body,{x:-e.body.velocity.x*.85,y:-e.body.velocity.y*.85});
+    }
+  });
+  wormholeTransfers.forEach(t=>t.age+=dt);
+  wormholeTransfers=wormholeTransfers.filter(t=>t.age<t.dur && battlers.some(e=>e.code===t.code));
+  if(roundElapsed>=wormholeUntil){
+    wormholes=null;
+    if(wormholeCount<wormholeTarget) wormholeNext=roundElapsed+rand(1.0,1.5);
+  }
+}
 
-    const alive = flags.filter(f=>f.alive);
-    if(alive.length <= 1 && flags.length > 1 && running){
-      finish(alive[0]);
+function spawnStarburst(){
+  if(starburstCount>=starburstTarget) return;
+  const p=randomInsideRadius(0,ARENA_R*.12);
+  starbursts.push({x:p.x,y:p.y,age:0,r:0,rot:rand(0,Math.PI*2),hit:{}});
+  starburstCount++;
+}
+function updateStarbursts(dt,toEliminate){
+  if(hazards[hazardIdx].name!=="STARBURST") return;
+  // Two deterministic bursts, deliberately front-loaded so the round cannot
+  // finish before the audience sees the complete charge -> burst -> collapse.
+  if(!starbursts.length && starburstCount<starburstTarget && roundElapsed>=starburstNext) spawnStarburst();
+  starbursts.forEach(s=>{
+    s.age+=dt; s.rot+=dt*.7;
+    s.r=s.age<.7?70*(s.age/.7):Math.min(ARENA_R*1.25,70+(s.age-.7)*280);
+    if(s.age>.62 && s.age<1.28){
+      const rays=8;
+      battlers.forEach(e=>{
+        if(s.hit[e.code]) return;
+        const dx=e.body.position.x-s.x,dy=e.body.position.y-s.y,d=Math.hypot(dx,dy);
+        if(d>ARENA_R*1.2 || battlers.length<=1) return;
+        let rel=Math.atan2(dy,dx)-s.rot;
+        rel=((rel%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
+        const step=Math.PI*2/rays;
+        const nearest=Math.min(rel%step,step-(rel%step));
+        if(nearest<.06 && d<s.r){s.hit[e.code]=true;pushSpecialElim(toEliminate,e);}
+      });
+    }
+  });
+  starbursts=starbursts.filter(s=>s.age<1.65);
+  // Second burst starts soon after the first has completed, never at the end.
+  if(!starbursts.length && starburstCount<starburstTarget) starburstNext=2.9;
+}
+
+function spawnComet(){
+  if(cometCount>=cometTarget)return;
+  const W=canvas.width,H=canvas.height,side=Math.floor(rand(0,4));
+  let sx,sy,ex,ey;
+  if(side===0){sx=-90;sy=rand(80,H-80);ex=W+90;ey=sy+rand(-220,220);}
+  else if(side===1){sx=W+90;sy=rand(80,H-80);ex=-90;ey=sy+rand(-220,220);}
+  else if(side===2){sx=rand(70,W-70);sy=-90;ex=sx+rand(-220,220);ey=H+90;}
+  else {sx=rand(70,W-70);sy=H+90;ex=sx+rand(-220,220);ey=-90;}
+  comets.push({
+    sx,sy,ex,ey,
+    cp1:{x:rand(W*.1,W*.9),y:rand(H*.1,H*.9)},
+    cp2:{x:rand(W*.1,W*.9),y:rand(H*.1,H*.9)},
+    t:0,speed:rand(.19,.25),hit:{},trail:120
+  });
+  cometCount++;
+}
+function bezierPoint(c,t){
+  const u=1-t;
+  return {
+    x:u*u*u*c.sx+3*u*u*t*c.cp1.x+3*u*t*t*c.cp2.x+t*t*t*c.ex,
+    y:u*u*u*c.sy+3*u*u*t*c.cp1.y+3*u*t*t*c.cp2.y+t*t*t*c.ey
+  };
+}
+function updateComets(dt,toEliminate){
+  if(hazards[hazardIdx].name!=="COMET CHASE")return;
+  // Fire both comets while there is ample time for the complete enter-cross-exit animation.
+  if(!comets.length&&cometCount<cometTarget&&roundElapsed>=cometNext)spawnComet();
+  comets.forEach(c=>{
+    const prev=bezierPoint(c,c.t);
+    c.t=Math.min(1,c.t+c.speed*dt);
+    const cur=bezierPoint(c,c.t);
+    battlers.forEach(e=>{
+      if(c.hit[e.code])return;
+      if(pointSegmentDistance(e.body.position.x,e.body.position.y,prev.x,prev.y,cur.x,cur.y)<23){
+        c.hit[e.code]=true;pushSpecialElim(toEliminate,e);
+      }
+    });
+  });
+  comets=comets.filter(c=>c.t<1);
+  if(!comets.length&&cometCount<cometTarget)cometNext=4.4;
+}
+
+function spawnGravityPlanet(){
+  if(gravityPlanetCount>=gravityPlanetTarget)return;
+  const a=rand(0,Math.PI*2),r=ARENA_R+43;
+  gravityPlanet={x:CENTER.x+Math.cos(a)*r,y:CENTER.y+Math.sin(a)*r,r:rand(30,42),pulse:0,hit:{}};
+  gravityPlanetCount++;gravityPlanetUntil=roundElapsed+rand(2.3,3.0);
+}
+function updateGravityPlanet(dt,toEliminate){
+  if(hazards[hazardIdx].name!=="PLANETARY GRAVITY")return;
+  if(!gravityPlanet&&gravityPlanetCount<gravityPlanetTarget&&roundElapsed>=gravityPlanetNext)spawnGravityPlanet();
+  if(!gravityPlanet)return;
+  gravityPlanet.pulse+=dt*2;
+  battlers.forEach(e=>{
+    if(gravityPlanet.hit[e.code])return;
+    const dx=gravityPlanet.x-e.body.position.x,dy=gravityPlanet.y-e.body.position.y,d=Math.hypot(dx,dy)||1;
+    if(d<gravityPlanet.r+12){gravityPlanet.hit[e.code]=true;pushSpecialElim(toEliminate,e);return;}
+    if(d<155){
+      const pull=.10*(1-d/155);
+      Body.setVelocity(e.body,{x:e.body.velocity.x+dx/d*pull,y:e.body.velocity.y+dy/d*pull});
+    }
+  });
+  if(roundElapsed>=gravityPlanetUntil){
+    gravityPlanet=null;if(gravityPlanetCount<gravityPlanetTarget)gravityPlanetNext=roundElapsed+rand(1,1.8);
+  }
+}
+
+function updateOrbitalStrikes(dt,toEliminate){
+  if(hazards[hazardIdx].name!=="ORBITAL STRIKE" || !orbitalSatellite)return;
+  // A persistent satellite circles the arena boundary for the entire round.
+  orbitalSatellite.angle += orbitalSatellite.speed*dt;
+  if(roundElapsed>=orbitalSatellite.fireNext){
+    const a=orbitalSatellite.angle;
+    orbitalStrikes.push({x:CENTER.x+Math.cos(a)*(ARENA_R+30),y:CENTER.y+Math.sin(a)*(ARENA_R+30),
+      angle:a+Math.PI,age:0,dur:.9,hit:{}});
+    orbitalSatellite.fireNext=roundElapsed+rand(2.4,3.3);
+    orbitalStrikeCount++;
+  }
+  orbitalStrikes.forEach(s=>{
+    s.age+=dt;
+    const dx=Math.cos(s.angle)*ARENA_R*1.55,dy=Math.sin(s.angle)*ARENA_R*1.55;
+    battlers.forEach(e=>{
+      if(s.hit[e.code])return;
+      if(pointSegmentDistance(e.body.position.x,e.body.position.y,s.x,s.y,s.x+dx,s.y+dy)<12){
+        s.hit[e.code]=true;pushSpecialElim(toEliminate,e);
+      }
+    });
+  });
+  orbitalStrikes=orbitalStrikes.filter(s=>s.age<s.dur);
+}
+
+function spawnRedGiant(){
+  if(redGiantCount>=redGiantTarget)return;
+  const a=rand(0,Math.PI*2),r=ARENA_R+74;
+  redGiant={x:CENTER.x+Math.cos(a)*r,y:CENTER.y+Math.sin(a)*r,r:34,pulse:0,hit:{}};
+  redGiantCount++;redGiantUntil=roundElapsed+rand(3.0,3.8);
+}
+function updateRedGiant(dt,toEliminate){
+  if(hazards[hazardIdx].name!=="RED GIANT")return;
+  if(!redGiantMilestone && redGiantCount===1 && (battlers.length<=Math.max(30,Math.floor(battleStartCount*.35)) || roundElapsed>=9.0)){
+    redGiantMilestone=true; redGiantNext=roundElapsed;
+  }
+  if(!redGiant&&redGiantCount<redGiantTarget&&roundElapsed>=redGiantNext)spawnRedGiant();
+  if(!redGiant)return;
+  redGiant.pulse+=dt;
+  const shrink=Math.min(1,redGiant.pulse/2.3);
+  const safe=ARENA_R-18-55*shrink;
+  battlers.forEach(e=>{
+    if(redGiant.hit[e.code])return;
+    const d=Math.hypot(e.body.position.x-CENTER.x,e.body.position.y-CENTER.y);
+    if(d>safe){redGiant.hit[e.code]=true;pushSpecialElim(toEliminate,e);}
+  });
+  if(roundElapsed>=redGiantUntil){
+    redGiant=null;if(redGiantCount<redGiantTarget)redGiantNext=roundElapsed+rand(1.2,2);
+  }
+}
+
+function physicsStep(dt){
+  if(transitioning) { Engine.update(engine, Math.min(dt*1000,20)); return; }
+
+  if(focusActive){
+    advanceSurvivorFocus(dt);
+    return;
+  }
+
+  // Finals use a deliberately tight opening. The reference shows the flags
+  // repeatedly bouncing around the ring before one eventually finds the exit;
+  // unlike qualifying, the gap does NOT widen as the pool shrinks.
+  gapWidth = (battleMode === 'oneEliminated') ?
+    (0.22 + 0.025*Math.sin(tGlobal*0.55)) : currentGapWidth();
+
+  if(battlers.length===4 && !focusDone){
+    startSurvivorFocus(battlers.length);
+    return;
+  }
+
+  gapAngle += gapSpeed*gapDir*dt*60;
+  const crossfireActive = hazards[hazardIdx].name==="ALIEN CROSSFIRE";
+  if(crossfireActive) crossfireAngle += 0.01*dt*60;
+
+  Engine.update(engine, Math.min(dt*1000,33));
+
+  const toEliminate = [];
+  updateSolarFlares(dt,toEliminate);
+  updateBlackHoles(dt,toEliminate);
+  updateAlienInvasion(dt,toEliminate);
+  updateVortex(dt,toEliminate);
+  updateWormhole(dt,toEliminate);
+  updateStarbursts(dt,toEliminate);
+  updateComets(dt,toEliminate);
+  updateGravityPlanet(dt,toEliminate);
+  updateOrbitalStrikes(dt,toEliminate);
+  updateRedGiant(dt,toEliminate);
+  battlers.forEach(function(entry){
+    if(toEliminate.indexOf(entry)!==-1) return;
+    const b = entry.body;
+    const dx=b.position.x-CENTER.x, dy=b.position.y-CENTER.y;
+    const dist=Math.sqrt(dx*dx+dy*dy), angle=Math.atan2(dy,dx);
+    const limit = ARENA_R-BODY_R;
+    if(dist>limit){
+      if(inGap(angle)){
+        if(dist > ARENA_R+16){ toEliminate.push(entry); return; }
+      } else {
+        const nx=dx/dist, ny=dy/dist, v=b.velocity, dot=v.x*nx+v.y*ny;
+        Body.setVelocity(b,{x:(v.x-2*dot*nx)*0.98, y:(v.y-2*dot*ny)*0.98});
+        Body.setPosition(b,{x:CENTER.x+nx*limit, y:CENTER.y+ny*limit});
+      }
+    }
+    // keep energy up + a touch of random steering so heats never stall in a
+    // stable orbit that avoids the gap - this was the real cause of big
+    // qualifying rounds (up to 195 flags) crawling for many minutes.
+    const spd=Math.hypot(b.velocity.x,b.velocity.y);
+    const finalMode = battleMode === 'oneEliminated';
+    const minSpd = finalMode ? 2.15 : 2.6;
+    const maxSpd = finalMode ? 5.2 : 7;
+    if(spd<minSpd){ const boost=(finalMode?2.35:2.8)/Math.max(spd,0.001); Body.setVelocity(b,{x:b.velocity.x*boost,y:b.velocity.y*boost}); }
+    if(spd>maxSpd){ Body.setVelocity(b,{x:b.velocity.x*maxSpd/spd,y:b.velocity.y*maxSpd/spd}); }
+    if(Math.random()<(finalMode?0.012:0.02)){
+      const jitterAng = rand(0,Math.PI*2), jitterMag = finalMode ? rand(0.18,0.55) : rand(0.4,1.2);
+      Body.setVelocity(b,{x:b.velocity.x+Math.cos(jitterAng)*jitterMag, y:b.velocity.y+Math.sin(jitterAng)*jitterMag});
+    }
+    if(crossfireActive && nearCrossfireLine(b.position)) toEliminate.push(entry);
+  });
+
+
+  if(hazards[hazardIdx].name==="GRAVITY VORTEX"){
+    vortexes.forEach(function(v){
+      ctx.save(); ctx.translate(v.x,v.y); ctx.rotate(v.spin);
+      for(let k=0;k<5;k++){
+        ctx.beginPath();ctx.strokeStyle='rgba(180,105,255,'+(0.48-k*.07)+')';ctx.lineWidth=3;
+        ctx.shadowColor='#a45cff';ctx.shadowBlur=16;
+        ctx.arc(0,0,v.r+8+k*9,0.2+k*.35,Math.PI*1.7+k*.5);ctx.stroke();
+      }
+      const g=ctx.createRadialGradient(0,0,2,0,0,v.r*1.8);
+      g.addColorStop(0,'#05010b');g.addColorStop(.45,'#12051f');g.addColorStop(1,'rgba(150,70,255,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,v.r*1.8,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="WORMHOLE" && wormholes){
+    [wormholes.a,wormholes.b].forEach(function(w,i){
+      ctx.save();ctx.translate(w.x,w.y);ctx.rotate(w.pulse*.15);
+      for(let k=0;k<4;k++){
+        ctx.beginPath();ctx.strokeStyle=i?'rgba(75,180,255,.65)':'rgba(180,90,255,.65)';ctx.lineWidth=3;
+        ctx.shadowColor=i?'#45cfff':'#a75cff';ctx.shadowBlur=14;
+        ctx.ellipse(0,0,w.r+7+k*5,w.r*.45+3+k*3,0,0,Math.PI*2);ctx.stroke();
+      }
+      ctx.fillStyle='#02030a';ctx.beginPath();ctx.arc(0,0,w.r*.75,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="STARBURST"){
+    starbursts.forEach(function(st){
+      ctx.save();ctx.translate(st.x,st.y);ctx.rotate(st.rot);
+      const alpha=Math.max(0,1-st.age/1.65);
+      const rays=8;
+      for(let i=0;i<rays;i++){
+        const a=i*Math.PI*2/rays;
+        ctx.strokeStyle='rgba(255,225,105,'+(0.72*alpha)+')';ctx.lineWidth=5;ctx.shadowColor='#ffd75c';ctx.shadowBlur=18;
+        ctx.beginPath();ctx.moveTo(Math.cos(a)*10,Math.sin(a)*10);ctx.lineTo(Math.cos(a)*st.r,Math.sin(a)*st.r);ctx.stroke();
+      }
+      const g=ctx.createRadialGradient(0,0,2,0,0,35);
+      g.addColorStop(0,'#fffde0');g.addColorStop(.35,'#ffe67a');g.addColorStop(1,'rgba(255,170,30,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,30,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="COMET CHASE"){
+    comets.forEach(function(c){
+      ctx.save();
+      const p=bezierPoint(c,c.t), p2=bezierPoint(c,Math.max(0,c.t-.10));
+      const ang=Math.atan2(p.y-p2.y,p.x-p2.x);
+      ctx.translate(p.x,p.y);ctx.rotate(ang);
+      const grad=ctx.createLinearGradient(-c.trail,0,12,0);
+      grad.addColorStop(0,'rgba(70,190,255,0)');grad.addColorStop(.55,'rgba(100,210,255,.25)');grad.addColorStop(1,'rgba(230,250,255,.95)');
+      ctx.strokeStyle=grad;ctx.lineWidth=10;ctx.lineCap='round';ctx.shadowColor='#66d9ff';ctx.shadowBlur=20;
+      ctx.beginPath();ctx.moveTo(-c.trail,0);ctx.lineTo(12,0);ctx.stroke();
+      ctx.fillStyle='#fff';ctx.shadowColor='#baf4ff';ctx.shadowBlur=25;ctx.beginPath();ctx.arc(10,0,7,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="PLANETARY GRAVITY" && gravityPlanet){
+    const p=gravityPlanet, pulse=1+.05*Math.sin(p.pulse*3);
+    ctx.save();ctx.shadowColor='#ff8b55';ctx.shadowBlur=25;
+    const g=ctx.createRadialGradient(p.x-p.r*.3,p.y-p.r*.3,2,p.x,p.y,p.r*1.5);
+    g.addColorStop(0,'#ffd2a2');g.addColorStop(.35,'#e77a3d');g.addColorStop(.75,'#7b321d');g.addColorStop(1,'rgba(255,90,30,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,p.r*1.5*pulse,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,160,95,.28)';ctx.lineWidth=2;
+    for(let k=0;k<3;k++){ctx.beginPath();ctx.arc(p.x,p.y,p.r+25+k*20,p.pulse+k, p.pulse+k+Math.PI*1.35);ctx.stroke();}
+    ctx.restore();
+  }
+
+  if(hazards[hazardIdx].name==="ORBITAL STRIKE" && orbitalSatellite){
+    // Persistent satellite: compact body + solar panels, visibly orbiting the ring.
+    const a=orbitalSatellite.angle;
+    const sx=CENTER.x+Math.cos(a)*(ARENA_R+30), sy=CENTER.y+Math.sin(a)*(ARENA_R+30);
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(a+Math.PI/2);
+    ctx.fillStyle='#7e8fae';ctx.strokeStyle='#d9e5ff';ctx.lineWidth=1.5;
+    ctx.fillRect(-22,-5,15,10);ctx.fillRect(7,-5,15,10);ctx.strokeRect(-22,-5,15,10);ctx.strokeRect(7,-5,15,10);
+    ctx.fillStyle='#dce9ff';ctx.shadowColor='#9cc7ff';ctx.shadowBlur=12;ctx.fillRect(-6,-6,12,12);
+    ctx.fillStyle='#566b8d';ctx.fillRect(-2,-11,4,5);ctx.restore();
+    orbitalStrikes.forEach(function(st){
+      const dx=Math.cos(st.angle)*ARENA_R*1.55,dy=Math.sin(st.angle)*ARENA_R*1.55;
+      const fade=1-Math.min(1,st.age/st.dur);
+      ctx.save();ctx.strokeStyle='rgba(150,215,255,'+(0.2+0.8*fade)+')';ctx.lineWidth=4;ctx.shadowColor='#73bfff';ctx.shadowBlur=20;
+      ctx.beginPath();ctx.moveTo(st.x,st.y);ctx.lineTo(st.x+dx,st.y+dy);ctx.stroke();ctx.restore();
+      ctx.save();ctx.translate(st.x,st.y);ctx.rotate(st.angle+Math.PI/2);
+      ctx.fillStyle='#8798b8';ctx.strokeStyle='#e5efff';ctx.lineWidth=1.3;ctx.fillRect(-18,-4,12,8);ctx.fillRect(6,-4,12,8);ctx.strokeRect(-18,-4,12,8);ctx.strokeRect(6,-4,12,8);
+      ctx.fillStyle='#dff3ff';ctx.shadowColor='#7ecbff';ctx.shadowBlur=16;ctx.fillRect(-5,-5,10,10);ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="RED GIANT" && redGiant){
+    const p=redGiant, pulse=1+.08*Math.sin(p.pulse*5);
+    ctx.save();ctx.shadowColor='#ff4f28';ctx.shadowBlur=35;
+    const g=ctx.createRadialGradient(p.x-p.r*.25,p.y-p.r*.25,3,p.x,p.y,p.r*2.1);
+    g.addColorStop(0,'#fff0b0');g.addColorStop(.25,'#ffad4d');g.addColorStop(.55,'#ff4b2e');g.addColorStop(1,'rgba(255,45,20,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,p.r*2.1*pulse,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,110,65,.32)';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(CENTER.x,CENTER.y,ARENA_R-18-55*Math.min(1,p.pulse/2.3),0,Math.PI*2);ctx.stroke();
+    ctx.restore();
+  }
+
+  asteroids.forEach(function(a){
+    const dx=a.body.position.x-CENTER.x, dy=a.body.position.y-CENTER.y, dist=Math.hypot(dx,dy);
+    if(dist>ARENA_R-10){
+      const nx=dx/dist, ny=dy/dist, v=a.body.velocity, dot=v.x*nx+v.y*ny;
+      Body.setVelocity(a.body,{x:v.x-2*dot*nx,y:v.y-2*dot*ny});
+      Body.setPosition(a.body,{x:CENTER.x+nx*(ARENA_R-10), y:CENTER.y+ny*(ARENA_R-10)});
+    }
+  });
+
+  // Countdown pacing: NEVER remove a flag by simply deleting a random body.
+  // Every elimination must visibly travel through the open section of the ring,
+  // matching the reference. After the natural clock expires we gently guide one
+  // selected survivor toward the CURRENT opening; it is still eliminated only
+  // after its body physically crosses the ring through that opening.
+  clockLeft -= dt;
+  forceTimer -= dt;
+
+  if(clockLeft <= 0 && forceTimer <= 0 && battlers.length > 1 && !escapeTarget){
+    // Avoid interfering with the final 4-survivor spotlight. After the spotlight
+    // finishes, the next eliminations resume through the same physical exit.
+    escapeTarget = battlers[Math.floor(Math.random()*battlers.length)];
+    escapeGuideTime = 0;
+    forceTimer = battlers.length > 15 ? 0.18 : 0.45;
+  }
+
+  if(escapeTarget && battlers.indexOf(escapeTarget) !== -1){
+    if(escapeDelay > 0){
+      escapeDelay -= dt;
+    } else {
+      const b = escapeTarget.body;
+    const dx = b.position.x - CENTER.x, dy = b.position.y - CENTER.y;
+    const dist = Math.max(0.001, Math.hypot(dx,dy));
+    const a = Math.atan2(dy,dx);
+    const diff = angDiff(gapAngle,a);
+    // First move around the circumference toward the opening, then accelerate
+    // outward. This creates the same visible "find the empty space -> exit" motion.
+      const tangent = diff > 0 ? 1 : -1;
+      const radial = Math.max(0, Math.cos(diff));
+      // Very gentle guidance in finals: preserve the natural collisions/bounces
+      // instead of dragging the chosen flag straight into the opening.
+      const tx = -Math.sin(a)*tangent*1.55 + Math.cos(a)*(0.65 + 1.25*radial);
+      const ty =  Math.cos(a)*tangent*1.55 + Math.sin(a)*(0.65 + 1.25*radial);
+      const steer = 0.028;
+      Body.setVelocity(b,{
+        x:b.velocity.x*(1-steer)+tx*steer,
+        y:b.velocity.y*(1-steer)+ty*steer
+      });
+      escapeGuideTime += dt;
+
+      // Only eliminate after the body genuinely crosses the ring through the
+      // small opening. No random deletion/teleporting.
+      if(dist > ARENA_R+16 && inGap(a)){
+        toEliminate.push(escapeTarget);
+        escapeTarget = null;
+        escapeGuideTime = 0;
+        escapeDelay = 0;
+      }
     }
   }
 
-  render();
-  animId = requestAnimationFrame(step);
+  if(toEliminate.length && !transitioning){ onBattlerOut(toEliminate[0]); }
 }
 
-function render(){
-  ctx.clearRect(0,0,W,H);
+const canvas = document.getElementById('arena'), ctx = canvas.getContext('2d');
+const WForFlare=canvas.width+130;
+const HForFlare=canvas.height+130;
+let stars = []; for(let i=0;i<70;i++) stars.push({x:rand(0,370),y:rand(0,420),r:rand(0.4,1.6),tw:rand(0,Math.PI*2)});
+const planets = [{x:32,y:320,r:24,color:'#7a4a2c'},{x:340,y:65,r:13,color:'#3a5a8a'}];
 
-  const grad = ctx.createRadialGradient(center.x, center.y, 10, center.x, center.y, arenaRadius);
-  grad.addColorStop(0, '#2b2118');
-  grad.addColorStop(1, '#15100b');
-  ctx.beginPath();
-  ctx.arc(center.x, center.y, arenaRadius, 0, Math.PI*2);
-  ctx.fillStyle = grad;
-  ctx.fill();
-  ctx.lineWidth = 2 * DPR;
-  ctx.strokeStyle = 'rgba(192,133,82,0.35)';
-  ctx.stroke();
+function draw(dt){
+  tGlobal+=dt;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // Deep-space backdrop: layered nebula clouds, dust lanes, star clusters and distant galaxies.
+  const neb1=ctx.createRadialGradient(75,115,5,75,115,180);
+  neb1.addColorStop(0,'rgba(95,70,210,.20)'); neb1.addColorStop(.45,'rgba(45,80,190,.09)'); neb1.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=neb1; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const neb2=ctx.createRadialGradient(305,290,4,305,290,190);
+  neb2.addColorStop(0,'rgba(180,55,145,.16)'); neb2.addColorStop(.5,'rgba(75,45,150,.07)'); neb2.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=neb2; ctx.fillRect(0,0,canvas.width,canvas.height);
+  for(let i=0;i<18;i++){
+    const x=(i*83+37)%canvas.width, y=(i*137+51)%canvas.height;
+    ctx.fillStyle='rgba(130,155,255,.045)'; ctx.beginPath(); ctx.arc(x,y,rand(8,24),0,Math.PI*2); ctx.fill();
+  }
 
-  // Rotating boundary ring with a gap the flags can be ejected through
-  const liveR = arenaRadius * safeRadius;
-  const gapStart = gapAngle - gapWidth/2;
-  const gapEnd = gapAngle + gapWidth/2;
-
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineWidth = 6 * DPR;
-  ctx.strokeStyle = 'rgba(232,184,75,0.85)';
-  ctx.shadowColor = 'rgba(232,184,75,0.5)';
-  ctx.shadowBlur = 10;
-  ctx.beginPath();
-  // draw the solid wall arc: from gapEnd around to gapStart (the long way)
-  ctx.arc(center.x, center.y, liveR, gapEnd, gapStart + Math.PI*2);
-  ctx.stroke();
-  ctx.restore();
-
-  // glowing hazard markers at the gap edges
-  [gapStart, gapEnd].forEach(a=>{
-    const gx = center.x + Math.cos(a) * liveR;
-    const gy = center.y + Math.sin(a) * liveR;
-    ctx.beginPath();
-    ctx.arc(gx, gy, 5 * DPR, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(217,72,29,0.9)';
-    ctx.shadowColor = 'rgba(217,72,29,0.8)';
-    ctx.shadowBlur = 12;
-    ctx.fill();
-    ctx.shadowBlur = 0;
+  stars.forEach(function(s){
+    const tw=0.5+0.5*Math.sin(tGlobal*2+s.tw);
+    ctx.globalAlpha=0.3+0.5*tw; ctx.fillStyle='#cfd8ff';
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,7); ctx.fill();
+  });
+  ctx.globalAlpha=1;
+  planets.forEach(function(p){
+    const g=ctx.createRadialGradient(p.x-p.r*0.3,p.y-p.r*0.3,p.r*0.1,p.x,p.y,p.r);
+    g.addColorStop(0,p.color); g.addColorStop(1,'#0a0e2a');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill();
   });
 
-  // faint outward wedge showing where the opening leads
   ctx.save();
+  ctx.strokeStyle='rgba(230,236,255,0.9)'; ctx.lineWidth=2.4;
+  ctx.shadowColor='#9db4ff'; ctx.shadowBlur=14;
   ctx.beginPath();
-  ctx.moveTo(center.x, center.y);
-  ctx.arc(center.x, center.y, arenaRadius * 1.08, gapStart, gapEnd);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(217,72,29,0.08)';
-  ctx.fill();
+  ctx.arc(CENTER.x,CENTER.y,ARENA_R, gapAngle+gapWidth/2, gapAngle-gapWidth/2+Math.PI*2);
+  ctx.stroke();
   ctx.restore();
 
-  // Per-flag shadowBlur is the single most expensive part of this loop at
-  // high counts — fine on desktop, but on mobile with 115+ flags it's the
-  // main source of the laggy/stuttering animation, so drop it there once
-  // the field is large. Desktop behavior is untouched.
-  const skipFlagShadow = MOBILE && flags.length > 60;
-  flags.forEach(f=>{
-    if(!f.alive) return;
-    const { x, y } = f.body.position;
-    const size = f.r * 2.1;
-    const img = getFlagImg(f.emoji);
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(f.body.angle);
-    if(skipFlagShadow){
-      ctx.shadowBlur = 0;
-    } else {
-      ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      ctx.shadowBlur = 6;
-    }
-    if(img.complete && img.naturalWidth && !img._failed){
+
+  if(hazards[hazardIdx].name==="SOLAR FLARE"){
+    solarFlares.forEach(function(f){
+      ctx.save();
+      const ang=Math.atan2(f.vy,f.vx);
+      ctx.translate(f.x,f.y); ctx.rotate(ang);
+      // Tapered orange plasma trail + bright meteor head, matching the reference.
+      const grad=ctx.createLinearGradient(-f.trail,0,14,0);
+      grad.addColorStop(0,'rgba(255,95,15,0)');
+      grad.addColorStop(.42,'rgba(255,115,20,.16)');
+      grad.addColorStop(.78,'rgba(255,155,45,.62)');
+      grad.addColorStop(1,'rgba(255,239,170,1)');
+      ctx.strokeStyle=grad; ctx.lineWidth=8; ctx.lineCap='round';
+      ctx.shadowColor='#ff7b1c'; ctx.shadowBlur=18;
+      ctx.beginPath(); ctx.moveTo(-f.trail,0); ctx.lineTo(10,0); ctx.stroke();
+      ctx.strokeStyle='rgba(255,205,95,.75)'; ctx.lineWidth=3; ctx.shadowBlur=9;
+      ctx.beginPath(); ctx.moveTo(-f.trail*.72,0); ctx.lineTo(8,0); ctx.stroke();
+      ctx.fillStyle='#fff8d6'; ctx.shadowColor='#ffb347'; ctx.shadowBlur=24;
+      ctx.beginPath(); ctx.arc(9,0,5.5,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="ALIEN INVASION"){
+    alienUFOs.forEach(function(u){
+      ctx.save();
+      const pulse=1+0.06*Math.sin(tGlobal*8+u.angle*3);
+      ctx.translate(u.x,u.y);
+      ctx.rotate(u.angle+Math.PI/2);
+      ctx.shadowColor="#55e7ff";
+      ctx.shadowBlur=18;
+      ctx.fillStyle="rgba(90,230,255,.9)";
       ctx.beginPath();
-      ctx.arc(0, 0, size/2, 0, Math.PI*2);
-      ctx.closePath();
-      ctx.strokeStyle = 'rgba(237,230,216,0.55)';
-      ctx.lineWidth = 1.2 * DPR;
-      ctx.stroke();
-      ctx.clip();
-      ctx.drawImage(img, -size/2, -size/2, size, size);
-    } else if(img._failed){
-      // image failed to load (offline/blocked) — fall back to the OS emoji glyph
-      ctx.font = `${size}px serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(f.emoji, 0, 0);
-    } else {
-      // still loading — neutral placeholder for this frame
-      ctx.beginPath();
-      ctx.arc(0, 0, size/2, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(232,184,75,0.3)';
+      ctx.ellipse(0,0,17*pulse,7*pulse,0,0,Math.PI*2);
       ctx.fill();
-    }
+      ctx.shadowBlur=8;
+      ctx.fillStyle="#c8fbff";
+      ctx.beginPath();
+      ctx.ellipse(0,-4,8,5,0,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle="rgba(40,120,255,.9)";
+      for(let k=-1;k<=1;k++){
+        ctx.beginPath();
+        ctx.arc(k*8,4,2.2,0,Math.PI*2);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      if(u.fire){
+        ctx.save();
+        const grad=ctx.createLinearGradient(u.x,u.y,u.ex,u.ey);
+        grad.addColorStop(0,"rgba(130,245,255,.98)");
+        grad.addColorStop(.5,"rgba(75,190,255,.78)");
+        grad.addColorStop(1,"rgba(80,140,255,.08)");
+        ctx.strokeStyle=grad;
+        ctx.lineWidth=6;
+        ctx.shadowColor="#55ddff";
+        ctx.shadowBlur=18;
+        ctx.beginPath();
+        ctx.moveTo(u.x,u.y);
+        ctx.lineTo(u.ex,u.ey);
+        ctx.stroke();
+        ctx.strokeStyle="rgba(225,255,255,.95)";
+        ctx.lineWidth=1.7;
+        ctx.shadowBlur=5;
+        ctx.beginPath();
+        ctx.moveTo(u.x,u.y);
+        ctx.lineTo(u.ex,u.ey);
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+  }
+
+  if(hazards[hazardIdx].name==="BLACK HOLE"){
+    blackHoles.forEach(function(h){
+      ctx.save();
+      const pulse=1+0.06*Math.sin(h.pulse);
+      for(let k=0;k<4;k++){
+        ctx.beginPath();
+        ctx.strokeStyle='rgba(140,95,255,'+(0.18-k*0.03)+')';
+        ctx.lineWidth=2.5;
+        ctx.shadowColor='#8d5cff'; ctx.shadowBlur=12;
+        ctx.ellipse(h.x,h.y,(h.r+9+k*7)*pulse,(h.r*0.48+4+k*4)*pulse,-0.22+h.pulse*0.08,0,Math.PI*2);
+        ctx.stroke();
+      }
+      const g=ctx.createRadialGradient(h.x-h.r*.2,h.y-h.r*.2,1,h.x,h.y,h.r*1.7);
+      g.addColorStop(0,'#000'); g.addColorStop(.55,'#030207'); g.addColorStop(.72,'rgba(40,10,75,.95)'); g.addColorStop(1,'rgba(120,70,255,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(h.x,h.y,h.r*1.7,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="ALIEN CROSSFIRE"){
+    ctx.save();
+    ctx.strokeStyle='rgba(120,200,255,0.85)'; ctx.lineWidth=3;
+    ctx.shadowColor='#78c8ff'; ctx.shadowBlur=12;
+    [crossfireAngle, crossfireAngle+Math.PI/2].forEach(function(theta){
+      const dx=Math.cos(theta)*ARENA_R*1.15, dy=Math.sin(theta)*ARENA_R*1.15;
+      ctx.beginPath(); ctx.moveTo(CENTER.x-dx,CENTER.y-dy); ctx.lineTo(CENTER.x+dx,CENTER.y+dy); ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+
+  if(hazards[hazardIdx].name==="GRAVITY VORTEX"){
+    vortexes.forEach(function(v){
+      ctx.save(); ctx.translate(v.x,v.y); ctx.rotate(v.spin);
+      for(let k=0;k<5;k++){
+        ctx.beginPath();ctx.strokeStyle='rgba(180,105,255,'+(0.48-k*.07)+')';ctx.lineWidth=3;
+        ctx.shadowColor='#a45cff';ctx.shadowBlur=16;
+        ctx.arc(0,0,v.r+8+k*9,0.2+k*.35,Math.PI*1.7+k*.5);ctx.stroke();
+      }
+      const g=ctx.createRadialGradient(0,0,2,0,0,v.r*1.8);
+      g.addColorStop(0,'#05010b');g.addColorStop(.45,'#12051f');g.addColorStop(1,'rgba(150,70,255,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,v.r*1.8,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="WORMHOLE" && wormholes){
+    [wormholes.a,wormholes.b].forEach(function(w,i){
+      ctx.save();ctx.translate(w.x,w.y);ctx.rotate(w.pulse*.15);
+      for(let k=0;k<4;k++){
+        ctx.beginPath();ctx.strokeStyle=i?'rgba(75,180,255,.65)':'rgba(180,90,255,.65)';ctx.lineWidth=3;
+        ctx.shadowColor=i?'#45cfff':'#a75cff';ctx.shadowBlur=14;
+        ctx.ellipse(0,0,w.r+7+k*5,w.r*.45+3+k*3,0,0,Math.PI*2);ctx.stroke();
+      }
+      ctx.fillStyle='#02030a';ctx.beginPath();ctx.arc(0,0,w.r*.75,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="STARBURST"){
+    starbursts.forEach(function(st){
+      ctx.save();ctx.translate(st.x,st.y);ctx.rotate(st.rot);
+      const alpha=Math.max(0,1-st.age/1.65);
+      const rays=8;
+      for(let i=0;i<rays;i++){
+        const a=i*Math.PI*2/rays;
+        ctx.strokeStyle='rgba(255,225,105,'+(0.72*alpha)+')';ctx.lineWidth=5;ctx.shadowColor='#ffd75c';ctx.shadowBlur=18;
+        ctx.beginPath();ctx.moveTo(Math.cos(a)*10,Math.sin(a)*10);ctx.lineTo(Math.cos(a)*st.r,Math.sin(a)*st.r);ctx.stroke();
+      }
+      const g=ctx.createRadialGradient(0,0,2,0,0,35);
+      g.addColorStop(0,'#fffde0');g.addColorStop(.35,'#ffe67a');g.addColorStop(1,'rgba(255,170,30,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,30,0,Math.PI*2);ctx.fill();ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="COMET CHASE"){
+    comets.forEach(function(c){
+      ctx.save();
+      const p=bezierPoint(c,c.t), p2=bezierPoint(c,Math.max(0,c.t-.10));
+      const ang=Math.atan2(p.y-p2.y,p.x-p2.x);
+      ctx.translate(p.x,p.y);ctx.rotate(ang);
+      const grad=ctx.createLinearGradient(-c.trail,0,12,0);
+      grad.addColorStop(0,'rgba(70,190,255,0)');grad.addColorStop(.55,'rgba(100,210,255,.25)');grad.addColorStop(1,'rgba(230,250,255,.95)');
+      ctx.strokeStyle=grad;ctx.lineWidth=10;ctx.lineCap='round';ctx.shadowColor='#66d9ff';ctx.shadowBlur=20;
+      ctx.beginPath();ctx.moveTo(-c.trail,0);ctx.lineTo(12,0);ctx.stroke();
+      ctx.fillStyle='#fff';ctx.shadowColor='#baf4ff';ctx.shadowBlur=25;ctx.beginPath();ctx.arc(10,0,7,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="PLANETARY GRAVITY" && gravityPlanet){
+    const p=gravityPlanet, pulse=1+.05*Math.sin(p.pulse*3);
+    ctx.save();ctx.shadowColor='#ff8b55';ctx.shadowBlur=25;
+    const g=ctx.createRadialGradient(p.x-p.r*.3,p.y-p.r*.3,2,p.x,p.y,p.r*1.5);
+    g.addColorStop(0,'#ffd2a2');g.addColorStop(.35,'#e77a3d');g.addColorStop(.75,'#7b321d');g.addColorStop(1,'rgba(255,90,30,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,p.r*1.5*pulse,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,160,95,.28)';ctx.lineWidth=2;
+    for(let k=0;k<3;k++){ctx.beginPath();ctx.arc(p.x,p.y,p.r+25+k*20,p.pulse+k, p.pulse+k+Math.PI*1.35);ctx.stroke();}
+    ctx.restore();
+  }
+
+  if(hazards[hazardIdx].name==="ORBITAL STRIKE" && orbitalSatellite){
+    // Persistent satellite: compact body + solar panels, visibly orbiting the ring.
+    const a=orbitalSatellite.angle;
+    const sx=CENTER.x+Math.cos(a)*(ARENA_R+30), sy=CENTER.y+Math.sin(a)*(ARENA_R+30);
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(a+Math.PI/2);
+    ctx.fillStyle='#7e8fae';ctx.strokeStyle='#d9e5ff';ctx.lineWidth=1.5;
+    ctx.fillRect(-22,-5,15,10);ctx.fillRect(7,-5,15,10);ctx.strokeRect(-22,-5,15,10);ctx.strokeRect(7,-5,15,10);
+    ctx.fillStyle='#dce9ff';ctx.shadowColor='#9cc7ff';ctx.shadowBlur=12;ctx.fillRect(-6,-6,12,12);
+    ctx.fillStyle='#566b8d';ctx.fillRect(-2,-11,4,5);ctx.restore();
+    orbitalStrikes.forEach(function(st){
+      const dx=Math.cos(st.angle)*ARENA_R*1.55,dy=Math.sin(st.angle)*ARENA_R*1.55;
+      const fade=1-Math.min(1,st.age/st.dur);
+      ctx.save();ctx.strokeStyle='rgba(150,215,255,'+(0.2+0.8*fade)+')';ctx.lineWidth=4;ctx.shadowColor='#73bfff';ctx.shadowBlur=20;
+      ctx.beginPath();ctx.moveTo(st.x,st.y);ctx.lineTo(st.x+dx,st.y+dy);ctx.stroke();ctx.restore();
+      ctx.save();ctx.translate(st.x,st.y);ctx.rotate(st.angle+Math.PI/2);
+      ctx.fillStyle='#8798b8';ctx.strokeStyle='#e5efff';ctx.lineWidth=1.3;ctx.fillRect(-18,-4,12,8);ctx.fillRect(6,-4,12,8);ctx.strokeRect(-18,-4,12,8);ctx.strokeRect(6,-4,12,8);
+      ctx.fillStyle='#dff3ff';ctx.shadowColor='#7ecbff';ctx.shadowBlur=16;ctx.fillRect(-5,-5,10,10);ctx.restore();
+    });
+  }
+
+  if(hazards[hazardIdx].name==="RED GIANT" && redGiant){
+    const p=redGiant, pulse=1+.08*Math.sin(p.pulse*5);
+    ctx.save();ctx.shadowColor='#ff4f28';ctx.shadowBlur=35;
+    const g=ctx.createRadialGradient(p.x-p.r*.25,p.y-p.r*.25,3,p.x,p.y,p.r*2.1);
+    g.addColorStop(0,'#fff0b0');g.addColorStop(.25,'#ffad4d');g.addColorStop(.55,'#ff4b2e');g.addColorStop(1,'rgba(255,45,20,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,p.r*2.1*pulse,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,110,65,.32)';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(CENTER.x,CENTER.y,ARENA_R-18-55*Math.min(1,p.pulse/2.3),0,Math.PI*2);ctx.stroke();
+    ctx.restore();
+  }
+
+  asteroids.forEach(function(a){
+    ctx.save(); ctx.fillStyle='#8a8f9e';
+    ctx.beginPath(); ctx.arc(a.body.position.x,a.body.position.y,11,0,7); ctx.fill();
     ctx.restore();
   });
 
-  updateAndDrawParticles();
+  const showLabels = battlers.length <= NAME_LABEL_THRESHOLD;
+  const flagScale = scaleForCount(battlers.length);
+
+  const wormholeHidden = new Set(wormholeTransfers.map(function(t){return t.code;}));
+  battlers.forEach(function(entry){
+    if(wormholeHidden.has(entry.code)) return;
+    const b=entry.body, img=getImg(entry.code);
+    const wob=Math.sin(tGlobal*4+entry.wobble)*0.08;
+    const fw = FLAG_W*flagScale, fh = FLAG_H*flagScale;
+    ctx.save();
+    ctx.translate(b.position.x,b.position.y); ctx.rotate(wob);
+    if(img.complete && img.naturalWidth>0) ctx.drawImage(img,-fw/2,-fh/2,fw,fh);
+    else { ctx.fillStyle='#556'; ctx.fillRect(-fw/2,-fh/2,fw,fh); }
+    ctx.restore();
+
+    if(showLabels){
+      ctx.save();
+      ctx.font = (600) + ' ' + Math.round(9*Math.min(flagScale,1.8)) + 'px Segoe UI, sans-serif';
+      ctx.fillStyle = 'rgba(230,236,255,0.9)';
+      ctx.textAlign = 'center';
+      ctx.fillText(entry.name, b.position.x, b.position.y + fh/2 + 11);
+      ctx.restore();
+    }
+  });
+
+  if(focusActive && focusQueue.length){
+    const target = focusQueue[Math.min(focusIndex, focusQueue.length-1)];
+    if(target){
+      const b=target.body, img=getImg(target.code);
+      ctx.save();
+      ctx.fillStyle='rgba(5,8,25,0.62)';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      const pulse=1+0.06*Math.sin(tGlobal*7);
+      const fw=FLAG_W*3.8*pulse, fh=FLAG_H*3.8*pulse;
+      const x=b.position.x, y=b.position.y;
+      const glow=ctx.createRadialGradient(x,y,4,x,y,75);
+      glow.addColorStop(0,'rgba(242,193,78,0.35)');
+      glow.addColorStop(1,'rgba(242,193,78,0)');
+      ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(x,y,75,0,Math.PI*2); ctx.fill();
+      ctx.shadowColor='#f2c14e'; ctx.shadowBlur=24;
+      if(img.complete && img.naturalWidth>0) ctx.drawImage(img,x-fw/2,y-fh/2,fw,fh);
+      else { ctx.fillStyle='#556'; ctx.fillRect(x-fw/2,y-fh/2,fw,fh); }
+      ctx.shadowBlur=0;
+      ctx.font='800 12px Segoe UI, sans-serif';
+      ctx.fillStyle='#ffffff'; ctx.textAlign='center';
+      ctx.fillText(target.name.toUpperCase(),x,y+fh/2+18);
+      ctx.font='700 9px Segoe UI, sans-serif';
+      ctx.fillStyle='#f2c14e';
+      ctx.fillText('SURVIVED',x,y+fh/2+32);
+      ctx.restore();
+    }
+  }
 }
 
-let autoLoopTimer = null;
-function finish(winnerF){
-  running = false;
-  paused = true;
-  const ws = document.getElementById('winnerScreen');
-  subscribeCalloutEl.classList.remove('show');
-  document.getElementById('winnerFlag').innerHTML = renderFlags(winnerF ? winnerF.emoji : '🏳️');
-  document.getElementById('winnerName').textContent = winnerF ? winnerF.name : 'No Survivors';
-  document.getElementById('winnerSub').textContent = `Survived ${round} rounds`;
-  ws.classList.add('show');
-  pushTicker(`<b>${winnerF ? winnerF.emoji+' '+winnerF.name : 'Nobody'}</b> is the Champion!`);
-  if(winnerF){
-    pushChat(chatMsgFor(winnerF.name, winnerF.emoji, 'win'), { name: 'stream_mod' });
-    recordWin(winnerF.name, winnerF.emoji);
+function loop(ts){
+  if(lastTs==null) lastTs=ts;
+  const dt = Math.min((ts-lastTs)/1000, 0.033);
+  lastTs = ts;
+
+  physicsStep(dt);
+
+  roundElapsed += dt;
+  lbTimer += dt;
+  if(lbTimer>2.0){ lbTimer=0;
+    const pages = phase==='qualifying' ? Math.max(1,Math.ceil(finalistsList.length/6)) : Math.max(1,Math.ceil(finalSlate.length/6));
+    lbPageIdx=(lbPageIdx+1)%pages; renderTopBox();
   }
 
-  const autoLoopOn = document.getElementById('autoLoopCheck').checked;
-  const nextEl = document.getElementById('winnerNext');
-  const countEl = document.getElementById('countdownN');
-  clearInterval(autoLoopTimer);
-  if(autoLoopOn){
-    nextEl.style.display = 'block';
-    let secs = 8;
-    countEl.textContent = secs;
-    autoLoopTimer = setInterval(()=>{
-      secs--;
-      countEl.textContent = secs;
-      if(secs <= 0){
-        clearInterval(autoLoopTimer);
-        document.getElementById('winnerScreen').classList.remove('show');
-        beginRun();
-      }
-    }, 1000);
+  updatePhaseUI();
+  document.getElementById('progFill').style.width = Math.max(4,100-battlers.length*1.2)+'%';
+  const cl = Math.max(0, clockLeft);
+  if(cl <= 5){
+    document.getElementById('clock').textContent = 'ENDING SOON';
   } else {
-    nextEl.style.display = 'none';
+    const mm = Math.floor(cl/60).toString().padStart(2,'0');
+    const ss = Math.floor(cl%60).toString().padStart(2,'0');
+    document.getElementById('clock').textContent = mm+':'+ss;
   }
+
+  draw(dt);
+  requestAnimationFrame(loop);
 }
 
-// ---------- Controls ----------
-function beginRun(){
-  const count = parseInt(document.getElementById('sizeSelect').value, 10);
-  speedMult = parseFloat(document.getElementById('speedSelect').value);
-  setup(count);
-  running = true;
-  paused = false;
-  lastShrink = performance.now();
-  cancelAnimationFrame(animId);
-  step();
-  startChat();
-}
-
-document.getElementById('startBtn').addEventListener('click', beginRun);
-document.getElementById('rematchBtn').addEventListener('click', ()=>{
-  clearInterval(autoLoopTimer);
-  document.getElementById('winnerScreen').classList.remove('show');
-  beginRun();
-});
-
-document.getElementById('pauseBtn').addEventListener('click', (e)=>{
-  if(!running) return;
-  paused = !paused;
-  e.target.textContent = paused ? 'Resume' : 'Pause';
-});
-
-document.getElementById('resetBtn').addEventListener('click', ()=>{
-  running = false;
-  clearInterval(autoLoopTimer);
-  stopChat();
-  const count = parseInt(document.getElementById('sizeSelect').value, 10);
-  setup(count);
-});
-
-document.getElementById('speedSelect').addEventListener('change', (e)=>{
-  speedMult = parseFloat(e.target.value);
-});
-
-// ---------- Stream mode: hides UI chrome for clean OBS capture, ----------
-// reveals it again on mouse movement so the streamer can still adjust settings
-const streamToggle = document.getElementById('streamToggle');
-let idleTimer = null;
-function armIdleHide(){
-  clearTimeout(idleTimer);
-  document.body.classList.add('ui-visible');
-  idleTimer = setTimeout(()=>{
-    document.body.classList.remove('ui-visible');
-  }, 2600);
-}
-streamToggle.addEventListener('click', ()=>{
-  const on = document.body.classList.toggle('stream-mode');
-  streamToggle.classList.toggle('active', on);
-  if(on){ armIdleHide(); }
-  else{ clearTimeout(idleTimer); document.body.classList.remove('ui-visible'); }
-});
-document.addEventListener('mousemove', ()=>{
-  if(document.body.classList.contains('stream-mode')) armIdleHide();
-});
-
-// Clean capture: no right-click menu, no accidental drags/selection
-document.addEventListener('contextmenu', e => e.preventDefault());
-
-// ---------- Init ----------
-if(ctaTitle) document.querySelector('#subscribeCallout .txt-h').textContent = ctaTitle;
-if(ctaSub) document.querySelector('#subscribeCallout .txt-s').textContent = ctaSub;
-if(streamHandle){
-  const handleEl = document.createElement('div');
-  handleEl.className = 'corner-handle';
-  handleEl.textContent = streamHandle;
-  document.body.appendChild(handleEl);
-}
-sizeCanvas();
-if(wantsStreamMode){
-  document.body.classList.add('stream-mode');
-  streamToggle.classList.add('active');
-  armIdleHide();
-}
-beginRun(); // auto-start immediately so the arena is always live, no manual click required
-loadLeaderboard();
+initGame();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
