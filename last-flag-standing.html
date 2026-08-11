@@ -210,10 +210,10 @@
   .cycle-note{position:relative;z-index:2;color:#8fa3ff;font-size:7px;letter-spacing:1.3px;margin-top:4px;}
   .watermark{position:absolute;bottom:2px;right:8px;color:rgba(255,255,255,0.15);font-size:9px;letter-spacing:1px;}
 
-  /* Live commentary is enabled automatically; this is only a status banner. */
   .sound-gate{position:absolute;top:0;left:0;right:0;z-index:80;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,rgba(8,10,30,0.96),rgba(8,10,30,0.85));padding:9px 10px;
-    border-bottom:1px solid rgba(242,193,78,0.4);pointer-events:none;}
+    background:linear-gradient(180deg,rgba(8,10,30,0.96),rgba(8,10,30,0.85));padding:9px 10px;cursor:pointer;
+    border-bottom:1px solid rgba(242,193,78,0.4);transition:opacity .3s ease, transform .3s ease;}
+  .sound-gate.hidden{opacity:0;pointer-events:none;transform:translateY(-100%);}
   .sound-gate span{color:#f2c14e;font-size:11px;font-weight:800;letter-spacing:1.2px;}
 
   .countdown-overlay{position:absolute;inset:0;z-index:70;display:none;flex-direction:column;align-items:center;justify-content:center;
@@ -228,7 +228,7 @@
 <body>
 <div class="stage" id="stage">
 
-  <div class="sound-gate" id="soundGate"><span>&#128266; LIVE COMMENTARY ENABLED</span></div>
+  <div class="sound-gate" id="soundGate"><span>&#128266; TAP TO ENABLE LIVE COMMENTARY</span></div>
 
   <div class="leaderboard">
     <div class="lb-title" id="lbTitle">LAST FLAG STANDING <span id="lbPage">1/1</span></div>
@@ -376,10 +376,11 @@ function sortedAllTimeWinners(){
 // ============================================================
 // LIVE COMMENTARY / AUDIO ENGINE
 // Web Speech API for voice lines (no external audio files needed),
-// Web Audio API for synthesized crowd + piano stings. Commentary is
-// initialized automatically so no click is required in the live stream.
+// Web Audio API for synthesized crowd + piano stings. Browsers block
+// audio/speech until a user gesture, so everything below is gated
+// behind the "TAP TO ENABLE" bar - the game itself runs fine either way.
 // ============================================================
-let audioEnabled = true;
+let audioEnabled = false;
 let audioCtx = null;
 let maleVoice = null, femaleVoice = null;
 
@@ -521,22 +522,17 @@ function speakTimed(text, opts, minMs, maxMs, cb){
   setTimeout(finish, maxMs);
 }
 
-// Auto-enable commentary on page load. No user click is required.
-// Some browser autoplay policies can still suspend Web Audio; when that happens
-// the game continues normally and Web Speech is attempted automatically.
-function autoEnableCommentary(){
+document.getElementById('soundGate').addEventListener('click', function(){
   audioEnabled = true;
   ensureAudioCtx();
   if(window.speechSynthesis){
-    try{
-      window.speechSynthesis.resume();
-      pickVoices();
-    }catch(e){}
+    // Unlocks TTS on browsers that require a gesture-triggered utterance first.
+    const warm = new SpeechSynthesisUtterance(' ');
+    warm.volume = 0;
+    window.speechSynthesis.speak(warm);
   }
-}
-
-autoEnableCommentary();
-window.addEventListener('load', autoEnableCommentary);
+  document.getElementById('soundGate').classList.add('hidden');
+});
 
 // Called by the engine (see startSurvivorFocus/advanceSurvivorFocus) each time
 // the "final few" spotlight lands on a new flag - announces the survivor.
