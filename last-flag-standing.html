@@ -27,35 +27,37 @@
     inset:0;
     display:flex;
     flex-direction:column;
-    padding:6px 6px 5px;
+    padding:8px 8px 7px;
     overflow:hidden;
     transform:none !important;
   }
 
+  /* Use substantially more of the 1080x1920 vertical canvas for the information
+     panels. The arena gets the remaining central space rather than being left tiny. */
   .leaderboard{
     flex:0 0 auto;
     background:rgba(19,26,63,0.88);
     border:1.5px solid var(--panel-border);
-    border-radius:10px;
-    padding:7px 9px 6px;
+    border-radius:12px;
+    padding:12px 14px 10px;
     box-shadow:0 0 18px rgba(80,110,255,0.25) inset,0 0 12px rgba(80,110,255,0.15);
   }
-  .lb-title{text-align:center;color:var(--neon);font-weight:700;font-size:12px;letter-spacing:2.4px;margin-bottom:6px;
+  .lb-title{text-align:center;color:var(--neon);font-weight:700;font-size:18px;letter-spacing:3px;margin-bottom:9px;
     text-shadow:0 0 8px rgba(255,255,255,0.5);}
-  .lb-title span{color:#8fa3ff;font-size:10.5px;letter-spacing:1px;margin-left:6px;}
-  .lb-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;}
+  .lb-title span{color:#8fa3ff;font-size:14px;letter-spacing:1px;margin-left:8px;}
+  .lb-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;}
   .lb-row{display:flex;align-items:center;justify-content:space-between;background:rgba(50,65,140,0.25);
-    border-radius:4px;padding:3px 6px;font-size:10.5px;color:#d7deff;}
-  .lb-row .rank{color:#7d90d6;width:22px;flex-shrink:0;font-weight:600;}
-  .lb-row .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;}
-  .lb-row .st{font-weight:700;font-size:9.5px;letter-spacing:0.5px;}
+    border-radius:6px;padding:7px 9px;font-size:15px;color:#d7deff;min-height:32px;}
+  .lb-row .rank{color:#7d90d6;width:30px;flex-shrink:0;font-weight:600;}
+  .lb-row .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;}
+  .lb-row .st{font-weight:700;font-size:13px;letter-spacing:0.5px;}
   .st.alive{color:var(--alive);} .st.out{color:var(--out);} .st.win{color:var(--gold);}
-  .flagmini{width:14px;height:10px;object-fit:cover;border-radius:1px;margin-right:2px;vertical-align:middle;}
-  .empty-row{grid-column:1/-1;text-align:center;color:#7d90d6;font-size:10.5px;padding:6px 0;font-style:italic;}
+  .flagmini{width:20px;height:14px;object-fit:cover;border-radius:2px;margin-right:4px;vertical-align:middle;}
+  .empty-row{grid-column:1/-1;text-align:center;color:#7d90d6;font-size:14px;padding:8px 0;font-style:italic;}
 
-  .round-info{text-align:center;color:#8fa3ff;letter-spacing:2.1px;font-size:10.5px;margin:5px 0 2px;font-weight:600;flex:0 0 auto;}
+  .round-info{text-align:center;color:#8fa3ff;letter-spacing:2.4px;font-size:14px;margin:8px 0 3px;font-weight:600;flex:0 0 auto;}
   .round-info b{color:#eef1ff;}
-  .phase-tag{display:inline-block;padding:1px 8px;border-radius:8px;font-size:9.5px;letter-spacing:1.5px;font-weight:800;margin-left:6px;}
+  .phase-tag{display:inline-block;padding:2px 10px;border-radius:10px;font-size:12px;letter-spacing:1.7px;font-weight:800;margin-left:7px;}
   .phase-tag.qual{background:rgba(80,120,255,0.2);color:#8fb0ff;}
   .phase-tag.final{background:rgba(255,93,93,0.2);color:#ff8080;}
 
@@ -66,21 +68,22 @@
     display:flex;
     align-items:center;
     justify-content:center;
-    margin:1px 0 0;
+    margin:2px 0 0;
   }
-  /* Give the circular arena the central visual weight while preserving room for the
-     qualified leaderboard above and the elimination history below. */
+  /* The original 370x420 canvas is now rendered substantially larger. Matter.js
+     continues using its native coordinate system while CSS scales the finished
+     canvas, so the complete ring and hazard effects remain visible. */
   canvas{
     display:block;
-    width:min(100%,520px);
+    width:min(100%,760px);
     height:auto;
     max-height:100%;
     object-fit:contain;
   }
 
-  .hazard-row{display:flex;justify-content:center;margin:3px 0 3px;flex:0 0 auto;}
+  .hazard-row{display:flex;justify-content:center;margin:6px 0 5px;flex:0 0 auto;}
   .hazard-pill{border:1.5px solid var(--danger);color:var(--danger);background:rgba(255,93,93,0.08);
-    border-radius:20px;padding:4px 14px;font-size:10.5px;font-weight:700;letter-spacing:1.3px;
+    border-radius:22px;padding:7px 20px;font-size:14px;font-weight:700;letter-spacing:1.5px;
     box-shadow:0 0 14px rgba(255,93,93,0.35);transition:all 0.4s ease;}
   .hazard-pill.calm{border-color:#f2c14e;color:#f2c14e;box-shadow:0 0 14px rgba(242,193,78,0.3);background:rgba(242,193,78,0.08);}
   .hazard-pill.solar{border-color:#ff9d3d;color:#ffd27a;background:rgba(255,130,30,.09);box-shadow:0 0 18px rgba(255,120,30,.45);}
@@ -94,29 +97,29 @@
   .hazard-pill.orbital{border-color:#a8c6ff;color:#e1eaff;background:rgba(70,110,220,.10);box-shadow:0 0 20px rgba(100,150,255,.45);}
   .hazard-pill.redgiant{border-color:#ff6b45;color:#ffd0c3;background:rgba(255,70,30,.11);box-shadow:0 0 20px rgba(255,75,35,.5);}
 
-  .progress-track{height:5px;border-radius:4px;background:#1c2554;overflow:hidden;margin:1px 4px 3px;flex:0 0 auto;}
-  .progress-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#f2c14e,#ffdf8a);width:100%;transition:width 0.2s linear;}
-  .flags-counter{text-align:center;color:#9fb0ea;font-size:10.5px;letter-spacing:1.8px;margin-bottom:4px;font-weight:600;flex:0 0 auto;}
+  .progress-track{height:8px;border-radius:5px;background:#1c2554;overflow:hidden;margin:2px 6px 5px;flex:0 0 auto;}
+  .progress-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,#f2c14e,#ffdf8a);width:100%;transition:width 0.2s linear;}
+  .flags-counter{text-align:center;color:#9fb0ea;font-size:14px;letter-spacing:2px;margin-bottom:6px;font-weight:600;flex:0 0 auto;}
   .flags-counter b{color:#eef1ff;}
 
-  .elim-label{color:#7d90d6;font-size:9.5px;letter-spacing:1.8px;font-weight:700;margin:0 2px 3px;display:flex;justify-content:space-between;}
+  .elim-label{color:#7d90d6;font-size:13px;letter-spacing:2px;font-weight:700;margin:0 3px 5px;display:flex;justify-content:space-between;}
   .elim-tray{
     flex:0 0 auto;
     border:1.5px solid var(--panel-border);
-    border-radius:8px;
+    border-radius:10px;
     background:rgba(19,26,63,0.68);
-    padding:5px;
-    height:74px;
+    padding:8px;
+    height:125px;
     overflow:hidden;
     display:flex;
     flex-wrap:wrap;
     align-content:flex-start;
-    gap:3px;
+    gap:5px;
   }
-  .elim-chip{display:flex;align-items:center;gap:2px;font-size:8.5px;color:#aab6e6;
+  .elim-chip{display:flex;align-items:center;gap:3px;font-size:11px;color:#aab6e6;
     animation:chipIn 0.4s cubic-bezier(.34,1.56,.64,1) both;}
-  .elim-chip img{width:15px;height:10px;object-fit:cover;border-radius:1px;}
-  .elim-chip b{color:#f2c14e;font-size:8px;}
+  .elim-chip img{width:21px;height:14px;object-fit:cover;border-radius:2px;}
+  .elim-chip b{color:#f2c14e;font-size:10px;}
   @keyframes chipIn{
     0%{ transform:translateY(-14px) scale(0.4); opacity:0; }
     60%{ transform:translateY(2px) scale(1.15); opacity:1; }
