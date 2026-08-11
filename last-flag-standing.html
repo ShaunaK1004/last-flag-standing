@@ -204,9 +204,11 @@
   .cycle-note{position:relative;z-index:2;color:#8fa3ff;font-size:7px;letter-spacing:1.3px;margin-top:4px;}
   .watermark{position:absolute;bottom:2px;right:8px;color:rgba(255,255,255,0.15);font-size:9px;letter-spacing:1px;}
 
-  .sound-status{position:absolute;top:6px;right:10px;z-index:80;font-size:8.5px;letter-spacing:1px;font-weight:700;
-    color:rgba(255,255,255,0.25);pointer-events:none;transition:color .3s ease;}
-  .sound-status.on{color:var(--alive);}
+  .sound-gate{position:absolute;top:0;left:0;right:0;z-index:80;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(8,10,30,0.96),rgba(8,10,30,0.85));padding:9px 10px;cursor:pointer;
+    border-bottom:1px solid rgba(242,193,78,0.4);transition:opacity .3s ease, transform .3s ease;}
+  .sound-gate.hidden{opacity:0;pointer-events:none;transform:translateY(-100%);}
+  .sound-gate span{color:#f2c14e;font-size:11px;font-weight:800;letter-spacing:1.2px;}
 
   .countdown-overlay{position:absolute;inset:0;z-index:70;display:none;flex-direction:column;align-items:center;justify-content:center;
     background:rgba(6,8,25,0.72);}
@@ -220,7 +222,7 @@
 <body>
 <div class="stage" id="stage">
 
-  <div class="sound-status" id="soundStatus">SOUND: OFF</div>
+  <div class="sound-gate hidden" id="soundGate" aria-hidden="true"></div>
 
   <div class="leaderboard">
     <div class="lb-title" id="lbTitle">LAST FLAG STANDING <span id="lbPage">1/1</span></div>
@@ -369,10 +371,10 @@ function sortedAllTimeWinners(){
 // LIVE COMMENTARY / AUDIO ENGINE
 // Web Speech API for voice lines (no external audio files needed),
 // Web Audio API for synthesized crowd + piano stings. Browsers block
-// audio/speech until a user gesture, so everything below is gated
-// behind the "TAP TO ENABLE" bar - the game itself runs fine either way.
+// audio/speech may be restricted by the browser, but the application itself
+// keeps commentary enabled automatically with no sound-enable control.
 // ============================================================
-let audioEnabled = false;
+let audioEnabled = true;
 let audioCtx = null;
 let maleVoice = null, femaleVoice = null;
 
@@ -394,6 +396,20 @@ if(window.speechSynthesis){
   window.speechSynthesis.onvoiceschanged = pickVoices;
   pickVoices();
 }
+
+// AUDIO IS ENABLED BY DEFAULT.
+// Try to initialize/resume the audio engine automatically.
+function autoStartAudio(){
+  audioEnabled = true;
+  ensureAudioCtx();
+  pickVoices();
+}
+
+autoStartAudio();
+window.addEventListener('load', autoStartAudio);
+document.addEventListener('visibilitychange', function(){
+  if(!document.hidden) autoStartAudio();
+});
 
 // opts: {voice:'male'|'female', rate, pitch, onend}
 // onend ALWAYS fires (even with audio off/unavailable/on error) so any code
@@ -514,39 +530,8 @@ function speakTimed(text, opts, minMs, maxMs, cb){
   setTimeout(finish, maxMs);
 }
 
-function markSoundOn(){
-  if(audioEnabled) return;
-  audioEnabled = true;
-  const el = document.getElementById('soundStatus');
-  el.textContent = 'SOUND: ON';
-  el.classList.add('on');
-}
-
-function tryEnableAudio(){
-  ensureAudioCtx();
-  if(window.speechSynthesis){
-    // Unlocks TTS on browsers that require a gesture-triggered utterance first.
-    const warm = new SpeechSynthesisUtterance(' ');
-    warm.volume = 0;
-    warm.onend = markSoundOn;
-    warm.onerror = markSoundOn;
-    window.speechSynthesis.speak(warm);
-  }
-  if(audioCtx && audioCtx.state === 'running'){ markSoundOn(); }
-}
-
-// No tap-to-enable button - browsers simply will not allow audio/speech to
-// start with truly zero interaction anywhere on the page (a platform rule,
-// not something we can code around). So: try immediately on load (works in
-// some embedding contexts, e.g. certain OBS Browser Source configurations),
-// and otherwise silently piggyback on the very first click/touch/keypress
-// ANYWHERE on the page - no visible prompt, nothing for the viewer to notice.
-tryEnableAudio();
-['pointerdown','keydown','touchstart'].forEach(function(evt){
-  document.addEventListener(evt, function(){
-    if(!audioEnabled) tryEnableAudio();
-  }, {capture:true, once:true});
-});
+// No user-facing sound-enable control.
+// Commentary remains enabled automatically for the entire session.
 
 // Called by the engine (see startSurvivorFocus/advanceSurvivorFocus) each time
 // the "final few" spotlight lands on a new flag - announces the survivor.
