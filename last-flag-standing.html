@@ -543,14 +543,22 @@ window.onSurvivorFocus = function(entry, count, idx, total){
   speak(entry.name + ' survives!', {voice:'female', rate:0.98, onend:function(){ focusSpeechDone = true; }});
 };
 
-function announceRoundStart(kind, num){
-  // Energetic male "race starter" voice, kept separate from the female
-  // play-by-play commentator used for survives/eliminated/wins/podium.
-  if(kind==='qualifying'){
-    speak('Round ' + num + '! Ready... go!', {voice:'male', rate:1.1});
-  } else {
-    speak('Elimination stage ' + num + '! Ready... go!', {voice:'male', rate:1.1});
-  }
+function announceRoundStart(kind, num, cb){
+  // Energetic male "race starter" delivery: short label, then a drawn-out
+  // "Readyyyyy..." at a slow rate (the repeated letters + slowed rate is what
+  // gives the elongated stretch), then a sharp fast punchy "GO!" - like an
+  // actual race-start call rather than a flat announcement.
+  const label = kind==='qualifying' ? ('Round ' + num) : ('Elimination stage ' + num);
+  speak(label + '!', {voice:'male', rate:1.15, pitch:0.9});
+  speak('Readyyyyyyyyyyy', {voice:'male', rate:0.5, pitch:0.85});
+  // minMs/maxMs are measured from the START of this whole 3-line sequence, not
+  // just the final "GO!" - so maxMs has to comfortably cover all three lines
+  // (label + the slow elongated ready + go), or it'd cut the sequence off
+  // mid-"readyyyy" almost every time. It's only a safety net for a stuck voice
+  // engine - normal playback finishes via the real onend event well before it.
+  speakTimed('GO!', {voice:'male', rate:1.6, pitch:1.2}, 600, 8000, function(){
+    if(cb) cb();
+  });
 }
 
 function runNextCycleCountdown(onDone){
@@ -850,6 +858,7 @@ function startQualifyingRound(){
   // Everyone else who loses this heat is still in qualPool untouched, ready for next round.
   battleMode = 'oneRemains';
   roundKO = [];
+  transitioning = true; // hold the fresh board frozen until "Round X! Ready... GO!" finishes
   spawnBattlers(qualPool);
   hazardIdx = hazardCycleIndex % hazards.length;
   hazardCycleIndex = (hazardCycleIndex + 1) % hazards.length;
@@ -858,7 +867,7 @@ function startQualifyingRound(){
   updatePhaseUI();
   renderTray(true);
   lbPageIdx = 0; renderTopBox();
-  announceRoundStart('qualifying', qualRound);
+  announceRoundStart('qualifying', qualRound, function(){ transitioning = false; });
 }
 
 function startFinals(){
@@ -876,6 +885,7 @@ function startFinalStage(){
   stageNum++;
   if(finalPool.length <= 1){ crownChampion(); return; }
   battleMode = 'oneEliminated';
+  transitioning = true; // hold the fresh board frozen until "Stage X! Ready... GO!" finishes
   spawnBattlers(finalPool);
   hazardIdx = hazardCycleIndex % hazards.length;
   hazardCycleIndex = (hazardCycleIndex + 1) % hazards.length;
@@ -883,7 +893,7 @@ function startFinalStage(){
   roundElapsed = 0;
   updatePhaseUI();
   lbPageIdx = 0; renderTopBox();
-  announceRoundStart('finals', stageNum);
+  announceRoundStart('finals', stageNum, function(){ transitioning = false; });
 }
 
 function crownChampion(){
@@ -1826,7 +1836,10 @@ function updateRedGiant(dt,toEliminate){
 }
 
 function physicsStep(dt){
-  if(transitioning) { Engine.update(engine, Math.min(dt*1000,20)); return; }
+  // Fully frozen during any transition (elimination announcement, round-start
+  // gate, etc.) - no residual drift, flags hold exactly in place until the
+  // relevant commentary line finishes and the gate lifts.
+  if(transitioning) { return; }
 
   if(focusActive){
     advanceSurvivorFocus(dt);
