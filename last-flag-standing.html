@@ -13,23 +13,22 @@
     background:radial-gradient(ellipse at 50% 0%, #1a2456 0%, #0a0e2a 55%, #060815 100%);
     font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
     display:flex;align-items:center;justify-content:center;overflow:hidden;}
-  /* OBS / YouTube Live native 9:16 frame.
-     The Browser Source itself is the design frame. For a 1080x1920 source,
-     this stage is exactly 1080x1920 — no fixed-width inner frame, no CSS
-     transform, and therefore no side/top/bottom letterboxing or cropping. */
+  /* YouTube Live / OBS native vertical frame.
+     The game is authored on a 600x1066.667 design canvas (exact 9:16) and
+     scaled uniformly to the browser-source viewport. This keeps every font,
+     panel, canvas and overlay proportional instead of leaving the old 600px
+     desktop-sized stage floating inside a 1080x1920 source. */
   .stage{
-    width:100%;
-    height:100%;
-    min-width:0;
-    min-height:0;
-    aspect-ratio:auto;
-    position:fixed;
-    inset:0;
+    width:600px;
+    height:1066.666667px;
+    aspect-ratio:9/16;
+    flex:0 0 auto;
+    position:relative;
     display:flex;
     flex-direction:column;
     padding:6px 6px 5px;
     overflow:hidden;
-    transform:none !important;
+    transform-origin:center center;
   }
 
   .leaderboard{
@@ -670,14 +669,14 @@ function getImg(code){
 function rand(a,b){ return a+Math.random()*(b-a); }
 function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=arr[i]; arr[i]=arr[j]; arr[j]=t; } return arr; }
 
-// The OBS Browser Source is already the 9:16 design frame.
-// Do not scale a fixed inner canvas: that creates the exact side margins seen
-// when Chromium reports a smaller CSS viewport than the source dimensions.
+// Scale the fixed 9:16 design canvas uniformly to the actual browser/OBS source.
+// For an OBS Browser Source set the source to 1080 x 1920: scale becomes exactly 1.8,
+// so the stage occupies the entire source with zero top/bottom/side letterboxing.
 function fitVerticalStreamFrame(){
   const stage=document.getElementById('stage');
-  stage.style.transform='none';
-  stage.style.width='100%';
-  stage.style.height='100%';
+  const designW=600, designH=1066.666667;
+  const scale=Math.min(window.innerWidth/designW, window.innerHeight/designH);
+  stage.style.transform='scale('+Math.max(0.01,scale)+')';
 }
 fitVerticalStreamFrame();
 window.addEventListener('resize', fitVerticalStreamFrame);
