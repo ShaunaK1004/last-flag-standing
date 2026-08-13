@@ -1,0 +1,21 @@
+{
+  "version": "V9",
+  "timer_seconds": 60,
+  "audio_embedded": true,
+  "random_selection": true,
+  "no_immediate_repeat": true,
+  "durations_seconds": {
+    "haaland": 61.05,
+    "mbappe": 61.2,
+    "messi": 60.03,
+    "neymar": 59.38,
+    "ronaldo": 61.15
+  },
+  "mapping": {
+    "haaland": "haaland(1).mp3",
+    "mbappe": "mbappe(1).mp3",
+    "messi": "messi(1).mp3",
+    "neymar": "neymar(1).mp3",
+    "ronaldo": "ronaldo(1).mp3"
+  }
+}
