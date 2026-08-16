@@ -24,6 +24,38 @@
     padding:6px 6px 5px;
     overflow:hidden;
   }
+  /* Single plain space backdrop spanning the ENTIRE frame (not just the ring
+     canvas) - a soft starfield plus a slow-shifting ambient tint tied to the
+     current arena/hazard type, so there is never a separate "boxed" panel
+     around the ring. Sits behind every other element in the stage. */
+  .arena-ambient{position:absolute;inset:0;z-index:0;
+    isolation:isolate;
+    background:
+      radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,.55), transparent),
+      radial-gradient(1.5px 1.5px at 78% 8%, rgba(255,255,255,.4), transparent),
+      radial-gradient(1px 1px at 34% 42%, rgba(255,255,255,.5), transparent),
+      radial-gradient(1.5px 1.5px at 62% 34%, rgba(255,255,255,.35), transparent),
+      radial-gradient(1px 1px at 88% 52%, rgba(255,255,255,.45), transparent),
+      radial-gradient(1.5px 1.5px at 22% 64%, rgba(255,255,255,.4), transparent),
+      radial-gradient(1px 1px at 48% 78%, rgba(255,255,255,.5), transparent),
+      radial-gradient(1.5px 1.5px at 70% 88%, rgba(255,255,255,.35), transparent),
+      radial-gradient(1px 1px at 8% 92%, rgba(255,255,255,.4), transparent),
+      radial-gradient(ellipse at 50% 42%, var(--tint,#1a2456) 0%, var(--tint,#1a2456) 34%, #081020 78%, #03050d 100%);
+    transition:background 1.1s ease;
+  }
+
+  /* The ambient layer is the actual full-frame background.
+     Everything else is explicitly above it. */
+  .stage > :not(.arena-ambient){
+    position:relative;
+    z-index:1;
+  }
+  .arena-wrap > canvas{position:relative;z-index:1;}
+  .arena-wrap > .elim-flash,
+  .arena-wrap > .toast{z-index:20;}
+  .podium-reveal{z-index:60;}
+  .countdown-overlay{z-index:70;}
+  .sound-gate{z-index:80;}
 
   .leaderboard{
     flex:0 0 auto;
@@ -65,7 +97,7 @@
      qualified leaderboard above and the elimination history below. */
   canvas{
     display:block;
-    width:min(100%,420px);
+    width:100%;
     height:auto;
     max-height:100%;
     object-fit:contain;
@@ -99,7 +131,7 @@
     border-radius:8px;
     background:rgba(19,26,63,0.68);
     padding:5px;
-    height:74px;
+    height:92px;
     overflow:hidden;
     display:flex;
     flex-wrap:wrap;
@@ -217,10 +249,32 @@
   .countdown-num{color:#f2c14e;font-size:64px;font-weight:900;text-shadow:0 0 30px rgba(242,193,78,0.8);
     animation:countPop .55s cubic-bezier(.2,1.5,.4,1) both;}
   @keyframes countPop{ 0%{transform:scale(0.4);opacity:0;} 60%{transform:scale(1.15);opacity:1;} 100%{transform:scale(1);opacity:1;} }
+
+  /* Text-only round-start announcement (replaces spoken "Round X! Ready... go!"). */
+  .round-announce{position:absolute;inset:0;z-index:65;display:none;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(6,8,25,0.45);pointer-events:none;}
+  .round-announce.show{display:flex;}
+  .round-announce .ra-kicker{color:#8fa3ff;font-size:11px;letter-spacing:3px;font-weight:800;
+    opacity:0;animation:raKickerIn .45s ease .05s both;}
+  .round-announce .ra-title{color:#f2c14e;font-size:38px;font-weight:900;letter-spacing:2px;margin-top:4px;
+    text-shadow:0 0 26px rgba(242,193,78,0.7);opacity:0;animation:raTitleIn .5s cubic-bezier(.2,1.4,.4,1) .12s both;}
+  @keyframes raKickerIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes raTitleIn{0%{opacity:0;transform:scale(.7)}60%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}
+  .round-announce.hide .ra-kicker,.round-announce.hide .ra-title{animation:raOut .3s ease both;}
+  @keyframes raOut{from{opacity:1}to{opacity:0}}
+
+  /* Small celebratory confetti burst layered inside the qualified flash. */
+  .qual-burst{position:absolute;inset:-20% -10%;pointer-events:none;opacity:0;z-index:0;}
+  .elim-flash.qualified.show .qual-burst{opacity:1;background-image:
+    radial-gradient(circle,#4ade80 0 3px,transparent 4px),radial-gradient(circle,#f2c14e 0 3px,transparent 4px),
+    radial-gradient(circle,#7dd3fc 0 3px,transparent 4px);background-size:47px 61px,63px 79px,81px 55px;
+    animation:qualBurst 1.1s ease-out both;}
+  @keyframes qualBurst{from{background-position:0 -30px,0 -50px,0 -20px;opacity:0}20%{opacity:1}to{background-position:0 60px,0 90px,0 45px;opacity:0}}
 </style>
 </head>
 <body>
 <div class="stage" id="stage">
+  <div class="arena-ambient" id="arenaAmbient"></div>
 
   <div class="sound-gate hidden" id="soundGate" aria-hidden="true"></div>
 
@@ -239,6 +293,7 @@
     <canvas id="arena" width="370" height="420"></canvas>
     <div class="elim-flash" id="elimFlash">
       <div class="swirl"></div>
+      <div class="qual-burst"></div>
       <div class="ttl" id="elimFlashTtl">ELIMINATED</div>
       <img id="elimFlashImg" src="">
       <div class="nm" id="elimFlashName">-</div>
@@ -285,6 +340,11 @@
   <div class="countdown-overlay" id="countdownOverlay">
     <div class="countdown-label">NEXT TOURNAMENT STARTS IN</div>
     <div class="countdown-num" id="countdownNum">5</div>
+  </div>
+
+  <div class="round-announce" id="roundAnnounce">
+    <div class="ra-kicker" id="raKicker">QUALIFYING</div>
+    <div class="ra-title" id="raTitle">ROUND 1</div>
   </div>
 
 </div>
@@ -511,6 +571,52 @@ function playCountdownBeep(){
   osc.start(now); osc.stop(now+0.2);
 }
 
+// Bright short "ding-ding!" bell for the exact moment the QUALIFIED! text
+// appears on screen - distinct from the spoken "X wins!" line so the visual
+// reveal always has an immediate audio hit under it.
+function playQualifiedChime(){
+  if(!audioEnabled) return;
+  const ctx = ensureAudioCtx(); if(!ctx) return;
+  const now = ctx.currentTime;
+  const notes = [1046.50, 1318.51]; // C6, E6
+  notes.forEach(function(freq,i){
+    const t0 = now + i*0.09;
+    const osc = ctx.createOscillator(); osc.type='sine';
+    osc.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.32, t0+0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+0.5);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(t0); osc.stop(t0+0.55);
+  });
+}
+
+// Soft "bubbly" pop for a flag bouncing off the ring wall - quick upward
+// pitch blip through a lowpass filter, throttled so dozens of simultaneous
+// bounces (large qualifying heats) don't turn into a wall of noise.
+let lastWallSoundTime = 0;
+function playWallBounce(){
+  if(!audioEnabled) return;
+  const now = performance.now();
+  if(now - lastWallSoundTime < 55) return;
+  if(Math.random() < 0.4) return;
+  lastWallSoundTime = now;
+  const ctx = ensureAudioCtx(); if(!ctx) return;
+  const t0 = ctx.currentTime;
+  const startF = rand(340,420), endF = startF + rand(160,260);
+  const osc = ctx.createOscillator(); osc.type='sine';
+  osc.frequency.setValueAtTime(startF, t0);
+  osc.frequency.exponentialRampToValueAtTime(endF, t0+0.09);
+  const lp = ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1500;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(0.14, t0+0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+0.16);
+  osc.connect(lp); lp.connect(g); g.connect(ctx.destination);
+  osc.start(t0); osc.stop(t0+0.18);
+}
+
 // Speaks a line and calls cb once it's actually finished (not on a guessed
 // timer) - bounded by minMs (never rush past this even if speech is fast/off)
 // and maxMs (never stall past this even if a voice engine hangs). This is what
@@ -543,14 +649,24 @@ window.onSurvivorFocus = function(entry, count, idx, total){
 };
 
 function announceRoundStart(kind, num, onDone){
-  const line = kind==='qualifying'
-    ? 'Round ' + num + '! Ready... go!'
-    : 'Elimination stage ' + num + '! Ready... go!';
-
-  // Do not start animation until the spoken starter line actually finishes.
-  speakTimed(line, {voice:'male', rate:1.1}, 1200, 3200, function(){
-    if(onDone) onDone();
-  });
+  // Text-only starting announcement (no spoken "Ready... go!" line), matching
+  // the reference's on-screen round banner. Holds briefly, then fades out and
+  // starts the round - same gating behavior as before, just visual not audio.
+  const overlay = document.getElementById('roundAnnounce');
+  const kicker = document.getElementById('raKicker');
+  const title = document.getElementById('raTitle');
+  kicker.textContent = kind==='qualifying' ? 'QUALIFYING' : 'ELIMINATION STAGE';
+  title.textContent = kind==='qualifying' ? ('ROUND ' + num) : ('STAGE ' + num);
+  overlay.classList.remove('hide');
+  overlay.classList.add('show');
+  const HOLD = 950;
+  setTimeout(function(){
+    overlay.classList.add('hide');
+    setTimeout(function(){
+      overlay.classList.remove('show','hide');
+      if(onDone) onDone();
+    }, 260);
+  }, HOLD);
 }
 
 function runNextCycleCountdown(onDone){
@@ -588,6 +704,7 @@ let stageNum = 0;
 let battleMode = null;
 let transitioning = false;
 let gapAngle = 0, gapWidth = Math.PI/6, gapSpeed = 0.014, gapDir = 1;
+let highlightAngle = 0, highlightSpeed = 0.020;
 let battleStartCount = 0;
 let focusActive = false, focusQueue = [], focusIndex = 0, focusTimer = 0, focusCount = 0, focusDone = false;
 const SURVIVOR_FOCUS_COUNTS = [4];
@@ -601,7 +718,7 @@ let roundActive = false; // Physics/animation runs only after round commentary f
 // starts fresh at round type #1: ASTEROID BELT.
 let hazards = [
   {name:"ASTEROID BELT", cls:"danger"},
-  {name:"ALIEN CROSSFIRE", cls:"danger"},
+  {name:"ALIEN CROSSFIRE", cls:"crossfire"},
   {name:"SOLAR FLARE", cls:"solar"},
   {name:"BLACK HOLE", cls:"blackhole"},
   {name:"ALIEN INVASION", cls:"invasion"},
@@ -664,6 +781,30 @@ function getImg(code){
 }
 function rand(a,b){ return a+Math.random()*(b-a); }
 function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=arr[i]; arr[i]=arr[j]; arr[j]=t; } return arr; }
+
+// Faint full-frame tint keyed to the current arena/hazard type - stays a
+// single plain gradient (no boxed panel), just a subtle color mood shift so
+// each arena still feels distinct in the reference's "one background" style.
+const AMBIENT_TINTS = {
+  // Strong enough to be visibly different, but still dark enough for white UI/ring.
+  danger:'#3a1028',       // Asteroid Belt / generic danger
+  crossfire:'#4a0b35',     // Alien Crossfire — magenta
+  solar:'#5a2d08',        // Solar Flare — amber
+  blackhole:'#35105f',    // Black Hole — violet
+  invasion:'#073b4a',     // Alien Invasion — teal
+  vortex:'#42105f',       // Gravity Vortex — purple
+  wormhole:'#06495a',     // Wormhole — cyan/teal
+  starburst:'#5a4308',    // Starburst — gold/amber
+  comet:'#07385f',        // Comet Chase — cool blue
+  planet:'#52220b',       // Planetary Gravity — orange
+  orbital:'#102d5a',      // Orbital Strike — blue
+  redgiant:'#5a100b',     // Red Giant — red
+  calm:'#111f52'          // Calm Arena — navy
+};
+function setAmbientTint(cls){
+  const el = document.getElementById('arenaAmbient');
+  if(el) el.style.setProperty('--tint', AMBIENT_TINTS[cls] || '#1a2456');
+}
 
 function initGame(){
   if(cycleRevealTimer){ clearTimeout(cycleRevealTimer); cycleRevealTimer=null; }
@@ -836,7 +977,8 @@ function spawnBattlers(list){
     battlers.push({body:body, code:c.code, name:c.name, wobble:Math.random()*10});
   });
   gapAngle = rand(0,Math.PI*2);
-  battleStartCount = list.length;
+highlightAngle = rand(0,Math.PI*2);
+battleStartCount = list.length;
   focusActive = false;
   focusQueue = [];
   focusIndex = 0;
@@ -894,18 +1036,10 @@ function startFinalStage(){
   if(finalPool.length <= 1){ crownChampion(); return; }
   battleMode = 'oneEliminated';
   spawnBattlers(finalPool);
-  // Keep the final two Top-50 elimination rounds fixed:
-// Stage 48 (2nd-last): WORMHOLE
-// Stage 49 (last): ALIEN INVASION
-// All earlier Top-50 stages keep the existing rotating hazard map.
-if(stageNum === 48){
-  hazardIdx = hazards.findIndex(function(h){ return h.name === 'WORMHOLE'; });
-} else if(stageNum === 49){
-  hazardIdx = hazards.findIndex(function(h){ return h.name === 'ALIEN INVASION'; });
-} else {
-  hazardIdx = hazardCycleIndex % hazards.length;
-}
-hazardCycleIndex = (hazardCycleIndex + 1) % hazards.length;
+  // Reference keeps the knockout/elimination stage deliberately simple: plain
+  // ring, no arena hazards (no black hole, comet chase, etc). Those effects
+  // stay exclusive to the qualifying rounds (see startQualifyingRound).
+  hazardIdx = hazards.findIndex(function(h){ return h.name === 'CALM ARENA'; });
   applyHazard();
   roundElapsed = 0;
   updatePhaseUI();
@@ -1039,6 +1173,7 @@ function applyHazard(){
   const pill = document.getElementById('hazardPill');
   pill.textContent = h.name;
   pill.className = "hazard-pill " + (h.cls||"");
+  setAmbientTint(h.cls);
 
   if(hazards[hazardIdx].name==="GRAVITY VORTEX"){
     vortexes.forEach(function(v){
@@ -1313,6 +1448,7 @@ function showQualifiedOverlay(entry, roundNum){
   document.getElementById('elimFlashRank').textContent = "ROUND " + roundNum + " WINNER";
   document.getElementById('elimFlashNxt').textContent = 'NEXT ROUND STARTING...';
   el.classList.add('show');
+  playQualifiedChime();
 }
 
 function updatePhaseUI(){
@@ -1901,7 +2037,7 @@ function physicsStep(dt){
     return;
   }
 
-  gapAngle += gapSpeed*gapDir*dt*60;
+  gapAngle += gapSpeed*gapDir*dt*60; // opening motion ONLY; independent of highlightAngle
   const crossfireActive = hazards[hazardIdx].name==="ALIEN CROSSFIRE";
   if(crossfireActive) crossfireAngle += 0.01*dt*60;
 
@@ -1931,6 +2067,7 @@ function physicsStep(dt){
         const nx=dx/dist, ny=dy/dist, v=b.velocity, dot=v.x*nx+v.y*ny;
         Body.setVelocity(b,{x:(v.x-2*dot*nx)*0.98, y:(v.y-2*dot*ny)*0.98});
         Body.setPosition(b,{x:CENTER.x+nx*limit, y:CENTER.y+ny*limit});
+        playWallBounce();
       }
     }
     // keep energy up + a touch of random steering so heats never stall in a
@@ -2083,7 +2220,7 @@ function physicsStep(dt){
     const dist = Math.max(0.001, Math.hypot(dx,dy));
     const a = Math.atan2(dy,dx);
     const diff = angDiff(gapAngle,a);
-    // First move around the circumference toward the opening, then accelerate
+    // First move around the circumference toward the PHYSICS opening (gapAngle), then accelerate
     // outward. This creates the same visible "find the empty space -> exit" motion.
       const tangent = diff > 0 ? 1 : -1;
       const radial = Math.max(0, Math.cos(diff));
@@ -2121,18 +2258,11 @@ const planets = [{x:32,y:320,r:24,color:'#7a4a2c'},{x:340,y:65,r:13,color:'#3a5a
 function draw(dt){
   tGlobal+=dt;
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  // Deep-space backdrop: layered nebula clouds, dust lanes, star clusters and distant galaxies.
-  const neb1=ctx.createRadialGradient(75,115,5,75,115,180);
-  neb1.addColorStop(0,'rgba(95,70,210,.20)'); neb1.addColorStop(.45,'rgba(45,80,190,.09)'); neb1.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=neb1; ctx.fillRect(0,0,canvas.width,canvas.height);
-  const neb2=ctx.createRadialGradient(305,290,4,305,290,190);
-  neb2.addColorStop(0,'rgba(180,55,145,.16)'); neb2.addColorStop(.5,'rgba(75,45,150,.07)'); neb2.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=neb2; ctx.fillRect(0,0,canvas.width,canvas.height);
-  for(let i=0;i<18;i++){
-    const x=(i*83+37)%canvas.width, y=(i*137+51)%canvas.height;
-    ctx.fillStyle='rgba(130,155,255,.045)'; ctx.beginPath(); ctx.arc(x,y,rand(8,24),0,Math.PI*2); ctx.fill();
-  }
-
+  // Canvas itself stays otherwise transparent - the space backdrop (starfield +
+  // ambient hazard tint) now lives on the full-stage .arena-ambient layer so
+  // the ring never sits inside a separate tinted "box". Only a light twinkle
+  // + the two distant planets render here, matching the reference's plain,
+  // unboxed backdrop.
   stars.forEach(function(s){
     const tw=0.5+0.5*Math.sin(tGlobal*2+s.tw);
     ctx.globalAlpha=0.3+0.5*tw; ctx.fillStyle='#cfd8ff';
@@ -2145,11 +2275,35 @@ function draw(dt){
     ctx.fillStyle=g; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill();
   });
 
+  // REAL EXIT OPENING: the white arena ring has a visible gap.
+  // gapAngle is ONLY the physics/elimination opening.
   ctx.save();
-  ctx.strokeStyle='rgba(230,236,255,0.9)'; ctx.lineWidth=2.4;
-  ctx.shadowColor='#9db4ff'; ctx.shadowBlur=14;
+  ctx.strokeStyle='rgba(230,236,255,0.94)';
+  ctx.lineWidth=2.4;
+  ctx.shadowColor='#9db4ff';
+  ctx.shadowBlur=14;
+  const ringStart = gapAngle + gapWidth/2;
+  const ringEnd = gapAngle + Math.PI*2 - gapWidth/2;
   ctx.beginPath();
-  ctx.arc(CENTER.x,CENTER.y,ARENA_R, gapAngle+gapWidth/2, gapAngle-gapWidth/2+Math.PI*2);
+  ctx.arc(CENTER.x,CENTER.y,ARENA_R, ringStart, ringEnd);
+  ctx.stroke();
+  ctx.restore();
+
+  // INDEPENDENT MOVING HIGHLIGHT: this has NO relationship to the opening
+  // and never changes elimination logic. It simply travels around the ring.
+  // Cyan/violet is deliberately separated from the white ring and space UI.
+  highlightAngle += highlightSpeed * dt * 60;
+  const hlWidth = 0.62;
+  const hlStart = highlightAngle-hlWidth/2;
+  const hlEnd = highlightAngle+hlWidth/2;
+  ctx.save();
+  ctx.strokeStyle='#62f5ff';
+  ctx.lineWidth=3.0;
+  ctx.lineCap='round';
+  ctx.shadowColor='#28d9ff';
+  ctx.shadowBlur=18;
+  ctx.beginPath();
+  ctx.arc(CENTER.x,CENTER.y,ARENA_R+0.5,hlStart,hlEnd);
   ctx.stroke();
   ctx.restore();
 
