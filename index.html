@@ -92,6 +92,9 @@
     align-items:center;
     justify-content:center;
     margin:1px 0 0;
+    border:2px solid #c94dff;
+    border-radius:30px;
+    box-shadow:0 0 18px rgba(201,77,255,.6), 0 0 34px rgba(201,77,255,.28), inset 0 0 20px rgba(201,77,255,.12);
   }
   /* Give the circular arena the central visual weight while preserving room for the
      qualified leaderboard above and the elimination history below. */
@@ -278,10 +281,8 @@
 
   <div class="sound-gate hidden" id="soundGate" aria-hidden="true"></div>
 
-  <div class="leaderboard">
-    <div class="lb-title" id="lbTitle">LAST FLAG STANDING <span id="lbPage">1/1</span></div>
-    <div class="lb-grid" id="lbGrid"></div>
-  </div>
+  <div class="elim-label"><span id="trayLabel">ELIMINATED</span><span id="elimCount">0</span></div>
+  <div class="elim-tray" id="elimTray"></div>
 
   <div class="round-info">
     <span id="phaseText">QUALIFYING ROUND 1/50</span>
@@ -313,8 +314,10 @@
   <div class="progress-track"><div class="progress-fill" id="progFill"></div></div>
   <div class="flags-counter" id="flagsCounter">0 / 0 FLAGS</div>
 
-  <div class="elim-label"><span id="trayLabel">ELIMINATED</span><span id="elimCount">0</span></div>
-  <div class="elim-tray" id="elimTray"></div>
+  <div class="leaderboard">
+    <div class="lb-title" id="lbTitle">LAST FLAG STANDING <span id="lbPage">1/1</span></div>
+    <div class="lb-grid" id="lbGrid"></div>
+  </div>
 
   <div class="podium-reveal" id="podiumReveal">
     <div class="confetti"></div>
@@ -395,6 +398,31 @@ const ALL_COUNTRIES = [
 ];
 
 const ARENA_R = 178, CENTER = {x:185,y:210};
+// Rounded-square arena boundary. squareBoundaryDist(angle) returns the
+// distance from CENTER to the rounded-square edge along that angle, so all
+// the containment/gap/drawing code that used to just say "ARENA_R" for a
+// circle can instead ask "how far is the wall in this direction".
+const SQ_HALF = 168, SQ_CORNER = 46;
+function squareBoundaryDist(angle, half, corner){
+  half = (half===undefined) ? SQ_HALF : half;
+  corner = (corner===undefined) ? SQ_CORNER : corner;
+  const c=Math.cos(angle), s=Math.sin(angle);
+  const ac=Math.abs(c), as=Math.abs(s);
+  const tFlat = half / Math.max(ac, as, 0.0001);
+  const px = c*tFlat, py = s*tFlat;
+  const edge = half - corner;
+  if(Math.abs(px) > edge && Math.abs(py) > edge){
+    const ccx = Math.sign(px)*edge, ccy = Math.sign(py)*edge;
+    const B = -2*(c*ccx+s*ccy), C = ccx*ccx+ccy*ccy-corner*corner;
+    const disc = B*B-4*C;
+    if(disc>=0){ return (-B+Math.sqrt(disc))/2; }
+  }
+  return tFlat;
+}
+function squareBoundaryPoint(angle, half, corner){
+  const t = squareBoundaryDist(angle, half, corner);
+  return {x:CENTER.x+Math.cos(angle)*t, y:CENTER.y+Math.sin(angle)*t};
+}
 const FLAG_W = 15, FLAG_H = 10, BODY_R = 8;
 const QUAL_ROUNDS_TOTAL = 50;
 const ALL_TIME_STORAGE_KEY = 'lastFlagStanding_allTimeWinners_v1';
@@ -2059,10 +2087,11 @@ function physicsStep(dt){
     const b = entry.body;
     const dx=b.position.x-CENTER.x, dy=b.position.y-CENTER.y;
     const dist=Math.sqrt(dx*dx+dy*dy), angle=Math.atan2(dy,dx);
-    const limit = ARENA_R-BODY_R;
+    const boundary = squareBoundaryDist(angle);
+    const limit = boundary-BODY_R;
     if(dist>limit){
       if(inGap(angle)){
-        if(dist > ARENA_R+16){ toEliminate.push(entry); return; }
+        if(dist > boundary+16){ toEliminate.push(entry); return; }
       } else {
         const nx=dx/dist, ny=dy/dist, v=b.velocity, dot=v.x*nx+v.y*ny;
         Body.setVelocity(b,{x:(v.x-2*dot*nx)*0.98, y:(v.y-2*dot*ny)*0.98});
@@ -2188,10 +2217,11 @@ function physicsStep(dt){
 
   asteroids.forEach(function(a){
     const dx=a.body.position.x-CENTER.x, dy=a.body.position.y-CENTER.y, dist=Math.hypot(dx,dy);
-    if(dist>ARENA_R-10){
+    const aAng=Math.atan2(dy,dx), lim=squareBoundaryDist(aAng)-10;
+    if(dist>lim){
       const nx=dx/dist, ny=dy/dist, v=a.body.velocity, dot=v.x*nx+v.y*ny;
       Body.setVelocity(a.body,{x:v.x-2*dot*nx,y:v.y-2*dot*ny});
-      Body.setPosition(a.body,{x:CENTER.x+nx*(ARENA_R-10), y:CENTER.y+ny*(ARENA_R-10)});
+      Body.setPosition(a.body,{x:CENTER.x+nx*lim, y:CENTER.y+ny*lim});
     }
   });
 
@@ -2237,7 +2267,7 @@ function physicsStep(dt){
 
       // Only eliminate after the body genuinely crosses the ring through the
       // small opening. No random deletion/teleporting.
-      if(dist > ARENA_R+16 && inGap(a)){
+      if(dist > squareBoundaryDist(a)+16 && inGap(a)){
         toEliminate.push(escapeTarget);
         escapeTarget = null;
         escapeGuideTime = 0;
@@ -2275,8 +2305,8 @@ function draw(dt){
     ctx.fillStyle=g; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill();
   });
 
-  // REAL EXIT OPENING: the white arena ring has a visible gap.
-  // gapAngle is ONLY the physics/elimination opening.
+  // REAL EXIT OPENING: the white arena boundary (now a rounded square) has a
+  // visible gap. gapAngle is ONLY the physics/elimination opening.
   ctx.save();
   ctx.strokeStyle='rgba(230,236,255,0.94)';
   ctx.lineWidth=2.4;
@@ -2285,13 +2315,19 @@ function draw(dt){
   const ringStart = gapAngle + gapWidth/2;
   const ringEnd = gapAngle + Math.PI*2 - gapWidth/2;
   ctx.beginPath();
-  ctx.arc(CENTER.x,CENTER.y,ARENA_R, ringStart, ringEnd);
+  const RING_STEPS = 110;
+  for(let i=0;i<=RING_STEPS;i++){
+    const a = ringStart + (ringEnd-ringStart)*(i/RING_STEPS);
+    const p = squareBoundaryPoint(a);
+    if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y);
+  }
   ctx.stroke();
   ctx.restore();
 
   // INDEPENDENT MOVING HIGHLIGHT: this has NO relationship to the opening
-  // and never changes elimination logic. It simply travels around the ring.
-  // Cyan/violet is deliberately separated from the white ring and space UI.
+  // and never changes elimination logic. It simply travels around the
+  // boundary. Cyan/violet is deliberately separated from the white ring and
+  // space UI.
   highlightAngle += highlightSpeed * dt * 60;
   const hlWidth = 0.62;
   const hlStart = highlightAngle-hlWidth/2;
@@ -2303,7 +2339,12 @@ function draw(dt){
   ctx.shadowColor='#28d9ff';
   ctx.shadowBlur=18;
   ctx.beginPath();
-  ctx.arc(CENTER.x,CENTER.y,ARENA_R+0.5,hlStart,hlEnd);
+  const HL_STEPS = 14;
+  for(let i=0;i<=HL_STEPS;i++){
+    const a = hlStart + (hlEnd-hlStart)*(i/HL_STEPS);
+    const p = squareBoundaryPoint(a, SQ_HALF+0.5, SQ_CORNER+0.5);
+    if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y);
+  }
   ctx.stroke();
   ctx.restore();
 
