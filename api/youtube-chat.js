@@ -115,14 +115,20 @@ async function resolveVideo(accessToken) {
   // authenticated channel's active broadcasts. This avoids search.list quota
   // and automatically follows a new live video every day.
   if (accessToken) {
+    // Some YouTube API deployments reject combining `mine` with a status
+    // filter even though both parameters are documented. Retrieve the
+    // authenticated user's broadcasts with `mine=true`, then select the
+    // broadcast whose lifecycle status is actually `live` locally. This also
+    // lets us gracefully handle scheduled/offline broadcasts.
     const { r, body } = await yt('/liveBroadcasts', {
-      part: 'id,snippet,status', broadcastStatus: 'active', mine: 'true', maxResults: 5
+      part: 'id,snippet,status', mine: 'true', maxResults: 50, broadcastType: 'all'
     }, accessToken);
     if (!r.ok) {
       const e = youtubeError(body);
       throw Object.assign(new Error(e.message), { reason: e.reason, status: r.status });
     }
-    const item = body?.items?.[0];
+    const items = Array.isArray(body?.items) ? body.items : [];
+    const item = items.find((candidate) => candidate?.status?.lifeCycleStatus === 'live') || null;
     if (!item) return null;
     return {
       videoId: item.id,
