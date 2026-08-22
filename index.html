@@ -577,22 +577,63 @@ window.addEventListener('load', autoStartAudio);
 window.addEventListener('pointerdown', autoStartAudio, {once:true});
 document.addEventListener('visibilitychange', function(){ if(!document.hidden) autoStartAudio(); });
 
-/* onend always fires, even with speech unavailable, so nothing that waits on a
-   line finishing can stall the round. */
+/* Robust live commentary scheduler. Web Speech can occasionally stall or
+   accumulate a large queue during a long OBS session. Keep a tiny queue, always
+   resume the engine, and watchdog a stuck utterance so commentary never blocks
+   the tournament loop. Critical reveals may interrupt stale commentary. */
+let speechQueue = [], speechActive = false, speechSerial = 0, speechWatchdog = null;
+function pumpSpeech(){
+  if(speechActive || !speechQueue.length || !audioOn() || !window.speechSynthesis) return;
+  const item = speechQueue.shift();
+  const serial = ++speechSerial;
+  speechActive = true;
+  try{ window.speechSynthesis.resume(); }catch(e){}
+  try{
+    const u = new SpeechSynthesisUtterance(item.text);
+    const chosen = item.opts.voice === 'male' ? maleVoice : femaleVoice;
+    if(chosen) u.voice = chosen;
+    u.rate = item.opts.rate || (item.opts.voice === 'male' ? 1.08 : 1.0);
+    u.pitch = item.opts.pitch || (item.opts.voice === 'male' ? 0.92 : 1.08);
+    u.volume = 1;
+    const finish = function(){
+      if(serial !== speechSerial) return;
+      speechActive = false;
+      if(speechWatchdog){ clearTimeout(speechWatchdog); speechWatchdog=null; }
+      if(item.opts.onend) try{ item.opts.onend(); }catch(e){}
+      setTimeout(pumpSpeech, 70);
+    };
+    u.onend = finish;
+    u.onerror = finish;
+    speechWatchdog = setTimeout(function(){
+      if(serial !== speechSerial) return;
+      try{ window.speechSynthesis.cancel(); }catch(e){}
+      speechActive = false;
+      speechWatchdog=null;
+      setTimeout(pumpSpeech, 80);
+    }, 6500);
+    window.speechSynthesis.speak(u);
+  }catch(e){
+    speechActive=false;
+    if(speechWatchdog){clearTimeout(speechWatchdog);speechWatchdog=null;}
+    if(item.opts.onend) try{ item.opts.onend(); }catch(_){}
+    setTimeout(pumpSpeech, 80);
+  }
+}
 function speak(text, opts){
   opts = opts || {};
   if(!audioOn() || !window.speechSynthesis){ if(opts.onend) setTimeout(opts.onend, 0); return; }
-  try{
-    const u = new SpeechSynthesisUtterance(text);
-    const chosen = opts.voice === 'male' ? maleVoice : femaleVoice;
-    if(chosen) u.voice = chosen;
-    u.rate  = opts.rate  || (opts.voice === 'male' ? 1.08 : 1.0);
-    u.pitch = opts.pitch || (opts.voice === 'male' ? 0.92 : 1.08);
-    u.volume = 1;
-    u.onend = function(){ if(opts.onend) opts.onend(); };
-    u.onerror = function(){ if(opts.onend) opts.onend(); };
-    window.speechSynthesis.speak(u);
-  }catch(e){ if(opts.onend) opts.onend(); }
+  if(opts.interrupt){
+    speechQueue.length = 0;
+    speechSerial++;
+    speechActive = false;
+    if(speechWatchdog){ clearTimeout(speechWatchdog); speechWatchdog=null; }
+    try{ window.speechSynthesis.cancel(); }catch(e){}
+  }
+  speechQueue.push({text:String(text), opts:opts});
+  /* Equipment chatter must never create a backlog. Keep only the newest few
+     normal lines; critical podium/winner lines use interrupt:true. */
+  if(speechQueue.length > 4) speechQueue.splice(0, speechQueue.length-4);
+  pumpSpeech();
 }
 function playShot(kind){
   try{
@@ -808,6 +849,15 @@ window.ChatSource = ChatSource;
 /* Who has already joined this round, so a second message from the same viewer
    grows their flag instead of spawning a duplicate. */
 let seenThisRound = new Map();   // username -> code
+let chatSpawningEnabled = true;
+function setChatSpawningEnabled(enabled){
+  chatSpawningEnabled = !!enabled;
+  if(!chatSpawningEnabled) queue = [];
+  const el = document.getElementById('liveAutoStatus');
+  if(el && S.mode === 'live') el.textContent = chatSpawningEnabled
+    ? 'YouTube chat connected — country/equipment spawns ENABLED for qualifying.'
+    : 'YouTube chat connected — spawning DISABLED during knockout/final reveal.';
+}
 
 function ingest(username, text){
   if(!username) username = 'guest';
@@ -817,7 +867,7 @@ function ingest(username, text){
   /* Country joins, equipment drops, BIG FLAG and WILD CARD are a qualification-only
      interaction layer. Knockout rounds are closed: YouTube chat remains connected for
      diagnostics, but chat cannot add/boost flags or spawn equipment. */
-  if(tournamentStage !== 'qualifying') return;
+  if(tournamentStage !== 'qualifying' || !chatSpawningEnabled) return;
   if(r.item) ChatSource.onItem(username, r.item);
   if(r.country){
     roundChatCounts[r.country] = (roundChatCounts[r.country] || 0) + 1;
@@ -1485,6 +1535,7 @@ function rememberTournamentResult(entry, stage){
 }
 
 function beginKnockoutStage(stage, pool){
+  setChatSpawningEnabled(false);
   tournamentStage = stage;
   stagePool = (pool || []).slice();
   stageWinners = [];
@@ -1497,6 +1548,7 @@ function beginKnockoutStage(stage, pool){
    exactly half (or fewer, if physics eliminates a burst simultaneously) remain.
    There are six elimination rounds total: 64->32->16->8->4->2->1. */
 function startKnockoutBattle(){
+  setChatSpawningEnabled(false);
   if(!stagePool.length) return;
   currentMatchParticipants = stagePool.slice();
   roundNo++;
@@ -1620,6 +1672,7 @@ function startTournamentFromQualification(){
 
 function newRound(){
   resetAutoDrops(elapsed);
+  if(tournamentStage === 'qualifying') setChatSpawningEnabled(true);
   /* Once the tournament has moved into knockout, newRound means the next closed
      bracket match. Qualification rounds alone use the 32-default / 150-cap chat
      admission rules. */
@@ -1674,6 +1727,7 @@ function newRound(){
 }
 
 function beginPodium(){
+  setChatSpawningEnabled(false);
   phase='podium';
   /* Deliberately unhurried reveal: each announcement gets room to land before
      applause and the next placement. Timings are tuned for a live-arena feel. */
@@ -1682,15 +1736,16 @@ function beginPodium(){
   clearBattle();
   if(!podiumData.third) podiumData.third = semifinalLosers[0] || null;
   const nm = (podiumData.third && podiumData.third.name) || 'the bronze winner';
-  speak('Third place, ' + nm + '!', {voice:'female',rate:0.92,pitch:1.03});
+  speak('Third place, ' + nm + '!', {voice:'female',rate:0.92,pitch:1.03,interrupt:true});
 }
 
 function beginLeaderboard(){
+  setChatSpawningEnabled(false);
   phase='leaderboard';
   leaderboardTimer=60;
   leaderboardAudioStarted=false;
   playApplause(60,0.18);
-  speak('Final leaderboard standing!', {voice:'male',rate:0.92});
+  speak('Final leaderboard standing!', {voice:'male',rate:0.92,interrupt:true});
 }
 
 function endRound(w){
@@ -1789,7 +1844,7 @@ function step(dt){
       if(winner){
         playCheer(true);
         playPianoSting();
-        speak(winner.name + '!', { voice:'female', rate:0.95, pitch:1.18 });
+        speak(winner.name + '!', { voice:'female', rate:0.95, pitch:1.18, interrupt:true });
       }
     }
     const shown = Math.ceil(winnerHold);
@@ -1809,26 +1864,26 @@ function step(dt){
     podiumTimer += dt;
     if(podiumStep === 3){
       /* Third: let the line land first, then a warm one-second applause. */
-      if(!podiumApplauseFired && podiumTimer >= 1.65){ playApplause(1.15,0.24); podiumApplauseFired=true; }
-      if(podiumTimer >= 5.15){
+      if(!podiumApplauseFired && podiumTimer >= 1.90){ playApplause(1.45,0.22); podiumApplauseFired=true; }
+      if(podiumTimer >= 5.45){
         podiumStep=2; podiumTimer=0; podiumApplauseFired=false;
         const nm=podiumData.second && podiumData.second.name || 'the runner-up';
-        speak('Second place, ' + nm + '!', {voice:'female',rate:0.9,pitch:1.04});
+        speak('Second place, ' + nm + '!', {voice:'female',rate:0.9,pitch:1.04,interrupt:true});
       }
     }else if(podiumStep === 2){
       /* Second: slightly stronger applause, with a clear pause after the voice. */
-      if(!podiumApplauseFired && podiumTimer >= 1.75){ playApplause(1.7,0.34); podiumApplauseFired=true; }
-      if(podiumTimer >= 5.75){
+      if(!podiumApplauseFired && podiumTimer >= 1.95){ playApplause(1.9,0.31); podiumApplauseFired=true; }
+      if(podiumTimer >= 6.05){
         podiumStep=1; podiumTimer=0; podiumApplauseFired=false;
         const nm=podiumData.champion && podiumData.champion.name || 'our champion';
-        speak('Your champion is ' + nm + '!', {voice:'female',rate:0.86,pitch:1.08});
+        speak('Your champion is ' + nm + '!', {voice:'female',rate:0.86,pitch:1.08,interrupt:true});
         /* The second line is delayed so the two phrases do not collide. */
-        setTimeout(function(){ speak('World conquered!', {voice:'male',rate:0.9,pitch:1.0}); }, 1150);
+        setTimeout(function(){ speak('World conquered!', {voice:'male',rate:0.9,pitch:1.0,interrupt:true}); }, 1250);
       }
     }else if(podiumStep === 1){
       /* Champion: hold the visual, then release a 2.8s peak applause. */
-      if(!podiumApplauseFired && podiumTimer >= 2.15){ playApplause(2.8,0.46); podiumApplauseFired=true; }
-      if(podiumTimer >= 7.35){ beginLeaderboard(); }
+      if(!podiumApplauseFired && podiumTimer >= 2.30){ playApplause(3.4,0.42); podiumApplauseFired=true; }
+      if(podiumTimer >= 8.20){ beginLeaderboard(); }
     }
     return;
   }
@@ -2354,44 +2409,75 @@ function drawPickup(p){
   const bob = Math.sin(p.wob*4)*1.5;
   ctx.save();
   ctx.translate(p.x, p.y + bob);
+  ctx.font = '700 12px "Trebuchet MS", sans-serif';
+  /* Automatic drops wear a dashed halo, so a viewer can tell at a glance whether the arena
+     handed this one out on its own cycle or somebody in chat asked for it. Dashed and
+     rotating rather than a solid ring, which would read as the shield's own artwork. */
   if(p.source === 'cycle'){
     ctx.save();
-    ctx.strokeStyle='rgba(255,255,255,.72)'; ctx.lineWidth=2; ctx.setLineDash([4,4]);
-    ctx.beginPath(); ctx.arc(0,0,21,0,Math.PI*2); ctx.stroke();
+    ctx.rotate(p.wob*0.6);
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.78)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI*2); ctx.stroke();
     ctx.restore();
   }
-  ctx.font = '700 12px "Trebuchet MS", sans-serif';
   if(p.kind === 'bomb'){
-    ctx.fillStyle = '#1a1d27'; ctx.beginPath(); ctx.arc(0,0,16,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#e33131'; ctx.beginPath(); ctx.arc(0,0,10.5,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle = '#ff8a8a'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(-3,-3,4,Math.PI*0.9,Math.PI*1.7); ctx.stroke();
+    ctx.fillStyle = '#1a1d27';
+    ctx.beginPath(); ctx.arc(0,0,16,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#e33131';
+    ctx.beginPath(); ctx.arc(0,0,10.5,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#ff8a8a'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(-3,-3,4,Math.PI*0.9,Math.PI*1.7); ctx.stroke();
     outlined('BOMB!', 0, -22, '#ff5d5d', 4);
   }else if(p.kind === 'shield'){
-    ctx.strokeStyle = '#57e6ff'; ctx.lineWidth = 4.5; ctx.shadowColor = '#57e6ff'; ctx.shadowBlur = 12;
-    ctx.beginPath(); ctx.arc(0,0,13,0,Math.PI*2); ctx.stroke(); ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(200,248,255,.85)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0,0,6.5,0,Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = '#57e6ff'; ctx.lineWidth = 4.5;
+    ctx.shadowColor = '#57e6ff'; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(0,0,13,0,Math.PI*2); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(200,248,255,.85)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0,0,6.5,0,Math.PI*2); ctx.stroke();
     outlined('SHIELD', 0, -22, '#8ff0ff', 4);
-  }else if(p.kind === 'shotgun'){
-    ctx.rotate(-0.18);
-    ctx.fillStyle='#6f4324'; ctx.fillRect(-14,4,29,8);
-    ctx.fillStyle='#222733'; ctx.fillRect(-3,-4,22,8);
-    ctx.fillStyle='#9ba5b7'; ctx.fillRect(12,-5,13,4); ctx.fillRect(12,1,13,4);
-    outlined('SHORTGUN', 0, -22, '#ffb45b', 4);
   }else if(p.kind === 'sniper'){
-    ctx.rotate(-0.12);
-    ctx.fillStyle='#5c3925'; ctx.fillRect(-15,5,34,7);
-    ctx.fillStyle='#252b39'; ctx.fillRect(-1,-2,31,7);
-    ctx.fillStyle='#9da9bb'; ctx.fillRect(25,-4,10,4);
-    ctx.fillStyle='#4f79ff'; ctx.fillRect(7,-8,11,5);
-    outlined('SNIPER', 0, -22, '#ff7d7d', 4);
+    /* A long thin rifle with a scope on top. Length is the read — at this size the only
+       way to tell it from the shotgun at a glance is the silhouette. */
+    ctx.rotate(-0.32);
+    ctx.fillStyle = '#2f3a2a';
+    ctx.fillRect(-19, -2, 36, 4);                       // barrel
+    ctx.fillStyle = '#4a5a3c';
+    ctx.fillRect(-19, -3.5, 11, 7);                     // receiver
+    ctx.fillStyle = '#8b5a2b';
+    ctx.fillRect(-25, -2.5, 8, 8);                      // stock
+    ctx.fillStyle = '#141a12';
+    ctx.fillRect(-14, -8, 13, 4);                       // scope
+    ctx.fillStyle = '#b6ff6a';
+    ctx.fillRect(-2.5, -8, 2.5, 4);                     // lens glint
+    ctx.rotate(0.32);
+    outlined('SNIPER!', 0, -24, '#b6ff6a', 4);
+  }else if(p.kind === 'shotgun'){
+    /* Short, double-barrelled and stubby — the opposite silhouette. */
+    ctx.rotate(-0.32);
+    ctx.fillStyle = '#6d7480';
+    ctx.fillRect(-8, -5, 24, 4);                        // upper barrel
+    ctx.fillRect(-8, -0.5, 24, 4);                      // lower barrel
+    ctx.fillStyle = '#3a4048';
+    ctx.fillRect(-13, -5.5, 7, 10);                     // action
+    ctx.fillStyle = '#8b5a2b';
+    ctx.beginPath();
+    ctx.moveTo(-13, -4); ctx.lineTo(-24, 5); ctx.lineTo(-19, 7); ctx.lineTo(-13, 3);
+    ctx.closePath(); ctx.fill();                        // angled stock
+    ctx.rotate(0.32);
+    outlined('SHOTGUN!', 0, -24, '#ffb15c', 4);
   }else{
     ctx.rotate(-0.6);
     ctx.fillStyle = '#8b5a2b'; ctx.fillRect(-3,6,6,13);
     ctx.fillStyle = '#ffd83d'; ctx.fillRect(-9,2,18,5);
-    const g = ctx.createLinearGradient(0,-20,0,2); g.addColorStop(0,'#eef3fb'); g.addColorStop(1,'#7d8798');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(-4,2); ctx.lineTo(0,-22); ctx.lineTo(4,2); ctx.closePath(); ctx.fill();
+    const g = ctx.createLinearGradient(0,-20,0,2);
+    g.addColorStop(0,'#eef3fb'); g.addColorStop(1,'#7d8798');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(-4,2); ctx.lineTo(0,-22); ctx.lineTo(4,2); ctx.closePath(); ctx.fill();
     ctx.rotate(0.6);
-    outlined('KNIFE', 0, -30, '#ffd83d', 4);
+    outlined('GRAB ME!', 0, -30, '#ffd83d', 4);
   }
   ctx.restore();
 }
