@@ -1012,6 +1012,9 @@ function renderQuota(){
      pause setTimeout. When the page becomes active again, immediately poll
      instead of waiting for the old timer. */
 
+/* PER_BROWSER_CHAT_CURSOR:
+   pageToken/seenIds live only in this page instance. Desktop and mobile never
+   share a cursor, so one device cannot consume the other's chat messages. */
 const Live = {
   chatId: null, pageToken: null, timer: null, backoff: 0, seenIds: new Set(),
   initialized: false, reconnectTimer: null, inFlight: false,
@@ -1091,9 +1094,22 @@ const Live = {
     qs.set('chatId', this.chatId);
     qs.set('maxResults', String(max));
     if(this.pageToken) qs.set('pageToken', this.pageToken);
+
+    /* Each browser instance must receive its own fresh YouTube chat poll.
+       Mobile browsers/proxies can otherwise reuse a cached GET response,
+       making desktop appear live while mobile sees no new messages. */
+    qs.set('_rt', String(Date.now()) + '-' + Math.random().toString(36).slice(2));
+
     let waitMs = Math.min(2000, Math.max(1000, (Number(S.pollSec) || 1) * 1000));
     try{
-      const res = await fetch('/api/youtube-chat?' + qs.toString(), {cache:'no-store'});
+      const res = await fetch('/api/youtube-chat?' + qs.toString(), {
+        method:'GET',
+        cache:'no-store',
+        headers:{
+          'Cache-Control':'no-cache, no-store, must-revalidate',
+          'Pragma':'no-cache'
+        }
+      });
       const body = await res.json().catch(function(){ return null; });
       if(!res.ok || !body || !body.ok){
         const reason = body && body.reason;
@@ -4621,6 +4637,30 @@ $('wipeBtn').addEventListener('click', function(){
   document.addEventListener('visibilitychange', wakeLiveChat, {passive:true});
   window.addEventListener('focus', wakeLiveChat, {passive:true});
   window.addEventListener('pageshow', wakeLiveChat, {passive:true});
+})();
+</script>
+
+
+<script>
+(function(){
+  var mobileChatWatchdog = null;
+  function arm(){
+    clearInterval(mobileChatWatchdog);
+    if(document.hidden) return;
+    mobileChatWatchdog = setInterval(function(){
+      try{
+        if(window.Live && window.ChatSource &&
+           ChatSource.running && ChatSource.mode === 'live' &&
+           Live.chatId && !Live.inFlight){
+          Live.poll();
+        }
+      }catch(e){}
+    }, 1500);
+  }
+  document.addEventListener('visibilitychange', arm, {passive:true});
+  window.addEventListener('pageshow', arm, {passive:true});
+  window.addEventListener('focus', arm, {passive:true});
+  window.addEventListener('load', arm, {passive:true});
 })();
 </script>
 
