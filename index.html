@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Flag Arena Live</title>
+<title>Flag Arena Live — Square Ring</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js">
 
 </script>
@@ -196,7 +196,7 @@ if(typeof Matter === 'undefined'){
   <label class="field"><span>Late joins</span>
     <select id="joinMode">
       <option value="now">Enter mid-round straight away</option>
-      <option value="queue">Do not buffer (live round only)</option>
+      <option value="queue">Hold for the next round</option>
     </select></label>
   <div class="row">
     <label class="field"><span>Exit gap (deg)</span>
@@ -207,8 +207,8 @@ if(typeof Matter === 'undefined'){
   <div class="row">
     <label class="field"><span>Join window (s)</span>
       <input type="number" id="joinSec" min="0" max="600" step="5" value="45"></label>
-    <label class="field"><span>Wild Card unlock</span>
-        <input type="number" value="300" disabled></label>
+    <label class="field"><span>Round cap (s)</span>
+      <input type="number" id="roundCap" min="30" max="600" step="10" value="150"></label>
   </div>
   <label class="field"><span>Watermark across the disc</span>
     <input type="text" id="brandText" value="FLAGS WAR ARENA" maxlength="28"></label>
@@ -547,7 +547,7 @@ const CODE_IS_A_WORD = new Set(['am','at','be','by','do','id','in','is','it','la
 const DEFAULTS = {
   mode:'live', apiKey:'', videoId:'', pollSec:10, maxResults:500,
   simRate:90, seedCount:40, joinMode:'now', joinSec:45,
-  gapMinDeg:17, gapMaxDeg:60,
+  gapMinDeg:17, gapMaxDeg:60, roundCap:150,
   brandText:'FLAGS WAR ARENA',
   marqueeText:'TYPE YOUR COUNTRY NAME TO JOIN AND SUBSCRIBE',
   voice:true
@@ -891,6 +891,7 @@ let seenThisRound = new Map();   // username -> code
 let chatSpawningEnabled = true;
 function setChatSpawningEnabled(enabled){
   chatSpawningEnabled = !!enabled;
+  if(!chatSpawningEnabled) queue = [];
   const el = document.getElementById('liveAutoStatus');
   if(el && S.mode === 'live') el.textContent = chatSpawningEnabled
     ? 'YouTube chat connected — country/equipment spawns ENABLED for qualifying.'
@@ -898,37 +899,28 @@ function setChatSpawningEnabled(enabled){
 }
 
 function ingest(username, text){
-  if(!username) username='guest';
-
-  /* ZERO-DELAY PATH:
-     YouTube message -> parser -> gameplay trigger in the same JS turn. */
+  if(!username) username = 'guest';
   ChatSource.onMessage(username, text);
   quota.msgs++;
-
-  const r=readMessage(text);
-  if(tournamentStage!=='qualifying' || !chatSpawningEnabled) return;
-
+  const r = readMessage(text);
+  /* Country joins, equipment drops, BIG FLAG and WILD CARD are a qualification-only
+     interaction layer. Knockout rounds are closed: YouTube chat remains connected for
+     diagnostics, but chat cannot add/boost flags or spawn equipment. */
+  if(tournamentStage !== 'qualifying' || !chatSpawningEnabled) return;
   if(r.item) ChatSource.onItem(username, r.item);
-  if(!r.country) return;
-
-  /* Wild Card counter is updated from this exact live message. */
-  const userKey=String(username).trim().toLowerCase() || 'guest';
-  const mentionKey=userKey+'|'+r.country;
-  userCountryMentions[mentionKey]=(userCountryMentions[mentionKey]||0)+1;
-
-  if(roundTime>=300 && userCountryMentions[mentionKey]>=ALPHA_TRIGGER_COUNT){
-    spawnAlpha(r.country, username);
-    return;
-  }
-
-  if(roundTime>=300) return;
-
-  const prev=seenThisRound.get(username);
-  if(prev===r.country){
-    ChatSource.onBoost(username,r.country);
-  }else{
-    seenThisRound.set(username,r.country);
-    ChatSource.onJoin(username,r.country);
+  if(r.country){
+    roundChatCounts[r.country] = (roundChatCounts[r.country] || 0) + 1;
+    /* Wildcard eligibility is per @username + country, never pooled across viewers.
+       Two people typing the same country therefore do not combine their counts. */
+    const userKey = String(username).trim().toLowerCase() || 'guest';
+    const mentionKey = userKey + '|' + r.country;
+    userCountryMentions[mentionKey] = (userCountryMentions[mentionKey] || 0) + 1;
+    if(roundTime >= 300 && userCountryMentions[mentionKey] >= ALPHA_TRIGGER_COUNT){
+      spawnAlpha(r.country, username);
+    }
+    const prev = seenThisRound.get(username);
+    if(prev === r.country) ChatSource.onBoost(username, r.country);
+    else { seenThisRound.set(username, r.country); ChatSource.onJoin(username, r.country); }
   }
 }
 
@@ -1007,32 +999,19 @@ function renderQuota(){
    pages forward from a token. Messages are buffered on Google's side, so a
    slower poll costs latency and nothing else — that is the only quota lever
    available, which is why the interval is a setting. */
-
-  /* Real-time chat recovery: browser timer throttling/background tabs can
-     pause setTimeout. When the page becomes active again, immediately poll
-     instead of waiting for the old timer. */
-
-/* PER_BROWSER_CHAT_CURSOR:
-   pageToken/seenIds live only in this page instance. Desktop and mobile never
-   share a cursor, so one device cannot consume the other's chat messages. */
 const Live = {
   chatId: null, pageToken: null, timer: null, backoff: 0, seenIds: new Set(),
-  initialized: false, reconnectTimer: null, inFlight: false,
+  initialized: false, reconnectTimer: null,
   start: function(){
     this.stop();
     this.chatId = null; this.pageToken = null; this.backoff = 0; this.seenIds.clear();
-    this.initialized = false; this.inFlight = false;
+    this.initialized = false;
     setStatus('Finding the active YouTube Live broadcast…');
     this.resolve();
   },
   stop: function(){
     if(this.timer){ clearTimeout(this.timer); this.timer = null; }
     if(this.reconnectTimer){ clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
-  },
-  wake: function(){
-    if(!this.running || this.mode !== 'live' || !this.chatId) return;
-    if(this.timer){ clearTimeout(this.timer); this.timer = null; }
-    if(!this.inFlight) this.poll();
   },
   videoIdFrom: function(raw){
     const s = String(raw || '').trim();
@@ -1086,36 +1065,22 @@ const Live = {
     this.reconnectTimer = setTimeout(function(){ self.resolve(); }, ms);
   },
   poll: async function(){
-    if(!ChatSource.running || ChatSource.mode !== 'live' || !this.chatId || this.inFlight) return;
-    this.inFlight = true;
+    if(!ChatSource.running || ChatSource.mode !== 'live' || !this.chatId) return;
     const max = Math.min(2000, Math.max(50, Number(S.maxResults) || 500));
     const qs = new URLSearchParams();
     qs.set('action','poll');
     qs.set('chatId', this.chatId);
     qs.set('maxResults', String(max));
     if(this.pageToken) qs.set('pageToken', this.pageToken);
-
-    /* Each browser instance must receive its own fresh YouTube chat poll.
-       Mobile browsers/proxies can otherwise reuse a cached GET response,
-       making desktop appear live while mobile sees no new messages. */
-    qs.set('_rt', String(Date.now()) + '-' + Math.random().toString(36).slice(2));
-
-    let waitMs = Math.min(2000, Math.max(1000, (Number(S.pollSec) || 1) * 1000));
+    let waitMs = Math.max(5000, (Number(S.pollSec) || 10) * 1000);
     try{
-      const res = await fetch('/api/youtube-chat?' + qs.toString(), {
-        method:'GET',
-        cache:'no-store',
-        headers:{
-          'Cache-Control':'no-cache, no-store, must-revalidate',
-          'Pragma':'no-cache'
-        }
-      });
+      const res = await fetch('/api/youtube-chat?' + qs.toString(), {cache:'no-store'});
       const body = await res.json().catch(function(){ return null; });
       if(!res.ok || !body || !body.ok){
         const reason = body && body.reason;
         if(reason === 'liveChatEnded' || reason === 'liveChatNotFound' || reason === 'videoNotFound'){
           setStatus('The YouTube Live ended. Looking for the next live automatically…');
-          this.chatId = null; this.pageToken = null; this.initialized = false; this.inFlight = false;
+          this.chatId = null; this.pageToken = null; this.initialized = false;
           this.scheduleResolve(5000);
           return;
         }
@@ -1127,7 +1092,7 @@ const Live = {
         this.backoff = 0;
         this.pageToken = body.nextPageToken || this.pageToken;
         const hint = Number(body.pollingIntervalMillis) || 0;
-        waitMs = Math.min(2000, Math.max(1000, hint));
+        waitMs = Math.max(waitMs, hint);
         const items = body.items || [];
         for(let i=0;i<items.length;i++){
           const it = items[i];
@@ -1146,32 +1111,11 @@ const Live = {
       waitMs = this.backoff;
       setStatus('Vercel chat bridge error: ' + e.message + '. Retrying in ' + Math.round(waitMs/1000) + ' s.', 'err');
     }
-    this.inFlight = false;
     const self = this;
     this.timer = setTimeout(function(){ self.poll(); }, waitMs);
   }
 };
 
-
-window.addEventListener('pageshow', function(){
-  if(ChatSource.mode === 'live' && ChatSource.running && Live.chatId){
-    if(Live.timer){ clearTimeout(Live.timer); Live.timer=null; }
-    if(Live.inFlight) return;
-    Live.poll();
-  }
-});
-window.addEventListener('focus', function(){
-  if(ChatSource.mode === 'live' && ChatSource.running && Live.chatId){
-    if(Live.timer){ clearTimeout(Live.timer); Live.timer=null; }
-    if(!Live.inFlight) Live.poll();
-  }
-});
-document.addEventListener('visibilitychange', function(){
-  if(!document.hidden && ChatSource.mode === 'live' && ChatSource.running && Live.chatId){
-    if(Live.timer){ clearTimeout(Live.timer); Live.timer=null; }
-    if(!Live.inFlight) Live.poll();
-  }
-});
 /* Surfaces the exact status and Google's own reason string, because "it didn't
    work" is the one message that costs an hour to debug. */
 function describeError(res, body){
@@ -1231,7 +1175,100 @@ const BLEED = OUT_DX + 1;            // paint this far outside W to fill the fra
 const CENTER = { x:288, y:516 };
 /* Vertical 9:16 broadcast layout: compact top HUD, a breathing gap, then the
    arena.  The previous 281px radius made the ring collide with the top HUD. */
-const ARENA_R = 248;
+const ARENA_R = 248;                 // reference length only — see ARENA_A below
+/* ---------------------------------------------------------------------------
+   SQUARE ARENA GEOMETRY.
+
+   This build swaps the circular rim for a square one and changes nothing else.
+   That is possible because the circular version already kept the rim in one thin
+   layer: one containment test, one reflection, one moving opening. Chat, weapons,
+   rounds, commentary, the join window and the tournament all sit above it and never
+   ask what shape the wall is.
+
+   ARENA_A is the half-side: the wall runs along |x - CENTER.x| = A and
+   |y - CENTER.y| = A. Two derived measures do the rest of the work.
+
+     SIDE  = 2A, one side's length. Corners therefore sit at s = 0, SIDE, 2*SIDE, 3*SIDE.
+     PERIM = 8A, the whole perimeter. Every point on the wall is ONE number s in
+             [0, PERIM), walking clockwise from the top-left corner.
+
+   s is the square's stand-in for the circle's bearing, and it is the whole trick:
+   with it, the opening stays a single moving interval, the wall stays a single
+   interval, and inGap() stays the same two lines it was on the circle. Nothing in
+   the rim logic has to special-case a corner.
+
+   ARENA_A = 220 is derived, then measured. Equal playing area with the circle is
+   (2A)^2 = pi*R^2, so A = R*sqrt(pi)/2 = 219.8 -> 220: the same floor for the same
+   crowd, hence the same collision density. _test/drain.js then confirms the pacing
+   survived — draining a closed 40-flag field takes 64.1 +/- 2.9 s here against the
+   circular build's 62.2 +/- 1.6 s (18 seeds each), a gap smaller than the noise.
+   Keeping the circle's radius instead (A = 248) gives 31% more floor and measured
+   +22% longer rounds; an earlier guess of 236 measured +17%. The sweep behind those
+   numbers is _test/sweep-report.js.
+
+   RIM_PX_PER_RAD converts every rim constant the circular build expressed in radians
+   into wall pixels at the circle's own scale. This is deliberate: gapMinDeg = 17 then
+   still means the same 73.6 px of physically open wall it meant before, rather than
+   the same fraction of a 21% longer perimeter. The opening stays as small as it looks
+   in the circular build instead of quietly growing with the shape.
+--------------------------------------------------------------------------- */
+const ARENA_A = 220;                 // half-side of the square arena
+const SIDE = ARENA_A * 2;            // 440 px
+const PERIM = ARENA_A * 8;           // 1760 px of wall
+const RIM_PX_PER_RAD = ARENA_R;      // 248 px of wall per radian — the circle's scale
+const ARC_PER_DEG = Math.PI/180 * RIM_PX_PER_RAD;   // 4.328 px of wall per degree
+
+/* Which point of the wall a flag at offset (dx,dy) from the centre is heading out
+   through: the ray from the centre, i.e. the direct port of the circular build's
+   atan2(dy,dx). Whichever side the ray leaves through owns the flag.
+
+   The two branches meet exactly at the corners — a corner has ax === ay, and both
+   forms then return the same s — so the opening crosses a corner without a seam and
+   without a frame where no side claims the flag. */
+function sOf(dx, dy){
+  const ax = Math.abs(dx), ay = Math.abs(dy);
+  if(ay >= ax){
+    const x = ay < 1e-9 ? 0 : dx * (ARENA_A / ay);
+    return dy < 0 ? (x + ARENA_A) : (SIDE*2 + (ARENA_A - x));
+  }
+  const y = dy * (ARENA_A / ax);
+  return dx > 0 ? (SIDE + (y + ARENA_A)) : (SIDE*3 + (ARENA_A - y));
+}
+/* The inverse. Drawing uses only this, so the drawn wall is the physics wall by
+   construction rather than by agreement between two sets of literals. */
+function pointAtS(s){
+  s = ((s % PERIM) + PERIM) % PERIM;
+  const A = ARENA_A;
+  if(s < SIDE)   return { x:CENTER.x - A + s,            y:CENTER.y - A };
+  if(s < SIDE*2) return { x:CENTER.x + A,                y:CENTER.y - A + (s - SIDE) };
+  if(s < SIDE*3) return { x:CENTER.x + A - (s - SIDE*2), y:CENTER.y + A };
+  return         { x:CENTER.x - A,                       y:CENTER.y + A - (s - SIDE*3) };
+}
+/* Outward normal of the side that owns s. Used for drawing the exit posts, never for
+   collision — collision derives its own normal from the nearest wall point so that
+   corners resolve correctly. */
+function normalAtS(s){
+  s = ((s % PERIM) + PERIM) % PERIM;
+  const side = Math.floor(s / SIDE);
+  if(side === 0) return { x:0, y:-1 };
+  if(side === 1) return { x:1, y:0 };
+  if(side === 2) return { x:0, y:1 };
+  return { x:-1, y:0 };
+}
+/* Lay a canvas path along the wall from s0 to s1 (s1 > s0, may run past PERIM and
+   wrap). A vertex is emitted at every corner the walk crosses, so a stroke of this
+   path traces the square exactly. Deliberately does NOT call beginPath, so callers
+   keep control of the sub-path the way they did with ctx.arc. */
+function perimPath(s0, s1){
+  let p = pointAtS(s0);
+  ctx.moveTo(p.x, p.y);
+  for(let k = Math.floor(s0/SIDE) + 1; k*SIDE < s1; k++){
+    const c = pointAtS(k*SIDE);
+    ctx.lineTo(c.x, c.y);
+  }
+  p = pointAtS(s1);
+  ctx.lineTo(p.x, p.y);
+}
 const HUB_L = { x:192, y:521 }, HUB_R = { x:383, y:521 };
 const PROP_R = 45;
 const SPIN_L =  119 * Math.PI/180;   // measured: left rotor turns +119 deg/s
@@ -1239,6 +1276,10 @@ const SPIN_R = -148 * Math.PI/180;   // right rotor counter-turns at -148 deg/s
 const BLADE_HALF = 15 * Math.PI/180;
 const FLAG_W = 44, FLAG_H = 30;
 const PICKUP_FALL = 132;             // px/s, constant — no acceleration
+/* Both ranges are left at the circular build's exact pixel values (198.4 and 49.6).
+   They are reach in pixels, not a property of the wall, and the square's half-side is
+   within 5% of the old radius — rescaling them would retune the weapons under cover of
+   a geometry change. */
 const SNIPER_RANGE = ARENA_R * 0.80;
 const SHOTGUN_RANGE = ARENA_R * 0.20;
 const SNIPER_SHOTS = 4;
@@ -1251,9 +1292,9 @@ const MUZZLE_FLASH_TIME = 0.11;
 const WEAPON_AIM_TURN = 18;
 const SHOTGUN_SPREAD = 0.045;
 const MAX_BULLETS = 120;
-const MAX_FLAGS = Infinity;
+const MAX_FLAGS = 150;
 const DEFAULT_FLAGS_PER_ROUND = 40;
-const NORMAL_CHAT_RELEASE_AT = Infinity;
+const NORMAL_CHAT_RELEASE_AT = 100;
 const ALPHA_TRIGGER_COUNT = 10;
 const ALPHA_SCALE = 2.2;
 const STEP = 1000/60;
@@ -1274,7 +1315,7 @@ const BACKDROPS = [
    tile the solid part of it exactly.
 
    The segments used to have fixed spans that each drifted at its own rate, which was
-   wrong twice over. The spans only added up to 5.65 of the 6.283 radians in a circle,
+   wrong twice over. The spans only added up to 5.65 of the 6.283 radians of the circle,
    and as they drifted they bunched, so up to 71% of the rim ended up with no line on
    it — which read on screen as most of the wall being missing. Worse, none of it meant
    anything, because the physics wall was closed the whole way round.
@@ -1291,14 +1332,16 @@ const RING_LAYERS = [
   { color:'#ff8ad0', w:4, rate: 0.55, phase:5.2 }
 ];
 const RING_WOBBLE_FRAC = 0.30;   // of a sector; under 0.5 or boundaries would cross
-const RING_WELD = 0.02;          // segment overlap, so seams cannot show
-/* Boundary i of the solid wall, in radians. boundary(0) is the trailing edge of the
-   exit and boundary(n) the leading edge, so the spans always sum to the whole wall
-   and never encroach on the opening. */
+const RING_WELD = 1.2;           // px of segment overlap, so seams cannot show
+/* Boundary i of the solid wall, in wall pixels. boundary(0) is the trailing edge of
+   the exit and boundary(n) the leading edge, so the spans always sum to the whole wall
+   and never encroach on the opening. Identical to the circular version with radians
+   swapped for arc length — the segments still tile the solid wall exactly, which is
+   what keeps "the only gap on screen is the exit" true on a square too. */
 function ringBoundary(i){
   const n = RING_LAYERS.length;
-  const wallStart = gapAngle + gapWidth/2;
-  const wallSpan = Math.PI*2 - gapWidth;
+  const wallStart = gapPos + gapLen/2;
+  const wallSpan = PERIM - gapLen;
   if(i <= 0) return wallStart;
   if(i >= n) return wallStart + wallSpan;
   const sector = wallSpan / n;
@@ -1309,13 +1352,12 @@ function ringBoundary(i){
 let engine = null, world = null;
 let flags = [];
 let pickups = [], blasts = [], sparks = [], outMarks = [], floaters = [], bullets = [], specialMines = [];
-let queue = [];                       // retained only for compatibility; chat is never buffered
+let queue = [];                       // joins held for the next round
 let imgCache = {};
 let roundNo = 0, qualificationRoundNo = 0, roundTime = 0, roundStartCount = 0;
 let roundChatCounts = Object.create(null);
 let userCountryMentions = Object.create(null);
 let alphaSpawnedThisRound = new Set();
-let wildcardUnlockedShown = false;
 let phase = 'live';                   // 'live' | 'winner' | 'stageTransition' | 'waiting' | 'podium' | 'leaderboard'
 let winner = null, winnerHold = 0, countdownShown = 0, revealBeat = 0;
 /* Tournament progression: 64 qualification battles feed a 32-team knockout.
@@ -1409,27 +1451,57 @@ function updateAutoDrops(){
    the drawn ring decorative, and the elimination unreadable — a viewer could not
    see why one flag died and another sitting in the same place did not.
 --------------------------------------------------------------------------- */
-let gapAngle = 0, gapWidth = 0.30, gapDir = 1;
-const GAP_TRAVEL = 0.84;      // rad/s — the source engine's 0.014/frame at 60 fps
-const GAP_EXIT_MARGIN = 16;   // px clear of the rim before the flag counts as out
+let gapPos = 0, gapLen = 74, gapDir = 1;   // wall pixels
+/* 0.84 rad/s on a 248 px circle is 208 px of wall per second. Keeping the LINEAR speed
+   rather than the angular one means the opening slides past at the same pace a viewer
+   already knows, instead of taking 21% longer to lap the longer perimeter. */
+const GAP_TRAVEL = 0.84 * RIM_PX_PER_RAD;   // 208.3 px/s
+const GAP_EXIT_MARGIN = 16;   // px clear of the wall before the flag counts as out
 const FLOAT_MIN = 0.62;       // px/step — 37 px/s, the low end of the clip's drift
 const FLOAT_MAX = 5.50;       // px/step — 330 px/s, so a propeller strike still reads
 
 function angDiff(a,b){ let d=(a-b)%(Math.PI*2); if(d>Math.PI)d-=Math.PI*2; if(d<-Math.PI)d+=Math.PI*2; return d; }
-function inGap(angle){ return Math.abs(angDiff(angle, gapAngle)) < gapWidth/2; }
+/* Signed distance between two wall coordinates, the short way round. Same shape as
+   angDiff with PERIM in place of 2*PI, which is why the opening can straddle s = 0
+   (the top-left corner) with no special case. */
+function sDiff(a,b){ let d=(a-b)%PERIM; if(d>PERIM/2)d-=PERIM; if(d<-PERIM/2)d+=PERIM; return d; }
+function inGap(s){ return Math.abs(sDiff(s, gapPos)) < gapLen/2; }
 
-/* Reflect off the solid part of the wall, with the same 0.98 damping the other
-   engine uses, and put the body back inside the rim. Only reflects a flag actually
-   heading out — reflecting one already coming back in flipped it at the wall again
-   and made it rattle. */
-function bounceOffRim(f, n, limit){
+/* Reflect off the solid part of the wall, with the same 0.98 damping, and put the
+   body back against the inside of it. Only reflects a flag actually heading out —
+   reflecting one already coming back in flipped it at the wall again and made it
+   rattle. That rule is carried over unchanged.
+
+   What is new is where the normal comes from. On a circle it was just the radial
+   direction. Here it is derived from the NEAREST POINT on the inner square (the square
+   inset by the flag's own radius): clamp the offset to that square, and the leftover
+   vector is the penetration. That gives (0,-1) against the top wall, (1,0) against the
+   right wall, and a genuine diagonal when a flag clips a corner — which is exactly how
+   a circle-versus-rectangle contact resolves, so corners need no special case and
+   cannot pop a flag sideways.
+
+   It also bounds the correction: the body is moved by the penetration depth and not a
+   pixel more. There is no snapping to a fixed radius, so nothing teleports. */
+function bounceOffRim(f, limit){
+  const dx = f.body.position.x - CENTER.x, dy = f.body.position.y - CENTER.y;
+  const cx = Math.max(-limit, Math.min(limit, dx));
+  const cy = Math.max(-limit, Math.min(limit, dy));
+  let ex = dx - cx, ey = dy - cy;
+  let m = Math.hypot(ex, ey);
+  if(m < 1e-6){
+    /* Sitting exactly on the wall: fall back to the side it is closest to. */
+    if(Math.abs(dx) >= Math.abs(dy)){ ex = dx >= 0 ? 1 : -1; ey = 0; }
+    else { ex = 0; ey = dy >= 0 ? 1 : -1; }
+    m = 1;
+  }
+  const n = { x:ex/m, y:ey/m };
   const v = f.body.velocity;
   const vr = v.x*n.x + v.y*n.y;
   if(vr > 0){
     Body.setVelocity(f.body, { x:(v.x - 2*vr*n.x)*0.98, y:(v.y - 2*vr*n.y)*0.98 });
     playWallBounce();
   }
-  Body.setPosition(f.body, { x:CENTER.x + n.x*limit, y:CENTER.y + n.y*limit });
+  Body.setPosition(f.body, { x:CENTER.x + cx, y:CENTER.y + cy });
 }
 
 /* The exit starts tight and opens as the round resolves, so a round always closes
@@ -1448,16 +1520,31 @@ function bounceOffRim(f, n, limit){
 const GAP_COMFORT = 20;      // flags the tight exit can clear on its own
 const GAP_CROWD_SPAN = 45;   // how many above that takes the door to full width
 function currentGapWidth(){
-  const lo = (Number(S.gapMinDeg) || 17) * Math.PI/180;
-  const hi = Math.max(lo, (Number(S.gapMaxDeg) || 60) * Math.PI/180);
+  /* Degrees in the settings panel still mean degrees of the old circle, converted to
+     wall pixels: 17 deg -> 73.6 px, 60 deg -> 259.7 px. The endgame and crowd curves
+     below are untouched. */
+  const lo = (Number(S.gapMinDeg) || 17) * ARC_PER_DEG;
+  const hi = Math.max(lo, (Number(S.gapMaxDeg) || 60) * ARC_PER_DEG);
   const n = flags.length;
   const crowd = Math.max(0, Math.min(1, (n - GAP_COMFORT) / GAP_CROWD_SPAN));
   const endgame = n <= 1 ? 1 : Math.max(0, Math.min(1, 1 - (n-1)/GAP_COMFORT));
   const drive = Math.max(crowd, Math.pow(endgame, 0.78));
-  const pulse = 0.035*Math.sin(elapsed*0.75);
+  const pulse = 0.035*RIM_PX_PER_RAD*Math.sin(elapsed*0.75);          // +/- 8.7 px
   /* Sudden death prises it open rather than shoving flags through the wall. */
-  const extra = suddenDeath * 1.2;
-  return Math.max(lo, Math.min(hi + extra, lo + (hi-lo)*drive + pulse + extra));
+  const extra = suddenDeath * 1.2 * RIM_PX_PER_RAD;                   // up to 297.6 px
+  /* One extra clamp the circle did not need. Measured (_test/gap-fraction.js): at full
+     sudden death the circular curve asks for 557 px of exit, which is 35.8% of its own
+     1558 px rim; the same 35.8% of this 1760 px perimeter is 630 px, or 1.43 side
+     lengths, which would erase a whole side plus both its corners and stop the arena
+     reading as a square — and an opening that big is what Dell objected to before.
+     Capped at 431 px, just under one 440 px side, the widest exit is still 5.9x the
+     tightest (73.6 px), and _test/drain.js confirms a full 40-flag field still empties
+     in about a minute. This clamp is an addition to the circular logic, not a port of
+     it, and it is the ONLY place the two builds' opening widths differ: they agree to
+     the pixel up to sudden death 0.55 and diverge by 0.6, where this cap starts to
+     bind. */
+  const cap = SIDE * 0.98;
+  return Math.max(lo, Math.min(cap, Math.min(hi + extra, lo + (hi-lo)*drive + pulse + extra)));
 }
 
 function flagUrl(code){ return 'https://flagcdn.com/w80/' + code + '.png'; }
@@ -1482,10 +1569,10 @@ function scaleForLevel(level){
   return 1.65;
 }
 
-function insideDiscY(x){
-  const dx = x - CENTER.x;
-  const h = Math.sqrt(Math.max(0, ARENA_R*ARENA_R - dx*dx));
-  return { top: CENTER.y - h, bottom: CENTER.y + h };
+/* The circle's vertical extent depended on x; a square's does not. Same interface, so
+   the pickup spawn height and the pickup floor need no other change. */
+function arenaBandY(x){
+  return { top: CENTER.y - ARENA_A, bottom: CENTER.y + ARENA_A };
 }
 
 function addFlag(user, code, options){
@@ -1498,9 +1585,8 @@ function addFlag(user, code, options){
      rotor, or a flag is destroyed the instant it appears. */
   let x, y, tries = 0;
   do{
-    const a = rand(0, Math.PI*2), r = rand(0, ARENA_R*0.72);
-    x = CENTER.x + Math.cos(a)*r;
-    y = CENTER.y + Math.sin(a)*r;
+    x = CENTER.x + rand(-ARENA_A*0.72, ARENA_A*0.72);
+    y = CENTER.y + rand(-ARENA_A*0.72, ARENA_A*0.72);
     tries++;
   }while(tries < 24 && (Math.hypot(x-HUB_L.x,y-HUB_L.y) < PROP_R+26 || Math.hypot(x-HUB_R.x,y-HUB_R.y) < PROP_R+26));
 
@@ -1567,13 +1653,13 @@ function regrow(f){
 
 function spawnPickup(kind, atX, source){
   if(pickups.length > 14) return;
-  const x = atX == null ? rand(CENTER.x - ARENA_R*0.72, CENTER.x + ARENA_R*0.72) : atX;
+  const x = atX == null ? rand(CENTER.x - ARENA_A*0.72, CENTER.x + ARENA_A*0.72) : atX;
   /* Every equipment type uses the same spawn height, fall behavior and pickup radius.
      New equipment must not visually drop faster/slower or appear at a different location. */
   pickups.push({
     kind:kind,
     x:x,
-    y:insideDiscY(x).top + 14,
+    y:arenaBandY(x).top + 14,
     r:16,
     wob:rand(0,6),
     source:source || 'chat',
@@ -1583,20 +1669,6 @@ function spawnPickup(kind, atX, source){
 }
 
 function kill(f, cause){
-  /* A qualification round must reach the five-minute late-entry threshold.
-     If the current flag would be the final survivor killed before 300 s, keep it
-     alive instead of ending the round early. This is a minimum-duration gate,
-     not a round timer: once 300 s is reached normal elimination resumes. */
-  if(tournamentStage === 'qualifying' && roundTime < 300 && flags.length <= 1){
-    const dx = f.body.position.x - CENTER.x, dy = f.body.position.y - CENTER.y;
-    const d = Math.hypot(dx,dy) || 1;
-    const n = {x:dx/d,y:dy/d};
-    const limit = ARENA_R - f.bodyR;
-    Body.setPosition(f.body,{x:CENTER.x+n.x*limit,y:CENTER.y+n.y*limit});
-    Body.setVelocity(f.body,{x:-n.x*0.9,y:-n.y*0.9});
-    f.shieldUntil = Math.max(f.shieldUntil, elapsed + 0.25);
-    return;
-  }
   /* Collective knockout rounds stop exactly at their survivor target. A single
      simulation tick can contain several contacts, so guard here as well as at the
      end-of-step check to prevent 64→31 overshoot. */
@@ -1606,10 +1678,11 @@ function kill(f, cause){
   flags.splice(i,1);
   World.remove(world, f.body);
   lastKilled = { code:f.code, name:f.name, user:f.user };
-  /* OUT lands on the rim at the bearing the flag left on, which is where the
-     clip puts it. */
-  const a = Math.atan2(f.body.position.y - CENTER.y, f.body.position.x - CENTER.x);
-  outMarks.push({ a:a, t:1.5 });
+  /* OUT lands on the wall at the point the flag left through, which is where the
+     clip puts it. Stored as a wall coordinate so it sits on the square, including on
+     a corner. */
+  const s = sOf(f.body.position.x - CENTER.x, f.body.position.y - CENTER.y);
+  outMarks.push({ s:s, t:1.5 });
   for(let k=0;k<14;k++){
     const ang = rand(0,Math.PI*2), sp = rand(40,190);
     sparks.push({
@@ -1651,7 +1724,19 @@ function detonate(x, y){
 --------------------------------------------------------------------------- */
 /* One viewer holds one flag. A queued join is dropped if they already have one
    on the field, so nobody can fill the arena by listing countries. */
-function flushQueue(limit){ queue = []; }
+function flushQueue(limit){
+  let remaining=Math.max(0, Math.floor(limit||0));
+  if(!remaining) return;
+  const keep=[];
+  for(let i=0;i<queue.length;i++){
+    const j=queue[i];
+    if(remaining<=0 || flags.length>=MAX_FLAGS){ keep.push(j); continue; }
+    if(flags.some(function(f){ return f.user === j.user; })) continue;
+    seenThisRound.set(j.user, j.code);
+    if(addFlag(j.user, j.code)) remaining--; else keep.push(j);
+  }
+  queue=keep;
+}
 
 function clearBattle(){
   pickups = []; bullets = []; blasts = []; sparks = []; outMarks = []; floaters = []; specialMines = [];
@@ -1692,8 +1777,7 @@ function startKnockoutBattle(){
   roundChatCounts = Object.create(null);
   userCountryMentions = Object.create(null);
   alphaSpawnedThisRound = new Set();
-  wildcardUnlockedShown = false;
-  gapAngle = rand(0, Math.PI*2); gapDir = Math.random() < 0.5 ? -1 : 1;
+  gapPos = rand(0, PERIM); gapDir = Math.random() < 0.5 ? -1 : 1;
   phase = 'live';
   seenThisRound = new Map();
   clearBattle();
@@ -1749,8 +1833,7 @@ function startClosedBattle(participants){
   roundChatCounts = Object.create(null);
   userCountryMentions = Object.create(null);
   alphaSpawnedThisRound = new Set();
-  wildcardUnlockedShown = false;
-  gapAngle = rand(0, Math.PI*2); gapDir = Math.random() < 0.5 ? -1 : 1;
+  gapPos = rand(0, PERIM); gapDir = Math.random() < 0.5 ? -1 : 1;
   phase = 'live';
   seenThisRound = new Map();
   clearBattle();
@@ -1808,8 +1891,6 @@ function startTournamentFromQualification(){
 }
 
 function newRound(){
-  queue.length = 0; // never carry chat joins into a later round
-
   /* Equipment sequence intentionally continues across rounds. */
   if(tournamentStage === 'qualifying') setChatSpawningEnabled(true);
   /* Once the tournament has moved into knockout, newRound means the next closed
@@ -1828,8 +1909,7 @@ function newRound(){
   roundChatCounts = Object.create(null);
   userCountryMentions = Object.create(null);
   alphaSpawnedThisRound = new Set();
-  wildcardUnlockedShown = false;
-  gapAngle = rand(0, Math.PI*2);
+  gapPos = rand(0, PERIM);
   gapDir = Math.random() < 0.5 ? -1 : 1;
   phase = 'live';
   seenThisRound = new Map();
@@ -2038,6 +2118,8 @@ function step(dt){
     return;
   }
   if(phase === 'waiting'){
+    const release = NORMAL_CHAT_RELEASE_AT;
+    flushQueue(Math.max(0, release - flags.length));
     if(flags.length >= 2){
       phase = 'live';
       roundStartCount = flags.length;
@@ -2047,20 +2129,22 @@ function step(dt){
   }
 
   roundTime += dt;
-  /* Qualification rounds have NO artificial round timer / sudden-death cap.
-     They are allowed to reach the five-minute late-entry threshold naturally. */
-  if(tournamentStage === 'qualifying' && !wildcardUnlockedShown && roundTime >= 300){
-    wildcardUnlockedShown = true;
-    const unlockText = 'WILD CARD ENTRY UNLOCKED!';
-    speak(unlockText, {voice:'male',rate:0.98,pitch:0.98,interrupt:true});
-    floaters.push({x:CENTER.x,y:CENTER.y-ARENA_R*0.55,t:3.0,text:unlockText,c:'#ffd75a'});
-  }
+  const cap = Math.max(30, Number(S.roundCap) || 150);
+  /* Safety valve, not something the reference shows: past the cap a slowly
+     rising outward drift pulls everyone toward the rim so a stalemate between
+     two shielded flags cannot hold the stream hostage. */
+  if(roundTime > cap) suddenDeath = Math.min(1, suddenDeath + dt/12);
 
   /* Knockout rounds are collective eliminations. The battle ends as soon as the
      field reaches half its starting population; there is no pair-by-pair match. */
   if(tournamentStage !== 'qualifying' && tournamentStage !== 'final' && flags.length <= stageTransitionTarget){
     completeKnockoutStage();
     return;
+  }
+
+  const releaseAt = NORMAL_CHAT_RELEASE_AT;
+  if(roundTime < 300 && flags.length < releaseAt){
+    flushQueue(Math.max(0, releaseAt - flags.length));
   }
 
   /* --- rotors ------------------------------------------------------------
@@ -2110,7 +2194,7 @@ function step(dt){
     const p = pickups[i];
     p.y += PICKUP_FALL*dt;
     p.wob += dt;
-    if(p.y > insideDiscY(p.x).bottom - 6){ pickups.splice(i,1); continue; }
+    if(p.y > arenaBandY(p.x).bottom - 6){ pickups.splice(i,1); continue; }
     let taken = null;
     for(let j=0;j<flags.length;j++){
       const f = flags[j];
@@ -2374,7 +2458,7 @@ function step(dt){
       } else if(k==='shadowClone'){
         const radius=42; targets.forEach(function(o){if(o!==f&&flags.indexOf(o)!==-1&&Math.hypot(o.body.position.x-(px+Math.cos(age*3)*radius),o.body.position.y-(py+Math.sin(age*3)*radius))<o.bodyR+14)specialHit(f,o,'shadow-clone');});
       } else if(k==='portal'){
-        if(d.cooldown<=0){ targets.forEach(function(o){if(o===f)return;const dx=o.body.position.x-px,dy=o.body.position.y-py;if(Math.hypot(dx,dy)<38){const a=Math.atan2(dy,dx);Body.setPosition(o.body,{x:CENTER.x-Math.cos(a)*(ARENA_R*.55),y:CENTER.y-Math.sin(a)*(ARENA_R*.55)});Body.setVelocity(o.body,{x:-Math.cos(a)*5,y:-Math.sin(a)*5});d.cooldown=.8;}}); }
+        if(d.cooldown<=0){ targets.forEach(function(o){if(o===f)return;const dx=o.body.position.x-px,dy=o.body.position.y-py;if(Math.hypot(dx,dy)<38){const a=Math.atan2(dy,dx);Body.setPosition(o.body,{x:CENTER.x-Math.cos(a)*(ARENA_A*.55),y:CENTER.y-Math.sin(a)*(ARENA_A*.55)});Body.setVelocity(o.body,{x:-Math.cos(a)*5,y:-Math.sin(a)*5});d.cooldown=.8;}}); }
       } else if(k==='mineLayer'){
         if(age<.25 && !d.used){d.used=true; for(let q=0;q<4;q++){const a=q*Math.PI/2+d.phase;specialMines.push({x:px+Math.cos(a)*32,y:py+Math.sin(a)*32,t:elapsed,owner:f});}}
       } else if(k==='dragonAura'){
@@ -2489,7 +2573,7 @@ function step(dt){
       b.x+=b.vx*dt; b.y+=b.vy*dt;
       b.trail.push({x:b.x,y:b.y});
       if(b.trail.length>b.trailMax)b.trail.shift();
-      if(b.x<CENTER.x-ARENA_R-80||b.x>CENTER.x+ARENA_R+80||b.y<CENTER.y-ARENA_R-80||b.y>CENTER.y+ARENA_R+80){bullets.splice(i,1);continue;}
+      if(b.x<CENTER.x-ARENA_A-80||b.x>CENTER.x+ARENA_A+80||b.y<CENTER.y-ARENA_A-80||b.y>CENTER.y+ARENA_A+80){bullets.splice(i,1);continue;}
       const t=b.target;
       if(!t||flags.indexOf(t)===-1)continue;
       const sx=b.x-b.prevX,sy=b.y-b.prevY,s2=sx*sx+sy*sy||1;
@@ -2539,21 +2623,24 @@ function step(dt){
   });
   Engine.update(engine, STEP);
 
-  /* --- the rim ------------------------------------------------------------
-     Solid everywhere except the opening. A flag inside the gap's arc has no wall
-     to hit, keeps going, and is out once it is clear of the rim. Anywhere else it
-     bounces, and it can bounce there all round without ever being at risk. */
-  gapWidth = currentGapWidth();
-  gapAngle += GAP_TRAVEL * gapDir * dt;
-  if(gapAngle > Math.PI*2) gapAngle -= Math.PI*2;
-  if(gapAngle < 0) gapAngle += Math.PI*2;
+  /* --- the wall -----------------------------------------------------------
+     Solid on all four sides except the one opening. A flag whose outward ray falls
+     inside the opening has no wall to hit, keeps going under its own momentum, and is
+     out once its body is clear of the wall by GAP_EXIT_MARGIN. Anywhere else it
+     reflects, and it can sit there bouncing all round without ever being at risk.
+
+     Nothing here forces a flag out and nothing removes one at the boundary: crossing
+     is ordinary motion, and the only test is whether it has finished crossing. */
+  gapLen = currentGapWidth();
+  gapPos += GAP_TRAVEL * gapDir * dt;
+  gapPos = ((gapPos % PERIM) + PERIM) % PERIM;
 
   for(let i=flags.length-1;i>=0;i--){
     const f = flags[i];
     const dx = f.body.position.x - CENTER.x, dy = f.body.position.y - CENTER.y;
     const d = Math.hypot(dx,dy) || 0.0001;
-    const n = { x:dx/d, y:dy/d };
-    const ang = Math.atan2(dy, dx);
+    const n = { x:dx/d, y:dy/d };   // radial — used only by the sudden-death nudge
+    const s = sOf(dx, dy);          // where on the wall this flag is heading out
 
     if(suddenDeath > 0){
       const v = f.body.velocity;
@@ -2578,21 +2665,25 @@ function step(dt){
       Body.setVelocity(f.body, { x:jv.x + Math.cos(ja)*jm, y:jv.y + Math.sin(ja)*jm });
     }
 
-    const limit = ARENA_R - f.bodyR;
-    if(d <= limit) continue;
+    /* Inside the square inset by the flag's own radius: nothing to resolve. This is
+       the square's version of "d <= limit" — a Chebyshev test rather than a radial
+       one, and the one place where the shape of the arena is actually decided. */
+    const limit = ARENA_A - f.bodyR;
+    if(Math.abs(dx) <= limit && Math.abs(dy) <= limit) continue;
 
-    if(inGap(ang)){
+    if(inGap(s)){
       if(elapsed < f.shieldUntil){
         /* The shield's whole job is one save, and this is the moment worth saving
            from. It plugs the opening for this flag, then burns out. */
         f.shieldUntil = 0;
-        bounceOffRim(f, n, limit);
+        bounceOffRim(f, limit);
         continue;
       }
-      if(d > ARENA_R + GAP_EXIT_MARGIN){ kill(f, 'rim'); }
+      /* Clear of the square by the same 16 px margin, measured the square's way. */
+      if(Math.max(Math.abs(dx), Math.abs(dy)) > ARENA_A + GAP_EXIT_MARGIN){ kill(f, 'rim'); }
       continue;                       // mid-exit: no wall here to resolve against
     }
-    bounceOffRim(f, n, limit);
+    bounceOffRim(f, limit);
   }
 
   /* --- resolution -------------------------------------------------------- */
@@ -2606,29 +2697,37 @@ function step(dt){
    7. CHAT WIRING — the only place chat touches the game.
 --------------------------------------------------------------------------- */
 function queueChatJoin(user, code){
-  /* No delayed country joins. A qualifying chat message is handled only
-     in the round in which it was received. */
-  return false;
+  if(queue.some(function(j){ return j.user===user && j.code===code; })) return;
+  if(queue.length < MAX_FLAGS*3) queue.push({user:user, code:code, queuedAt:elapsed});
+}
+function spawnAlpha(code, user){
+  if(alphaSpawnedThisRound.has(code)) return;
+  if(flags.some(function(f){ return f.code===code; })) return;
+  if(flags.length >= MAX_FLAGS) return;
+  const f=addFlag(user || ('ALPHA-' + code + '-' + roundNo), code, {alpha:true});
+  if(!f) return;
+  alphaSpawnedThisRound.add(code);
+  announceAlphaFlag(NAME_BY_CODE[code]);
+  /* Alpha arrives with the requested 10-second shield + knife already attached. */
+  f.shieldUntil = elapsed + 10;
+  f.swordUntil = elapsed + 10;
+  floaters.push({x:f.body.position.x,y:f.body.position.y,t:1.2,text:'10s SHIELD + KNIFE',c:'#ffd75a'});
+  playPickup('shield');
 }
 ChatSource.onJoin = function(user, code){
-  if(tournamentStage !== 'qualifying' || phase !== 'live') return;
-
-  /* Same-round only. A repeated message from an existing viewer is a boost;
-     a first country message is admitted immediately. Nothing is queued. */
+  /* Country chat-spawns are qualification-only. Knockout brackets are closed
+     and ignore country join messages completely; they do not enter a queue. */
+  if(tournamentStage !== 'qualifying') return;
   const own = flags.find(function(f){ return f.user === user; });
-  if(own){
-    if(roundTime < 300) boostFlag(user, own.code);
+  if(own){ boostFlag(user, own.code); return; }
+  if(phase !== 'live'){ queueChatJoin(user, code); return; }
+  if(roundTime >= 300){
+    queueChatJoin(user, code);
     return;
   }
-
-  if(roundTime < 300){
-    addFlag(user, code);
-    return;
-  }
-
-  /* >= 5:00: ordinary joins are closed; Wild Card admission is handled
-     separately by the existing mention counter. */
-};;
+  if(flags.length < MAX_FLAGS) addFlag(user, code);
+  else queueChatJoin(user, code);
+};
 ChatSource.onBoost = function(user, code){
   if(tournamentStage === 'qualifying' && phase === 'live') boostFlag(user, code);
 };
@@ -4217,13 +4316,15 @@ function draw(){
     return;
   }
 
-  /* The disc reads as a soft lift out of the backdrop rather than a fill. */
-  const dg = ctx.createRadialGradient(CENTER.x, CENTER.y, ARENA_R*0.1, CENTER.x, CENTER.y, ARENA_R);
+  /* The floor reads as a soft lift out of the backdrop rather than a fill. The
+     gradient runs to the CORNER distance (A*sqrt(2)) rather than to A, or the four
+     corners would fall outside it and the square would look like a disc with ears. */
+  const dg = ctx.createRadialGradient(CENTER.x, CENTER.y, ARENA_A*0.1, CENTER.x, CENTER.y, ARENA_A*Math.SQRT2);
   dg.addColorStop(0,'rgba(255,255,255,0.30)');
-  dg.addColorStop(0.72,'rgba(255,255,255,0.14)');
-  dg.addColorStop(1,'rgba(255,255,255,0)');
+  dg.addColorStop(0.72,'rgba(255,255,255,0.13)');
+  dg.addColorStop(1,'rgba(255,255,255,0.02)');
   ctx.fillStyle = dg;
-  ctx.beginPath(); ctx.arc(CENTER.x, CENTER.y, ARENA_R, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.rect(CENTER.x-ARENA_A, CENTER.y-ARENA_A, SIDE, SIDE); ctx.fill();
 
   /* Watermark. */
   const brand = String(S.brandText || '').trim();
@@ -4239,14 +4340,15 @@ function draw(){
   /* The wall, and the one opening in it. The dashed white arc underneath spans
      exactly the solid part, so if the coloured segments ever drifted wrong the wall
      would still be visibly whole and the exit still visibly the only way out. */
-  const wallFrom = gapAngle + gapWidth/2, wallTo = gapAngle + Math.PI*2 - gapWidth/2;
+  const wallFrom = gapPos + gapLen/2, wallTo = gapPos + PERIM - gapLen/2;
   ctx.save();
   ctx.setLineDash([12,4]);
   ctx.lineCap = 'butt';
   ctx.lineWidth = 3;
   ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineJoin = 'round';
   ctx.beginPath();
-  ctx.arc(CENTER.x, CENTER.y, ARENA_R, wallFrom, wallTo);
+  perimPath(wallFrom, wallTo);
   ctx.stroke();
   RING_LAYERS.forEach(function(L, i){
     const a0 = ringBoundary(i), a1 = ringBoundary(i+1);
@@ -4254,9 +4356,8 @@ function draw(){
     ctx.strokeStyle = L.color;
     ctx.beginPath();
     /* Weld inwards only at the shared boundaries, never over the exit. */
-    ctx.arc(CENTER.x, CENTER.y, ARENA_R,
-            i === 0 ? a0 : a0 - RING_WELD,
-            i === RING_LAYERS.length-1 ? a1 : a1 + RING_WELD);
+    perimPath(i === 0 ? a0 : a0 - RING_WELD,
+              i === RING_LAYERS.length-1 ? a1 : a1 + RING_WELD);
     ctx.stroke();
   });
   ctx.restore();
@@ -4264,24 +4365,26 @@ function draw(){
   /* Mark the exit, because a viewer has to be able to see where the danger is. Two
      bright posts at the edges of the opening, and a soft flare across it. */
   ctx.save();
-  const flare = ctx.createRadialGradient(
-    CENTER.x + Math.cos(gapAngle)*ARENA_R, CENTER.y + Math.sin(gapAngle)*ARENA_R, 2,
-    CENTER.x + Math.cos(gapAngle)*ARENA_R, CENTER.y + Math.sin(gapAngle)*ARENA_R,
-    Math.max(14, gapWidth*ARENA_R*0.6));
+  const gc = pointAtS(gapPos);
+  const flareR = Math.max(14, gapLen*0.6);
+  const flare = ctx.createRadialGradient(gc.x, gc.y, 2, gc.x, gc.y, flareR);
   flare.addColorStop(0, 'rgba(255,110,110,0.36)');
   flare.addColorStop(1, 'rgba(255,110,110,0)');
   ctx.fillStyle = flare;
   ctx.beginPath();
-  ctx.arc(CENTER.x + Math.cos(gapAngle)*ARENA_R, CENTER.y + Math.sin(gapAngle)*ARENA_R,
-          Math.max(14, gapWidth*ARENA_R*0.6), 0, Math.PI*2);
+  ctx.arc(gc.x, gc.y, flareR, 0, Math.PI*2);
   ctx.fill();
   ctx.strokeStyle = '#ff6e6e';
   ctx.lineWidth = 3.5;
   ctx.lineCap = 'round';
-  [wallFrom, wallTo].forEach(function(a){
+  /* Posts at both edges of the opening. The normal is sampled half a pixel INTO the
+     solid wall, so a post landing exactly on a corner picks the side it belongs to
+     instead of falling between the two. */
+  [[wallFrom, 0.5], [wallTo, -0.5]].forEach(function(pair){
+    const p = pointAtS(pair[0]), nn = normalAtS(pair[0] + pair[1]);
     ctx.beginPath();
-    ctx.moveTo(CENTER.x + Math.cos(a)*(ARENA_R-9), CENTER.y + Math.sin(a)*(ARENA_R-9));
-    ctx.lineTo(CENTER.x + Math.cos(a)*(ARENA_R+9), CENTER.y + Math.sin(a)*(ARENA_R+9));
+    ctx.moveTo(p.x - nn.x*9, p.y - nn.y*9);
+    ctx.lineTo(p.x + nn.x*9, p.y + nn.y*9);
     ctx.stroke();
   });
   ctx.restore();
@@ -4405,7 +4508,7 @@ function draw(){
     ctx.globalAlpha = 1;
   });
   outMarks.forEach(function(m){
-    const x = CENTER.x + Math.cos(m.a)*ARENA_R, y = CENTER.y + Math.sin(m.a)*ARENA_R;
+    const mp = pointAtS(m.s), x = mp.x, y = mp.y;
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, m.t/1.5));
     ctx.font = '900 22px "Trebuchet MS", sans-serif';
@@ -4429,7 +4532,7 @@ function draw(){
     ? 'QUALIFYING ' + Math.min(qualificationWinners.length + 1, QUALIFICATION_BATTLES) + '/' + QUALIFICATION_BATTLES
     : stageLabel(tournamentStage).toUpperCase();
   const chip = stageChip + '  ·  ' + flags.length + ' FLAG' + (flags.length === 1 ? '' : 'S')
-            ;
+             + (queue.length ? '  ·  ' + queue.length + ' WAITING' : '');
   const cw = trackedWidth(chip, 1.6) + 26;
   ctx.save();
   roundRect(CENTER.x - cw/2, 190, cw, 24, 12);
@@ -4559,6 +4662,7 @@ bind('joinMode','joinMode');
 bind('joinSec','joinSec', Number);
 bind('gapMinDeg','gapMinDeg', Number);
 bind('gapMaxDeg','gapMaxDeg', Number);
+bind('roundCap','roundCap', Number);
 bind('brandText','brandText');
 bind('marqueeText','marqueeText');
 
@@ -4627,42 +4731,5 @@ $('wipeBtn').addEventListener('click', function(){
   try{ pair[1](); }catch(e){ reportFault('Failed during ' + pair[0], e); }
 });
 </script>
-
-<script>
-(function(){
-  function wakeLiveChat(){
-    try{ if(window.Live && typeof window.Live.wake === 'function') window.Live.wake(); }
-    catch(e){}
-  }
-  document.addEventListener('visibilitychange', wakeLiveChat, {passive:true});
-  window.addEventListener('focus', wakeLiveChat, {passive:true});
-  window.addEventListener('pageshow', wakeLiveChat, {passive:true});
-})();
-</script>
-
-
-<script>
-(function(){
-  var mobileChatWatchdog = null;
-  function arm(){
-    clearInterval(mobileChatWatchdog);
-    if(document.hidden) return;
-    mobileChatWatchdog = setInterval(function(){
-      try{
-        if(window.Live && window.ChatSource &&
-           ChatSource.running && ChatSource.mode === 'live' &&
-           Live.chatId && !Live.inFlight){
-          Live.poll();
-        }
-      }catch(e){}
-    }, 1500);
-  }
-  document.addEventListener('visibilitychange', arm, {passive:true});
-  window.addEventListener('pageshow', arm, {passive:true});
-  window.addEventListener('focus', arm, {passive:true});
-  window.addEventListener('load', arm, {passive:true});
-})();
-</script>
-
 </body>
 </html>
