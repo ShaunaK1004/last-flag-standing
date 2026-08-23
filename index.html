@@ -177,7 +177,7 @@ if(typeof Matter === 'undefined'){
     <p class="hint live-auto">YouTube Live is <b>automatic</b>. OBS only opens this Vercel page. The API key stays server-side in Vercel and the app finds the active live broadcast automatically.</p>
     <div class="row">
       <label class="field"><span>Poll every (s)</span>
-        <input type="number" id="pollSec" min="5" max="60" step="1" value="10"></label>
+        <input type="number" id="pollSec" min="10" max="60" step="1" value="10"></label>
       <label class="field"><span>Messages per call</span>
         <input type="number" id="maxResults" min="50" max="2000" step="50" value="500"></label>
     </div>
@@ -231,7 +231,7 @@ if(typeof Matter === 'undefined'){
     <tr><td>Messages received</td><td id="qMsgs">0</td></tr>
   </table>
   <div id="qVerdict" class="hint"></div>
-  <p class="hint">Google publishes 10,000 units/day per project. Whether one chat read costs 1 unit or 5 changes everything, and the docs and the field disagree, so both are shown. After one real stream, compare the call count here against the project's quota graph: whichever column matches is the true cost.</p>
+  <p class="hint">Google publishes 10,000 units/day per project. This build uses one shared server poller so desktop/mobile do not multiply YouTube API calls. Whether one chat read costs 1 unit or 5 changes everything, and the docs and the field disagree, so both are shown. After one real stream, compare the call count here against the project's quota graph: whichever column matches is the true cost.</p>
 
   <h3>Diagnostics</h3>
   <div id="status">Idle.</div>
@@ -1000,119 +1000,94 @@ function renderQuota(){
    slower poll costs latency and nothing else — that is the only quota lever
    available, which is why the interval is a setting. */
 const Live = {
-  chatId: null, pageToken: null, timer: null, backoff: 0, seenIds: new Set(),
-  initialized: false, reconnectTimer: null,
-  start: function(){
+  chatId:null, videoId:null, cursor:null, timer:null, reconnectTimer:null,
+  initialized:false, inFlight:false, running:false,
+
+  start:function(){
     this.stop();
-    this.chatId = null; this.pageToken = null; this.backoff = 0; this.seenIds.clear();
-    this.initialized = false;
-    setStatus('Finding the active YouTube Live broadcast…');
-    this.resolve();
+    this.running=true;
+    this.chatId=null; this.videoId=null; this.cursor=null;
+    this.initialized=false; this.inFlight=false;
+    setStatus('Connecting to shared YouTube Live chat…');
+    this.sync();
   },
-  stop: function(){
-    if(this.timer){ clearTimeout(this.timer); this.timer = null; }
-    if(this.reconnectTimer){ clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+
+  stop:function(){
+    this.running=false;
+    if(this.timer){clearTimeout(this.timer);this.timer=null;}
+    if(this.reconnectTimer){clearTimeout(this.reconnectTimer);this.reconnectTimer=null;}
+    this.inFlight=false;
   },
-  videoIdFrom: function(raw){
-    const s = String(raw || '').trim();
-    if(!s) return '';
-    const m = s.match(/(?:v=|\/live\/|youtu\.be\/|\/shorts\/|\/embed\/)([A-Za-z0-9_-]{11})/);
-    if(m) return m[1];
-    if(/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
-    return s;
+
+  wake:function(){
+    if(!this.running || ChatSource.mode!=='live') return;
+    if(this.timer){clearTimeout(this.timer);this.timer=null;}
+    if(!this.inFlight) this.sync();
   },
-  resolve: async function(){
-    if(!ChatSource.running || ChatSource.mode !== 'live') return;
-    setStatus('Finding the active YouTube Live broadcast…');
+
+  schedule:function(ms){
+    if(!this.running) return;
+    if(this.timer) clearTimeout(this.timer);
+    const self=this;
+    this.timer=setTimeout(function(){self.sync();},Math.max(250,ms||1000));
+  },
+
+  sync:async function(){
+    if(!this.running || ChatSource.mode!=='live' || this.inFlight) return;
+    this.inFlight=true;
+    const qs=new URLSearchParams();
+    qs.set('action','sync');
+    if(this.cursor!==null) qs.set('cursor',String(this.cursor));
+
     try{
-      const res = await fetch('/api/youtube-chat?action=init', {cache:'no-store'});
-      const body = await res.json().catch(function(){ return null; });
+      const res=await fetch('/api/youtube-chat?'+qs.toString(),{
+        method:'GET',cache:'no-store',
+        headers:{'Cache-Control':'no-cache, no-store, must-revalidate','Pragma':'no-cache'}
+      });
+      const body=await res.json().catch(function(){return null;});
+
       if(!res.ok || !body || !body.ok){
-        const msg = body && body.message ? body.message : ('HTTP ' + res.status);
-        if(body && body.setupRequired){
-          setStatus(msg, 'err');
-          const el = document.getElementById('liveAutoStatus');
-          if(el) el.textContent = msg;
-          return;
-        }
-        setStatus(msg, 'err');
-        this.scheduleResolve(30000);
+        const msg=body&&body.message?body.message:('HTTP '+res.status);
+        setStatus(msg+' Retrying…','err');
+        this.inFlight=false;
+        this.schedule(5000);
         return;
       }
-      this.chatId = body.chatId || null;
-      this.pageToken = body.pageToken || null;
-      this.initialized = !!this.chatId;
-      const title = body.title ? '“' + body.title + '”' : 'the active broadcast';
+
+      if(body.chatId) this.chatId=body.chatId;
+      if(body.videoId) this.videoId=body.videoId;
+      this.initialized=!!this.chatId;
+
+      const items=Array.isArray(body.items)?body.items:[];
+      /* Events are already ordered oldest -> newest by the server. Process every
+         event immediately in the active round. Nothing is queued client-side. */
+      for(let i=0;i<items.length;i++){
+        const it=items[i];
+        if(!it || !it.id) continue;
+        ingest(it.username||'viewer',it.text||'');
+      }
+      this.cursor=Number(body.nextCursor||this.cursor||0);
+
       if(!this.chatId){
-        setStatus('No active YouTube Live broadcast found. Waiting…');
-        const el = document.getElementById('liveAutoStatus');
-        if(el) el.textContent = 'No active live broadcast found. The arena will keep checking automatically.';
-        this.scheduleResolve(30000);
-        return;
-      }
-      setStatus('Connected to ' + title + '. Reading live chat.', 'ok');
-      const el = document.getElementById('liveAutoStatus');
-      if(el) el.textContent = 'Connected automatically. OBS needs only the Vercel URL.';
-      this.poll();
-    }catch(e){
-      setStatus('Vercel YouTube bridge unavailable: ' + e.message, 'err');
-      this.scheduleResolve(30000);
-    }
-  },
-  scheduleResolve: function(ms){
-    const self = this;
-    if(this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(function(){ self.resolve(); }, ms);
-  },
-  poll: async function(){
-    if(!ChatSource.running || ChatSource.mode !== 'live' || !this.chatId) return;
-    const max = Math.min(2000, Math.max(50, Number(S.maxResults) || 500));
-    const qs = new URLSearchParams();
-    qs.set('action','poll');
-    qs.set('chatId', this.chatId);
-    qs.set('maxResults', String(max));
-    if(this.pageToken) qs.set('pageToken', this.pageToken);
-    let waitMs = Math.max(5000, (Number(S.pollSec) || 10) * 1000);
-    try{
-      const res = await fetch('/api/youtube-chat?' + qs.toString(), {cache:'no-store'});
-      const body = await res.json().catch(function(){ return null; });
-      if(!res.ok || !body || !body.ok){
-        const reason = body && body.reason;
-        if(reason === 'liveChatEnded' || reason === 'liveChatNotFound' || reason === 'videoNotFound'){
-          setStatus('The YouTube Live ended. Looking for the next live automatically…');
-          this.chatId = null; this.pageToken = null; this.initialized = false;
-          this.scheduleResolve(5000);
-          return;
-        }
-        const msg = body && body.message ? body.message : ('HTTP ' + res.status);
-        this.backoff = Math.min(60000, Math.max(waitMs, (this.backoff || waitMs) * 2));
-        setStatus(msg + ' Retrying in ' + Math.round(this.backoff/1000) + ' s.', 'err');
-        waitMs = this.backoff;
+        setStatus('Waiting for an active YouTube Live…');
+        const el=document.getElementById('liveAutoStatus');
+        if(el) el.textContent='Shared chat bridge is waiting for the next live broadcast.';
       }else{
-        this.backoff = 0;
-        this.pageToken = body.nextPageToken || this.pageToken;
-        const hint = Number(body.pollingIntervalMillis) || 0;
-        waitMs = Math.max(waitMs, hint);
-        const items = body.items || [];
-        for(let i=0;i<items.length;i++){
-          const it = items[i];
-          if(!it || !it.id || this.seenIds.has(it.id)) continue;
-          this.seenIds.add(it.id);
-          const sn = it.snippet || {};
-          const text = sn.displayMessage || (sn.textMessageDetails && sn.textMessageDetails.messageText) || '';
-          const who = (it.authorDetails && (it.authorDetails.displayName || it.authorDetails.channelId)) || 'viewer';
-          if(text) ingest(who, text);
-        }
-        if(this.seenIds.size > 8000) this.seenIds = new Set(Array.from(this.seenIds).slice(-3000));
-        setStatus('Live chat connected — ' + items.length + ' new messages. Next read in ' + Math.round(waitMs/1000) + ' s.', 'ok');
+        const role=body.leader?'poll leader':'shared feed';
+        setStatus('Live chat connected — '+items.length+' new messages ('+role+').','ok');
+        const el=document.getElementById('liveAutoStatus');
+        if(el) el.textContent='One shared YouTube poller feeds desktop + mobile in real time.';
       }
+
+      this.inFlight=false;
+      /* Client-side feed is cheap (Redis only), so poll every 5s; the server-side YouTube poller remains quota-controlled. The
+         YouTube API itself is polled server-side at >=10s to protect quota. */
+      this.schedule(5000);
     }catch(e){
-      this.backoff = Math.min(60000, Math.max(waitMs, (this.backoff || waitMs) * 2));
-      waitMs = this.backoff;
-      setStatus('Vercel chat bridge error: ' + e.message + '. Retrying in ' + Math.round(waitMs/1000) + ' s.', 'err');
+      this.inFlight=false;
+      setStatus('Shared realtime chat bridge error: '+e.message+'. Retrying…','err');
+      this.schedule(5000);
     }
-    const self = this;
-    this.timer = setTimeout(function(){ self.poll(); }, waitMs);
   }
 };
 
