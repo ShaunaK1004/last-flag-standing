@@ -196,7 +196,7 @@ if(typeof Matter === 'undefined'){
   <label class="field"><span>Late joins</span>
     <select id="joinMode">
       <option value="now">Enter mid-round straight away</option>
-      <option value="queue">Hold for the next round</option>
+      <option value="queue">Do not buffer (live round only)</option>
     </select></label>
   <div class="row">
     <label class="field"><span>Exit gap (deg)</span>
@@ -207,8 +207,8 @@ if(typeof Matter === 'undefined'){
   <div class="row">
     <label class="field"><span>Join window (s)</span>
       <input type="number" id="joinSec" min="0" max="600" step="5" value="45"></label>
-    <label class="field"><span>Round cap (s)</span>
-      <input type="number" id="roundCap" min="30" max="600" step="10" value="150"></label>
+    <label class="field"><span>Wild Card unlock</span>
+        <input type="number" value="300" disabled></label>
   </div>
   <label class="field"><span>Watermark across the disc</span>
     <input type="text" id="brandText" value="FLAGS WAR ARENA" maxlength="28"></label>
@@ -547,7 +547,7 @@ const CODE_IS_A_WORD = new Set(['am','at','be','by','do','id','in','is','it','la
 const DEFAULTS = {
   mode:'live', apiKey:'', videoId:'', pollSec:10, maxResults:500,
   simRate:90, seedCount:40, joinMode:'now', joinSec:45,
-  gapMinDeg:17, gapMaxDeg:60, roundCap:150,
+  gapMinDeg:17, gapMaxDeg:60,
   brandText:'FLAGS WAR ARENA',
   marqueeText:'TYPE YOUR COUNTRY NAME TO JOIN AND SUBSCRIBE',
   voice:true
@@ -891,7 +891,6 @@ let seenThisRound = new Map();   // username -> code
 let chatSpawningEnabled = true;
 function setChatSpawningEnabled(enabled){
   chatSpawningEnabled = !!enabled;
-  if(!chatSpawningEnabled) queue = [];
   const el = document.getElementById('liveAutoStatus');
   if(el && S.mode === 'live') el.textContent = chatSpawningEnabled
     ? 'YouTube chat connected — country/equipment spawns ENABLED for qualifying.'
@@ -1001,11 +1000,11 @@ function renderQuota(){
    available, which is why the interval is a setting. */
 const Live = {
   chatId: null, pageToken: null, timer: null, backoff: 0, seenIds: new Set(),
-  initialized: false, reconnectTimer: null,
+  initialized: false, reconnectTimer: null, inFlight: false,
   start: function(){
     this.stop();
     this.chatId = null; this.pageToken = null; this.backoff = 0; this.seenIds.clear();
-    this.initialized = false;
+    this.initialized = false; this.inFlight = false;
     setStatus('Finding the active YouTube Live broadcast…');
     this.resolve();
   },
@@ -1065,7 +1064,8 @@ const Live = {
     this.reconnectTimer = setTimeout(function(){ self.resolve(); }, ms);
   },
   poll: async function(){
-    if(!ChatSource.running || ChatSource.mode !== 'live' || !this.chatId) return;
+    if(!ChatSource.running || ChatSource.mode !== 'live' || !this.chatId || this.inFlight) return;
+    this.inFlight = true;
     const max = Math.min(2000, Math.max(50, Number(S.maxResults) || 500));
     const qs = new URLSearchParams();
     qs.set('action','poll');
@@ -1080,7 +1080,7 @@ const Live = {
         const reason = body && body.reason;
         if(reason === 'liveChatEnded' || reason === 'liveChatNotFound' || reason === 'videoNotFound'){
           setStatus('The YouTube Live ended. Looking for the next live automatically…');
-          this.chatId = null; this.pageToken = null; this.initialized = false;
+          this.chatId = null; this.pageToken = null; this.initialized = false; this.inFlight = false;
           this.scheduleResolve(5000);
           return;
         }
@@ -1111,11 +1111,32 @@ const Live = {
       waitMs = this.backoff;
       setStatus('Vercel chat bridge error: ' + e.message + '. Retrying in ' + Math.round(waitMs/1000) + ' s.', 'err');
     }
+    this.inFlight = false;
     const self = this;
     this.timer = setTimeout(function(){ self.poll(); }, waitMs);
   }
 };
 
+
+window.addEventListener('pageshow', function(){
+  if(ChatSource.mode === 'live' && ChatSource.running && Live.chatId){
+    if(Live.timer){ clearTimeout(Live.timer); Live.timer=null; }
+    if(Live.inFlight) return;
+    Live.poll();
+  }
+});
+window.addEventListener('focus', function(){
+  if(ChatSource.mode === 'live' && ChatSource.running && Live.chatId){
+    if(Live.timer){ clearTimeout(Live.timer); Live.timer=null; }
+    if(!Live.inFlight) Live.poll();
+  }
+});
+document.addEventListener('visibilitychange', function(){
+  if(!document.hidden && ChatSource.mode === 'live' && ChatSource.running && Live.chatId){
+    if(Live.timer){ clearTimeout(Live.timer); Live.timer=null; }
+    if(!Live.inFlight) Live.poll();
+  }
+});
 /* Surfaces the exact status and Google's own reason string, because "it didn't
    work" is the one message that costs an hour to debug. */
 function describeError(res, body){
@@ -1195,9 +1216,9 @@ const MUZZLE_FLASH_TIME = 0.11;
 const WEAPON_AIM_TURN = 18;
 const SHOTGUN_SPREAD = 0.045;
 const MAX_BULLETS = 120;
-const MAX_FLAGS = 150;
+const MAX_FLAGS = Infinity;
 const DEFAULT_FLAGS_PER_ROUND = 40;
-const NORMAL_CHAT_RELEASE_AT = 100;
+const NORMAL_CHAT_RELEASE_AT = Infinity;
 const ALPHA_TRIGGER_COUNT = 10;
 const ALPHA_SCALE = 2.2;
 const STEP = 1000/60;
@@ -1253,12 +1274,13 @@ function ringBoundary(i){
 let engine = null, world = null;
 let flags = [];
 let pickups = [], blasts = [], sparks = [], outMarks = [], floaters = [], bullets = [], specialMines = [];
-let queue = [];                       // joins held for the next round
+let queue = [];                       // retained only for compatibility; chat is never buffered
 let imgCache = {};
 let roundNo = 0, qualificationRoundNo = 0, roundTime = 0, roundStartCount = 0;
 let roundChatCounts = Object.create(null);
 let userCountryMentions = Object.create(null);
 let alphaSpawnedThisRound = new Set();
+let wildcardUnlockedShown = false;
 let phase = 'live';                   // 'live' | 'winner' | 'stageTransition' | 'waiting' | 'podium' | 'leaderboard'
 let winner = null, winnerHold = 0, countdownShown = 0, revealBeat = 0;
 /* Tournament progression: 64 qualification battles feed a 32-team knockout.
@@ -1526,6 +1548,20 @@ function spawnPickup(kind, atX, source){
 }
 
 function kill(f, cause){
+  /* A qualification round must reach the five-minute late-entry threshold.
+     If the current flag would be the final survivor killed before 300 s, keep it
+     alive instead of ending the round early. This is a minimum-duration gate,
+     not a round timer: once 300 s is reached normal elimination resumes. */
+  if(tournamentStage === 'qualifying' && roundTime < 300 && flags.length <= 1){
+    const dx = f.body.position.x - CENTER.x, dy = f.body.position.y - CENTER.y;
+    const d = Math.hypot(dx,dy) || 1;
+    const n = {x:dx/d,y:dy/d};
+    const limit = ARENA_R - f.bodyR;
+    Body.setPosition(f.body,{x:CENTER.x+n.x*limit,y:CENTER.y+n.y*limit});
+    Body.setVelocity(f.body,{x:-n.x*0.9,y:-n.y*0.9});
+    f.shieldUntil = Math.max(f.shieldUntil, elapsed + 0.25);
+    return;
+  }
   /* Collective knockout rounds stop exactly at their survivor target. A single
      simulation tick can contain several contacts, so guard here as well as at the
      end-of-step check to prevent 64→31 overshoot. */
@@ -1580,19 +1616,7 @@ function detonate(x, y){
 --------------------------------------------------------------------------- */
 /* One viewer holds one flag. A queued join is dropped if they already have one
    on the field, so nobody can fill the arena by listing countries. */
-function flushQueue(limit){
-  let remaining=Math.max(0, Math.floor(limit||0));
-  if(!remaining) return;
-  const keep=[];
-  for(let i=0;i<queue.length;i++){
-    const j=queue[i];
-    if(remaining<=0 || flags.length>=MAX_FLAGS){ keep.push(j); continue; }
-    if(flags.some(function(f){ return f.user === j.user; })) continue;
-    seenThisRound.set(j.user, j.code);
-    if(addFlag(j.user, j.code)) remaining--; else keep.push(j);
-  }
-  queue=keep;
-}
+function flushQueue(limit){ queue = []; }
 
 function clearBattle(){
   pickups = []; bullets = []; blasts = []; sparks = []; outMarks = []; floaters = []; specialMines = [];
@@ -1633,6 +1657,7 @@ function startKnockoutBattle(){
   roundChatCounts = Object.create(null);
   userCountryMentions = Object.create(null);
   alphaSpawnedThisRound = new Set();
+  wildcardUnlockedShown = false;
   gapAngle = rand(0, Math.PI*2); gapDir = Math.random() < 0.5 ? -1 : 1;
   phase = 'live';
   seenThisRound = new Map();
@@ -1689,6 +1714,7 @@ function startClosedBattle(participants){
   roundChatCounts = Object.create(null);
   userCountryMentions = Object.create(null);
   alphaSpawnedThisRound = new Set();
+  wildcardUnlockedShown = false;
   gapAngle = rand(0, Math.PI*2); gapDir = Math.random() < 0.5 ? -1 : 1;
   phase = 'live';
   seenThisRound = new Map();
@@ -1765,6 +1791,7 @@ function newRound(){
   roundChatCounts = Object.create(null);
   userCountryMentions = Object.create(null);
   alphaSpawnedThisRound = new Set();
+  wildcardUnlockedShown = false;
   gapAngle = rand(0, Math.PI*2);
   gapDir = Math.random() < 0.5 ? -1 : 1;
   phase = 'live';
@@ -1974,8 +2001,6 @@ function step(dt){
     return;
   }
   if(phase === 'waiting'){
-    const release = NORMAL_CHAT_RELEASE_AT;
-    flushQueue(Math.max(0, release - flags.length));
     if(flags.length >= 2){
       phase = 'live';
       roundStartCount = flags.length;
@@ -1985,22 +2010,20 @@ function step(dt){
   }
 
   roundTime += dt;
-  const cap = Math.max(30, Number(S.roundCap) || 150);
-  /* Safety valve, not something the reference shows: past the cap a slowly
-     rising outward drift pulls everyone toward the rim so a stalemate between
-     two shielded flags cannot hold the stream hostage. */
-  if(roundTime > cap) suddenDeath = Math.min(1, suddenDeath + dt/12);
+  /* Qualification rounds have NO artificial round timer / sudden-death cap.
+     They are allowed to reach the five-minute late-entry threshold naturally. */
+  if(tournamentStage === 'qualifying' && !wildcardUnlockedShown && roundTime >= 300){
+    wildcardUnlockedShown = true;
+    const unlockText = 'WILD CARD ENTRY UNLOCKED!';
+    speak(unlockText, {voice:'male',rate:0.98,pitch:0.98,interrupt:true});
+    floaters.push({x:CENTER.x,y:CENTER.y-ARENA_R*0.55,t:3.0,text:unlockText,c:'#ffd75a'});
+  }
 
   /* Knockout rounds are collective eliminations. The battle ends as soon as the
      field reaches half its starting population; there is no pair-by-pair match. */
   if(tournamentStage !== 'qualifying' && tournamentStage !== 'final' && flags.length <= stageTransitionTarget){
     completeKnockoutStage();
     return;
-  }
-
-  const releaseAt = NORMAL_CHAT_RELEASE_AT;
-  if(roundTime < 300 && flags.length < releaseAt){
-    flushQueue(Math.max(0, releaseAt - flags.length));
   }
 
   /* --- rotors ------------------------------------------------------------
@@ -2545,14 +2568,10 @@ function step(dt){
 /* ---------------------------------------------------------------------------
    7. CHAT WIRING — the only place chat touches the game.
 --------------------------------------------------------------------------- */
-function queueChatJoin(user, code){
-  if(queue.some(function(j){ return j.user===user && j.code===code; })) return;
-  if(queue.length < MAX_FLAGS*3) queue.push({user:user, code:code, queuedAt:elapsed});
-}
+function queueChatJoin(user, code){ /* intentionally disabled: no chat buffering */ }
 function spawnAlpha(code, user){
   if(alphaSpawnedThisRound.has(code)) return;
   if(flags.some(function(f){ return f.code===code; })) return;
-  if(flags.length >= MAX_FLAGS) return;
   const f=addFlag(user || ('ALPHA-' + code + '-' + roundNo), code, {alpha:true});
   if(!f) return;
   alphaSpawnedThisRound.add(code);
@@ -2567,15 +2586,18 @@ ChatSource.onJoin = function(user, code){
   /* Country chat-spawns are qualification-only. Knockout brackets are closed
      and ignore country join messages completely; they do not enter a queue. */
   if(tournamentStage !== 'qualifying') return;
+  /* After five minutes, ALL ordinary country messages are closed, including
+     repeat messages from viewers who already own a flag. They can only qualify
+     for the explicit 10-message WILD CARD path handled by ingest(). */
+  if(roundTime >= 300) return;
   const own = flags.find(function(f){ return f.user === user; });
   if(own){ boostFlag(user, own.code); return; }
-  if(phase !== 'live'){ queueChatJoin(user, code); return; }
-  if(roundTime >= 300){
-    queueChatJoin(user, code);
-    return;
-  }
-  if(flags.length < MAX_FLAGS) addFlag(user, code);
-  else queueChatJoin(user, code);
+  /* Never buffer normal chat joins. A qualifying chat message either spawns
+     immediately in the current live round or is intentionally ignored because
+     the round is in a reveal/transition state. After five minutes, normal joins
+     are closed; the ingest layer handles the 10-message WILD CARD trigger. */
+  if(phase !== 'live') return;
+  addFlag(user, code);
 };
 ChatSource.onBoost = function(user, code){
   if(tournamentStage === 'qualifying' && phase === 'live') boostFlag(user, code);
@@ -4377,7 +4399,7 @@ function draw(){
     ? 'QUALIFYING ' + Math.min(qualificationWinners.length + 1, QUALIFICATION_BATTLES) + '/' + QUALIFICATION_BATTLES
     : stageLabel(tournamentStage).toUpperCase();
   const chip = stageChip + '  ·  ' + flags.length + ' FLAG' + (flags.length === 1 ? '' : 'S')
-             + (queue.length ? '  ·  ' + queue.length + ' WAITING' : '');
+            ;
   const cw = trackedWidth(chip, 1.6) + 26;
   ctx.save();
   roundRect(CENTER.x - cw/2, 190, cw, 24, 12);
@@ -4507,7 +4529,6 @@ bind('joinMode','joinMode');
 bind('joinSec','joinSec', Number);
 bind('gapMinDeg','gapMinDeg', Number);
 bind('gapMaxDeg','gapMaxDeg', Number);
-bind('roundCap','roundCap', Number);
 bind('brandText','brandText');
 bind('marqueeText','marqueeText');
 
