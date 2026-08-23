@@ -898,28 +898,37 @@ function setChatSpawningEnabled(enabled){
 }
 
 function ingest(username, text){
-  if(!username) username = 'guest';
+  if(!username) username='guest';
+
+  /* ZERO-DELAY PATH:
+     YouTube message -> parser -> gameplay trigger in the same JS turn. */
   ChatSource.onMessage(username, text);
   quota.msgs++;
-  const r = readMessage(text);
-  /* Country joins, equipment drops, BIG FLAG and WILD CARD are a qualification-only
-     interaction layer. Knockout rounds are closed: YouTube chat remains connected for
-     diagnostics, but chat cannot add/boost flags or spawn equipment. */
-  if(tournamentStage !== 'qualifying' || !chatSpawningEnabled) return;
+
+  const r=readMessage(text);
+  if(tournamentStage!=='qualifying' || !chatSpawningEnabled) return;
+
   if(r.item) ChatSource.onItem(username, r.item);
-  if(r.country){
-    roundChatCounts[r.country] = (roundChatCounts[r.country] || 0) + 1;
-    /* Wildcard eligibility is per @username + country, never pooled across viewers.
-       Two people typing the same country therefore do not combine their counts. */
-    const userKey = String(username).trim().toLowerCase() || 'guest';
-    const mentionKey = userKey + '|' + r.country;
-    userCountryMentions[mentionKey] = (userCountryMentions[mentionKey] || 0) + 1;
-    if(roundTime >= 300 && userCountryMentions[mentionKey] >= ALPHA_TRIGGER_COUNT){
-      spawnAlpha(r.country, username);
-    }
-    const prev = seenThisRound.get(username);
-    if(prev === r.country) ChatSource.onBoost(username, r.country);
-    else { seenThisRound.set(username, r.country); ChatSource.onJoin(username, r.country); }
+  if(!r.country) return;
+
+  /* Wild Card counter is updated from this exact live message. */
+  const userKey=String(username).trim().toLowerCase() || 'guest';
+  const mentionKey=userKey+'|'+r.country;
+  userCountryMentions[mentionKey]=(userCountryMentions[mentionKey]||0)+1;
+
+  if(roundTime>=300 && userCountryMentions[mentionKey]>=ALPHA_TRIGGER_COUNT){
+    spawnAlpha(r.country, username);
+    return;
+  }
+
+  if(roundTime>=300) return;
+
+  const prev=seenThisRound.get(username);
+  if(prev===r.country){
+    ChatSource.onBoost(username,r.country);
+  }else{
+    seenThisRound.set(username,r.country);
+    ChatSource.onJoin(username,r.country);
   }
 }
 
@@ -998,6 +1007,11 @@ function renderQuota(){
    pages forward from a token. Messages are buffered on Google's side, so a
    slower poll costs latency and nothing else — that is the only quota lever
    available, which is why the interval is a setting. */
+
+  /* Real-time chat recovery: browser timer throttling/background tabs can
+     pause setTimeout. When the page becomes active again, immediately poll
+     instead of waiting for the old timer. */
+
 const Live = {
   chatId: null, pageToken: null, timer: null, backoff: 0, seenIds: new Set(),
   initialized: false, reconnectTimer: null, inFlight: false,
@@ -1011,6 +1025,11 @@ const Live = {
   stop: function(){
     if(this.timer){ clearTimeout(this.timer); this.timer = null; }
     if(this.reconnectTimer){ clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+  },
+  wake: function(){
+    if(!this.running || this.mode !== 'live' || !this.chatId) return;
+    if(this.timer){ clearTimeout(this.timer); this.timer = null; }
+    if(!this.inFlight) this.poll();
   },
   videoIdFrom: function(raw){
     const s = String(raw || '').trim();
@@ -1072,7 +1091,7 @@ const Live = {
     qs.set('chatId', this.chatId);
     qs.set('maxResults', String(max));
     if(this.pageToken) qs.set('pageToken', this.pageToken);
-    let waitMs = Math.max(5000, (Number(S.pollSec) || 10) * 1000);
+    let waitMs = Math.min(2000, Math.max(1000, (Number(S.pollSec) || 1) * 1000));
     try{
       const res = await fetch('/api/youtube-chat?' + qs.toString(), {cache:'no-store'});
       const body = await res.json().catch(function(){ return null; });
@@ -1092,7 +1111,7 @@ const Live = {
         this.backoff = 0;
         this.pageToken = body.nextPageToken || this.pageToken;
         const hint = Number(body.pollingIntervalMillis) || 0;
-        waitMs = Math.max(waitMs, hint);
+        waitMs = Math.min(2000, Math.max(1000, hint));
         const items = body.items || [];
         for(let i=0;i<items.length;i++){
           const it = items[i];
@@ -1773,6 +1792,8 @@ function startTournamentFromQualification(){
 }
 
 function newRound(){
+  queue.length = 0; // never carry chat joins into a later round
+
   /* Equipment sequence intentionally continues across rounds. */
   if(tournamentStage === 'qualifying') setChatSpawningEnabled(true);
   /* Once the tournament has moved into knockout, newRound means the next closed
@@ -2568,37 +2589,30 @@ function step(dt){
 /* ---------------------------------------------------------------------------
    7. CHAT WIRING — the only place chat touches the game.
 --------------------------------------------------------------------------- */
-function queueChatJoin(user, code){ /* intentionally disabled: no chat buffering */ }
-function spawnAlpha(code, user){
-  if(alphaSpawnedThisRound.has(code)) return;
-  if(flags.some(function(f){ return f.code===code; })) return;
-  const f=addFlag(user || ('ALPHA-' + code + '-' + roundNo), code, {alpha:true});
-  if(!f) return;
-  alphaSpawnedThisRound.add(code);
-  announceAlphaFlag(NAME_BY_CODE[code]);
-  /* Alpha arrives with the requested 10-second shield + knife already attached. */
-  f.shieldUntil = elapsed + 10;
-  f.swordUntil = elapsed + 10;
-  floaters.push({x:f.body.position.x,y:f.body.position.y,t:1.2,text:'10s SHIELD + KNIFE',c:'#ffd75a'});
-  playPickup('shield');
+function queueChatJoin(user, code){
+  /* No delayed country joins. A qualifying chat message is handled only
+     in the round in which it was received. */
+  return false;
 }
 ChatSource.onJoin = function(user, code){
-  /* Country chat-spawns are qualification-only. Knockout brackets are closed
-     and ignore country join messages completely; they do not enter a queue. */
-  if(tournamentStage !== 'qualifying') return;
-  /* After five minutes, ALL ordinary country messages are closed, including
-     repeat messages from viewers who already own a flag. They can only qualify
-     for the explicit 10-message WILD CARD path handled by ingest(). */
-  if(roundTime >= 300) return;
+  if(tournamentStage !== 'qualifying' || phase !== 'live') return;
+
+  /* Same-round only. A repeated message from an existing viewer is a boost;
+     a first country message is admitted immediately. Nothing is queued. */
   const own = flags.find(function(f){ return f.user === user; });
-  if(own){ boostFlag(user, own.code); return; }
-  /* Never buffer normal chat joins. A qualifying chat message either spawns
-     immediately in the current live round or is intentionally ignored because
-     the round is in a reveal/transition state. After five minutes, normal joins
-     are closed; the ingest layer handles the 10-message WILD CARD trigger. */
-  if(phase !== 'live') return;
-  addFlag(user, code);
-};
+  if(own){
+    if(roundTime < 300) boostFlag(user, own.code);
+    return;
+  }
+
+  if(roundTime < 300){
+    addFlag(user, code);
+    return;
+  }
+
+  /* >= 5:00: ordinary joins are closed; Wild Card admission is handled
+     separately by the existing mention counter. */
+};;
 ChatSource.onBoost = function(user, code){
   if(tournamentStage === 'qualifying' && phase === 'live') boostFlag(user, code);
 };
@@ -4597,5 +4611,18 @@ $('wipeBtn').addEventListener('click', function(){
   try{ pair[1](); }catch(e){ reportFault('Failed during ' + pair[0], e); }
 });
 </script>
+
+<script>
+(function(){
+  function wakeLiveChat(){
+    try{ if(window.Live && typeof window.Live.wake === 'function') window.Live.wake(); }
+    catch(e){}
+  }
+  document.addEventListener('visibilitychange', wakeLiveChat, {passive:true});
+  window.addEventListener('focus', wakeLiveChat, {passive:true});
+  window.addEventListener('pageshow', wakeLiveChat, {passive:true});
+})();
+</script>
+
 </body>
 </html>
