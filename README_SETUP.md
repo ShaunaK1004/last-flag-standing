@@ -105,17 +105,3 @@ The API uses KV_REST_API_URL + KV_REST_API_TOKEN.
   quota.
 - Chat messages are processed in the current active round and are not queued
   into future rounds.
-
-
-## Square Ring edition
-
-`index.html` is the uploaded Square Ring simulation. Its arena geometry,
-physics, equipment, commentary, tournament stages, and visual rendering are
-kept from the supplied Square Ring file. Only the live-chat transport is
-quota-managed using the shared server poller + Vercel/Upstash Redis bridge.
-
-Use the Redis variables already created by Vercel:
-- KV_REST_API_URL
-- KV_REST_API_TOKEN
-
-Keep the existing YouTube OAuth variables unchanged.
