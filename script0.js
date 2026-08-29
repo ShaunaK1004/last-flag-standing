@@ -1,42 +1,4 @@
-<!DOCTYPE html>
 
-<!--
-  FLAGS WAR ARENA  -  single-file build for OBS / YouTube Live
-  ================================================================
-  Design space is 1080x1920. Every geometric constant below was measured from the
-  reference clip (video_2026-08-25_12-27-41.mp4) and converted with
-  capture px x 1.875 = design px. Provenance is noted per constant; see
-  COUNTRYBALL_ROYALE_plan.md for the derivations.
-
-  Assets: flags are drawn procedurally; sound effects are synthesised with WebAudio and live commentary uses browser speech synthesis, so
-  neither can fail. The ONE binary is bg.jpg, which must be deployed next to this
-  file - same origin, same commit, no CDN. If it is missing or fails to decode the
-  build falls back to the original procedural starfield and keeps running; a 24/7
-  unattended stream must not be able to go black over an image.
-  Drop in audio/loop.mp3 later if you want a music bed.
-
-  Deliberate deviations from the reference, all reported rather than silent:
-   - true circles (the reference recording is vertically stretched 3.7%; that is a
-     capture defect, not a design choice)
-   - |v| is pinned to a constant. The reference's speed distribution could not be
-     measured, and elastic exchange plus rounding lets balls stall, which looks
-     broken on a 24/7 stream.
-   - no gear icon / no operator controls. Nothing to leave in the wrong position.
--->
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<title>Flags War Arena - v20</title>
-<style>
-  :root { color-scheme: dark }
-  html,body{margin:0;padding:0;background:#000;overflow:hidden;height:100%}
-  #wrap{position:fixed;inset:0;display:grid;place-items:center}
-  canvas{display:block;image-rendering:auto}
-</style>
-</head>
-<body>
-<div id="wrap"><canvas height="1920" id="c" width="1080"></canvas></div>
-<script>
 "use strict";
 /* ==========================================================================
    1. CONFIG  -  measured constants, with provenance
@@ -2397,7 +2359,7 @@ function drawCircularPodiumBlock(x,y,w,h,label,rank,code,active){
   ctx.fillStyle=grad;roundRect(ctx,x,y-lift,w,h+lift,18);ctx.fill();ctx.restore();
   if(code)drawPodiumFlag(code,x+w/2,y+62-lift,92);
   ctx.font='800 20px Trebuchet MS,sans-serif';ctx.textAlign='center';ctx.fillStyle='#101522';ctx.fillText(label,x+w/2,y+154-lift);
-  ctx.font='900 '+(rank===1?54:44)+'px Trebuchet MS,sans-serif';ctx.fillText(String(rank),x+w/2,y+h-28);
+  ctx.font='900 '+(rank===1?54:44)+'px Trebuchet MS,sans-serif';ctx.fillText(String(rank),x+w/2,y+h-28,'');
 }
 function drawPodium(){
   drawCircularAudienceBackdrop();
@@ -3484,7 +3446,4 @@ window.addEventListener('pointerdown',()=>{ac();COMMENTARY.start();});window.add
 function frame(now){let dt=now-last;last=now;if(dt>250)dt=250;if(G.phase==='PODIUM')updatePodium(dt/1000);else if(G.phase==='LEADERBOARD'){G.leaderboardTimer-=dt/1000;if(G.leaderboardTimer<=0){window.__FWA_QUAL_RESULTS=[];window.__FWA_PROGRESS=Object.create(null);window.__FWA_STAGE='qualifying';window.__FWA_KO_POOL=[];window.__FWA_SF_SURVIVORS=[];window.__FWA_SEMIFINAL_LOSERS=[];window.__FWA_THIRD=null;window.__FWA_SECOND=null;window.__FWA_CHAMPION=null;autoEquipIndex=0;autoEquipNext=10;startEnhancedRound();}}else tick(dt);render();requestAnimationFrame(frame);}
 
 /* First-run roster: preserve old waiting list, then start the requested 20+12 base. */
-window.__FWA_QUAL_RESULTS=[];window.__FWA_PROGRESS=Object.create(null);window.__FWA_KO_POOL=[];window.__FWA_STAGE='qualifying';window.__FWA_SF_SURVIVORS=[];window.__FWA_SEMIFINAL_LOSERS=[];window.__FWA_STAGE_WINNERS=[];window.__FWA_START_WAITERS=[];autoEquipIndex=0;autoEquipNext=10;startEnhancedRound();startChat();</script>
-
-</body>
-</html>
+window.__FWA_QUAL_RESULTS=[];window.__FWA_PROGRESS=Object.create(null);window.__FWA_KO_POOL=[];window.__FWA_STAGE='qualifying';window.__FWA_SF_SURVIVORS=[];window.__FWA_SEMIFINAL_LOSERS=[];window.__FWA_STAGE_WINNERS=[];window.__FWA_START_WAITERS=[];autoEquipIndex=0;autoEquipNext=10;startEnhancedRound();startChat();
