@@ -2159,32 +2159,22 @@ function handleChat(user,text){
       alphaCountries.add(p.country);spawnAlpha(p.country,user);return;
     }
   }
-  // Chat-driven equipment, Shield and Revival remain enabled during every
-  // active battle stage. Unlike country entry, they do not depend on qualification.
+  // Chat-driven equipment, Shield and Revival are direct keyword triggers.
+  // Unlike country entry, they remain enabled during every active battle stage.
+  // One valid SHIELD/REVIVAL message = one use; the 10/10 counters are the
+  // tournament-wide available-use limits, NOT a ten-message activation threshold.
   if(p.items.length && G && (G.phase==='CLOSED'||G.phase==='OPEN')){
     for(const k of p.items){
       if(k==='shield'||k==='revive'){
         const target=resolveAbilityTarget(user,p.country,k);
-        const key=target?abilityKey(user,target,k):abilityKey(user,'',k);
-        /* Count keyword mentions exactly like equipment. Ten valid mentions unlock
-           one use. If no target exists yet, do not silently consume the ten mentions. */
         if(target){
-          chatAbilityCounts[key]=(chatAbilityCounts[key]||0)+1;
-          if(chatAbilityCounts[key]>=CHAT_ABILITY_TRIGGER){
-            const ok=k==='shield'?grantShield(user,target):reviveFor(user,target);
-            if(ok){
-              chatAbilityCounts[key]-=CHAT_ABILITY_TRIGGER;
-            }else if(k==='revive'){
-              /* Keep a ready token for the same user's flag so an elimination can
-                 immediately consume it and revive the flag. */
-              chatAbilityCounts[key]-=CHAT_ABILITY_TRIGGER;
-              pendingRevivalTokens[key]=(pendingRevivalTokens[key]||0)+1;
-              showBanner('REVIVAL READY · '+target,'#5ef2c8');
-            }else{
-              /* Shield could not be applied (already shielded/unavailable). Keep
-                 the ten mentions so they can be retried rather than losing them. */
-              showBanner('SHIELD READY · '+target,'#5ef2c8');
-            }
+          const ok=k==='shield'?grantShield(user,target):reviveFor(user,target);
+          if(!ok && k==='revive'){
+            /* If the viewer owns an eliminated flag but the exact revival
+               cannot yet be placed, retain a ready request for that flag. */
+            const key=abilityKey(user,target,k);
+            pendingRevivalTokens[key]=(pendingRevivalTokens[key]||0)+1;
+            showBanner('REVIVAL READY · '+target,'#5ef2c8');
           }
         }
       }else if(k==='sniper'){
