@@ -50,7 +50,9 @@
   .vRankTitle{position:absolute;top:10%;left:0;right:0;text-align:center;font-weight:900;font-size:clamp(23px,6.4vw,37px);color:#ffd34f;text-shadow:0 0 12px rgba(255,211,79,.45)}
   .vFeature{position:absolute;top:15%;left:0;right:0;text-align:center}
   .vFeatureLabel{font-weight:900;font-size:clamp(18px,5vw,29px);color:#fff;text-shadow:0 3px 8px #000}
-  .vFlag{font-size:clamp(70px,21vw,125px);line-height:1.05;margin-top:4%;font-weight:900;color:#fff;text-shadow:0 3px 10px #000}
+  .vFlag{line-height:1;margin-top:4%;font-weight:900;color:#fff;text-shadow:0 3px 10px #000;display:flex;justify-content:center;align-items:center;min-height:clamp(82px,22vw,132px)}
+  .vFlag img{display:block;width:clamp(180px,42vw,250px);height:auto;aspect-ratio:3/2;object-fit:contain;border:3px solid #fff;border-radius:2px;box-shadow:0 3px 12px rgba(0,0,0,.72);background:#111}
+  .vFlagFallback{display:none;font-size:clamp(42px,13vw,76px);line-height:1}
   .vCountry{font-weight:900;font-size:clamp(25px,7.4vw,43px);color:#fff;text-shadow:0 3px 10px #000}
   .vWorld{margin-top:2%;font-weight:900;font-size:clamp(15px,4vw,23px);color:#ffd34f;text-shadow:0 0 10px rgba(255,211,79,.5)}
   .vPodium{position:absolute;left:8%;right:8%;top:52%;height:29%;display:flex;align-items:flex-end;gap:3%;justify-content:center}
@@ -59,7 +61,9 @@
   .vBlock2{height:78%;background:linear-gradient(#e9edf3,#8e9aaa)}
   .vBlock1{height:100%;background:linear-gradient(#f9d85b,#b47a18)}
   .vBlock.active{box-shadow:0 0 30px rgba(255,211,79,.7)}
-  .vBlockFlag{font-size:clamp(25px,8vw,45px);font-weight:900;color:#101522;line-height:1}
+  .vBlockFlag{height:clamp(30px,8vw,48px);width:72%;display:flex;justify-content:center;align-items:center}
+  .vBlockFlag img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:contain;border:2px solid rgba(255,255,255,.9);border-radius:2px;box-shadow:0 2px 7px rgba(0,0,0,.35);background:#111}
+  .vBlockFlagFallback{display:none;font-size:clamp(18px,6vw,32px);font-weight:900;color:#101522;line-height:1}
   .vBlockLabel{font-size:clamp(9px,2.6vw,15px);font-weight:900;color:#101522;margin-top:3%}
   .vBlockRank{font-size:clamp(25px,8vw,45px);font-weight:900;color:#101522;margin-top:auto;margin-bottom:5%}
   .vLbTitle{position:absolute;top:6%;left:0;right:0;text-align:center;font-size:clamp(17px,4.8vw,28px);font-weight:900;color:#fff;text-shadow:0 3px 8px #000}
@@ -83,14 +87,14 @@
       <div class="vRankTitle" id="vRankTitle">THIRD PLACE</div>
       <div class="vFeature">
         <div class="vFeatureLabel" id="vFeatureLabel">THIRD PLACE</div>
-        <div class="vFlag" id="vFlag">BR</div>
+        <div class="vFlag" id="vFlag"><img id="vFlagImg" alt=""/><span class="vFlagFallback" id="vFlagFallback">BR</span></div>
         <div class="vCountry" id="vCountry">BRAZIL</div>
         <div class="vWorld" id="vWorld"></div>
       </div>
       <div class="vPodium">
-        <div class="vBlock vBlock3" id="vBlock3"><div class="vBlockFlag" id="vBlockFlag3">BR</div><div class="vBlockLabel">THIRD</div><div class="vBlockRank">3</div></div>
-        <div class="vBlock vBlock2" id="vBlock2"><div class="vBlockFlag" id="vBlockFlag2">AR</div><div class="vBlockLabel">SECOND</div><div class="vBlockRank">2</div></div>
-        <div class="vBlock vBlock1" id="vBlock1"><div class="vBlockFlag" id="vBlockFlag1">PT</div><div class="vBlockLabel">CHAMPION</div><div class="vBlockRank">1</div></div>
+        <div class="vBlock vBlock3" id="vBlock3"><div class="vBlockFlag" id="vBlockFlag3"><img id="vBlockFlagImg3" alt=""/><span class="vBlockFlagFallback" id="vBlockFlagFallback3">BR</span></div><div class="vBlockLabel">THIRD</div><div class="vBlockRank">3</div></div>
+        <div class="vBlock vBlock2" id="vBlock2"><div class="vBlockFlag" id="vBlockFlag2"><img id="vBlockFlagImg2" alt=""/><span class="vBlockFlagFallback" id="vBlockFlagFallback2">AR</span></div><div class="vBlockLabel">SECOND</div><div class="vBlockRank">2</div></div>
+        <div class="vBlock vBlock1" id="vBlock1"><div class="vBlockFlag" id="vBlockFlag1"><img id="vBlockFlagImg1" alt=""/><span class="vBlockFlagFallback" id="vBlockFlagFallback1">PT</span></div><div class="vBlockLabel">CHAMPION</div><div class="vBlockRank">1</div></div>
       </div>
     </div>
 
@@ -2307,6 +2311,7 @@ function createDefaultBall(code){
   return {c,user:'',custom:false,x,y,vx:Math.cos(rnd(0,Math.PI*2))*CFG.BALL_SPEED,vy:Math.sin(rnd(0,Math.PI*2))*CFG.BALL_SPEED,alive:true,shield:false,r:CFG.BALL_R,level:1,hitCool:0,weaponFlash:0,weaponRecoil:0,specialUntil:0,specialKind:null,frozenUntil:0,sniperShots:0,shotgunShots:0,fuse:0,sniperUntil:0,shotgunUntil:0,swordUntil:0,weaponAngle:0};
 }
 function startEnhancedRound(){
+  hideVerifiedPresentation();
   fixedCTAAlternation++;
   cancelFixedCTATimers();
   resetEnhancedState();
@@ -2491,6 +2496,8 @@ function completeKOStage(){
 function finishKnockoutBattle(w){ completeKOStage(); }
 function showPodiumAndLeaderboard(){
   podiumResetMedia();
+  const __lb=document.getElementById('verifiedLeaderboard'); if(__lb)__lb.dataset.builtForCycle='';
+  const __vp=document.getElementById('verifiedPresentation'); if(__vp)__vp.style.display='block';
   G.phase='PODIUM';
   G.tPhase=0;
   G.podiumStep=3;
@@ -2509,10 +2516,31 @@ function showPodiumAndLeaderboard(){
   });
 }
 
+const VERIFIED_FLAG_CACHE=new Map();
 function verifiedFlagForCode(code){
   const cc=String(code||'').toUpperCase();
   if(cc.length!==2)return cc||'—';
   return String.fromCodePoint(0x1F1E6+cc.charCodeAt(0)-65,0x1F1E6+cc.charCodeAt(1)-65);
+}
+function verifiedFlagDataURL(code){
+  const cc=String(code||'').toUpperCase();
+  if(VERIFIED_FLAG_CACHE.has(cc))return VERIFIED_FLAG_CACHE.get(cc);
+  const c=countryByCode(cc);
+  if(!c||!c.ops)return '';
+  try{
+    const cv=document.createElement('canvas');cv.width=360;cv.height=240;
+    const g=cv.getContext('2d');
+    g.fillStyle='#111';g.fillRect(0,0,cv.width,cv.height);
+    paintFlag(g,c.ops,cv.width,cv.height);
+    g.strokeStyle='rgba(255,255,255,.95)';g.lineWidth=5;g.strokeRect(2.5,2.5,355,235);
+    const url=cv.toDataURL('image/png');VERIFIED_FLAG_CACHE.set(cc,url);return url;
+  }catch(e){return '';}
+}
+function setVerifiedFlagImage(imgId,fallbackId,code){
+  const img=document.getElementById(imgId),fb=document.getElementById(fallbackId);
+  const url=verifiedFlagDataURL(code);
+  if(img){if(url){img.src=url;img.style.display='block';}else{img.removeAttribute('src');img.style.display='none';}}
+  if(fb){fb.textContent=String(code||'—').toUpperCase();fb.style.display=url?'none':'inline';}
 }
 function verifiedCountry(code){
   const c=countryByCode(code);
@@ -2531,13 +2559,13 @@ function updateVerifiedPodium(){
   const flag=verifiedFlagForCode(code);
   document.getElementById('vRankTitle').textContent=step===3?'THIRD PLACE':step===2?'SECOND PLACE':'CHAMPION';
   document.getElementById('vFeatureLabel').textContent=step===1?'YOUR CHAMPION IS!':step===2?'SECOND PLACE':'THIRD PLACE';
-  document.getElementById('vFlag').textContent=flag;
   document.getElementById('vCountry').textContent=String(name).toUpperCase();
   document.getElementById('vWorld').textContent=step===1?'WORLD CONQUERED':'';
+  setVerifiedFlagImage('vFlagImg','vFlagFallback',code);
   const third=window.__FWA_THIRD, second=window.__FWA_SECOND, champ=window.__FWA_CHAMPION;
-  document.getElementById('vBlockFlag3').textContent=verifiedFlagForCode(third?.code);
-  document.getElementById('vBlockFlag2').textContent=verifiedFlagForCode(second?.code);
-  document.getElementById('vBlockFlag1').textContent=verifiedFlagForCode(champ?.code);
+  setVerifiedFlagImage('vBlockFlagImg3','vBlockFlagFallback3',third?.code);
+  setVerifiedFlagImage('vBlockFlagImg2','vBlockFlagFallback2',second?.code);
+  setVerifiedFlagImage('vBlockFlagImg1','vBlockFlagFallback1',champ?.code);
   document.querySelectorAll('#verifiedPodium .vBlock').forEach(x=>x.classList.remove('active'));
   document.getElementById(step===3?'vBlock3':step===2?'vBlock2':'vBlock1').classList.add('active');
 }
@@ -2590,48 +2618,33 @@ function drawLeaderboard(){
 function updatePodium(dt){
   G.podiumTimer+=Math.max(0,Math.min(dt,0.25));
 
-  /* Third celebration starts only after the third-place commentary has completed. */
-  if(G.podiumStep===3 && G._podiumAudioStarted && G.podiumTimer>=4.0){
-    G.podiumStep=2;
-    G.podiumTimer=0;
-    G._podiumAudioStarted=false;
+  /* Visual progression is timer-driven, not speech-callback-driven. Mobile Chrome
+     can suspend SpeechSynthesis callbacks; the podium must never become a terminal state. */
+  if(G.podiumStep===3 && G.podiumTimer>=4.0){
+    G.podiumStep=2; G.podiumTimer=0; G._podiumAudioStarted=false;
     const nm=(window.__FWA_SECOND&&window.__FWA_SECOND.name)||'the runner-up';
-    COMMENTARY.say('Second place, '+nm+'!',true,function(){
-      if(!G || G.phase!=='PODIUM' || G.podiumStep!==2)return;
-      G._podiumAudioStarted=true;
-      G.podiumTimer=0;
-      playPodiumCrowd('second',6);
-    });
+    COMMENTARY.say('Second place, '+nm+'!',true,function(){ if(G&&G.phase==='PODIUM'&&G.podiumStep===2){G._podiumAudioStarted=true;} });
+    playPodiumCrowd('second',6);
     return;
   }
 
-  /* Second celebration starts only after second-place commentary has completed. */
-  if(G.podiumStep===2 && G._podiumAudioStarted && G.podiumTimer>=6.0){
-    G.podiumStep=1;
-    G.podiumTimer=0;
-    G._podiumAudioStarted=false;
+  if(G.podiumStep===2 && G.podiumTimer>=6.0){
+    G.podiumStep=1; G.podiumTimer=0; G._podiumAudioStarted=false;
     const nm=(window.__FWA_CHAMPION&&window.__FWA_CHAMPION.name)||'our champion';
-    COMMENTARY.say('Your champion is '+nm+'!',true,function(){
-      if(!G || G.phase!=='PODIUM' || G.podiumStep!==1)return;
-      setTimeout(function(){
-        if(!G || G.phase!=='PODIUM' || G.podiumStep!==1)return;
-        COMMENTARY.say('World conquered!',true,function(){
-          if(!G || G.phase!=='PODIUM' || G.podiumStep!==1)return;
-          G._podiumAudioStarted=true;
-          G.podiumTimer=0;
-          playPodiumCrowd('champion',10);
-        });
-      },650);
-    });
+    COMMENTARY.say('Your champion is '+nm+'!',true);
+    setTimeout(function(){
+      if(G&&G.phase==='PODIUM'&&G.podiumStep===1) COMMENTARY.say('World conquered!',true);
+    },700);
+    playPodiumCrowd('champion',10);
+    G._podiumAudioStarted=true;
     return;
   }
 
-  /* Champion celebration runs for exactly 10 seconds after both champion lines. */
-  if(G.podiumStep===1 && G._podiumAudioStarted && G.podiumTimer>=10.0){
+  /* Give the champion reveal a full 10 seconds, with a small fixed allowance for
+     the second spoken line. Even if audio fails, the next tournament still starts. */
+  if(G.podiumStep===1 && G.podiumTimer>=11.0){
     podiumResetMedia();
-    G.phase='LEADERBOARD';
-    G.tPhase=0;
-    G.leaderboardTimer=60;
+    G.phase='LEADERBOARD'; G.tPhase=0; G.leaderboardTimer=60;
     const __lb=document.getElementById('verifiedLeaderboard'); if(__lb)__lb.dataset.builtForCycle='';
     playPodiumCrowd('leaderboard',60);
   }
