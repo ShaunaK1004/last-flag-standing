@@ -32,10 +32,75 @@
   html,body{margin:0;padding:0;background:#000;overflow:hidden;height:100%}
   #wrap{position:fixed;inset:0;display:grid;place-items:center}
   canvas{display:block;image-rendering:auto}
+
+  /* VERIFIED PODIUM + LEADERBOARD PRESENTATION
+     Ported from the supplied working Podium-9x16-CLEAN-SEQUENCE-FIRST-SECOND-FIX
+     visual. The game canvas remains underneath; these scenes take over only for
+     PODIUM / LEADERBOARD phases. */
+  #verifiedPresentation{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(100vw,56.25vh,576px);aspect-ratio:9/16;height:auto;
+    overflow:hidden;display:none;z-index:20;pointer-events:none;
+    background:#03060e url('podium_bg.jpg') center/cover no-repeat;
+    font-family:"Trebuchet MS",Arial,sans-serif;
+  }
+  #verifiedVeil{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(2,5,14,.42),rgba(2,5,14,.12) 48%,rgba(2,5,14,.70));}
+  .verifiedScene{position:absolute;inset:0;display:none}
+  .vTitle{position:absolute;top:5.5%;left:0;right:0;text-align:center;font-weight:900;font-size:clamp(18px,5.2vw,30px);color:#b8c8ee;text-shadow:0 3px 8px #000}
+  .vRankTitle{position:absolute;top:10%;left:0;right:0;text-align:center;font-weight:900;font-size:clamp(23px,6.4vw,37px);color:#ffd34f;text-shadow:0 0 12px rgba(255,211,79,.45)}
+  .vFeature{position:absolute;top:15%;left:0;right:0;text-align:center}
+  .vFeatureLabel{font-weight:900;font-size:clamp(18px,5vw,29px);color:#fff;text-shadow:0 3px 8px #000}
+  .vFlag{font-size:clamp(70px,21vw,125px);line-height:1.05;margin-top:4%;font-weight:900;color:#fff;text-shadow:0 3px 10px #000}
+  .vCountry{font-weight:900;font-size:clamp(25px,7.4vw,43px);color:#fff;text-shadow:0 3px 10px #000}
+  .vWorld{margin-top:2%;font-weight:900;font-size:clamp(15px,4vw,23px);color:#ffd34f;text-shadow:0 0 10px rgba(255,211,79,.5)}
+  .vPodium{position:absolute;left:8%;right:8%;top:52%;height:29%;display:flex;align-items:flex-end;gap:3%;justify-content:center}
+  .vBlock{flex:1;position:relative;border-radius:10px 10px 4px 4px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:4%;box-shadow:0 0 24px rgba(0,0,0,.5)}
+  .vBlock3{height:63%;background:linear-gradient(#e8ae83,#985d43)}
+  .vBlock2{height:78%;background:linear-gradient(#e9edf3,#8e9aaa)}
+  .vBlock1{height:100%;background:linear-gradient(#f9d85b,#b47a18)}
+  .vBlock.active{box-shadow:0 0 30px rgba(255,211,79,.7)}
+  .vBlockFlag{font-size:clamp(25px,8vw,45px);font-weight:900;color:#101522;line-height:1}
+  .vBlockLabel{font-size:clamp(9px,2.6vw,15px);font-weight:900;color:#101522;margin-top:3%}
+  .vBlockRank{font-size:clamp(25px,8vw,45px);font-weight:900;color:#101522;margin-top:auto;margin-bottom:5%}
+  .vLbTitle{position:absolute;top:6%;left:0;right:0;text-align:center;font-size:clamp(17px,4.8vw,28px);font-weight:900;color:#fff;text-shadow:0 3px 8px #000}
+  .vLbRows{position:absolute;left:3%;right:3%;top:14%;bottom:8%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(32,1fr);column-gap:7px}
+  .vLbRow{min-width:0;display:flex;align-items:center;justify-content:space-between;padding:0 5px;background:rgba(8,13,28,.76);border-radius:4px;color:#f2f5ff;font-weight:700;font-size:clamp(6px,1.8vw,11px);margin-bottom:2px}
+  .vLbName{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:63%}
+  .vLbStage{font-size:clamp(5px,1.45vw,9px);color:#8fa0c4;white-space:nowrap}
+  .vLbRow:first-child .vLbStage{color:#ffd34f}
+  .vLbTimer{position:absolute;bottom:2.2%;left:0;right:0;text-align:center;font-size:clamp(14px,4vw,23px);font-weight:900;color:#ffd34f;text-shadow:0 0 10px rgba(255,211,79,.5)}
+
 </style>
 </head>
 <body>
-<div id="wrap"><canvas height="1920" id="c" width="1080"></canvas></div>
+<div id="wrap">
+  <canvas height="1920" id="c" width="1080"></canvas>
+  <div id="verifiedPresentation" aria-hidden="true">
+    <div id="verifiedVeil"></div>
+
+    <div id="verifiedPodium" class="verifiedScene">
+      <div class="vTitle">LAST FLAG STANDING</div>
+      <div class="vRankTitle" id="vRankTitle">THIRD PLACE</div>
+      <div class="vFeature">
+        <div class="vFeatureLabel" id="vFeatureLabel">THIRD PLACE</div>
+        <div class="vFlag" id="vFlag">BR</div>
+        <div class="vCountry" id="vCountry">BRAZIL</div>
+        <div class="vWorld" id="vWorld"></div>
+      </div>
+      <div class="vPodium">
+        <div class="vBlock vBlock3" id="vBlock3"><div class="vBlockFlag" id="vBlockFlag3">BR</div><div class="vBlockLabel">THIRD</div><div class="vBlockRank">3</div></div>
+        <div class="vBlock vBlock2" id="vBlock2"><div class="vBlockFlag" id="vBlockFlag2">AR</div><div class="vBlockLabel">SECOND</div><div class="vBlockRank">2</div></div>
+        <div class="vBlock vBlock1" id="vBlock1"><div class="vBlockFlag" id="vBlockFlag1">PT</div><div class="vBlockLabel">CHAMPION</div><div class="vBlockRank">1</div></div>
+      </div>
+    </div>
+
+    <div id="verifiedLeaderboard" class="verifiedScene">
+      <div class="vLbTitle">FINAL TOURNAMENT LEADERBOARD</div>
+      <div class="vLbRows" id="vLbRows"></div>
+      <div class="vLbTimer" id="vLbTimer">NEXT BATTLE STARTS IN 01:00</div>
+    </div>
+  </div>
+</div>
 <script>
 "use strict";
 /* ==========================================================================
@@ -2433,21 +2498,7 @@ function showPodiumAndLeaderboard(){
   G._podiumAudioStarted=false;
   G._podiumWorldSpoken=false;
   G._podiumFallback=false;
-
-  /* Safety requirement: if the podium state itself fails to enter/hold correctly
-     within five seconds, abandon this presentation and begin a clean tournament.
-     A valid PODIUM state is never interrupted by this watchdog. */
-  podiumWatchdog=setTimeout(function(){
-    podiumWatchdog=null;
-    if(!G || G.phase!=='PODIUM'){
-      try{ startEnhancedRound(); }catch(e){ try{location.reload();}catch(x){} }
-    }else if(G.podiumStep===3 && !G._podiumAudioStarted){
-      /* The first reveal failed to trigger. Do not leave the live stream frozen. */
-      G._podiumFallback=true;
-      podiumResetMedia();
-      try{ startEnhancedRound(); }catch(e){ try{location.reload();}catch(x){} }
-    }
-  },5000);
+  /* Verified presentation owns the podium scene; no watchdog may skip a valid reveal. */
 
   const nm=(window.__FWA_THIRD&&window.__FWA_THIRD.name)||'the bronze finalist';
   COMMENTARY.say('Third place, '+nm+'!',true,function(){
@@ -2458,81 +2509,84 @@ function showPodiumAndLeaderboard(){
   });
 }
 
-function drawPodium(){
-  const cx=W/2;
-  const rec=G.podiumStep===3?window.__FWA_THIRD:
-            G.podiumStep===2?window.__FWA_SECOND:
-            window.__FWA_CHAMPION;
-  const c=rec?countryByCode(rec.code):null;
-
-  ctx.save();
-
-  if(!G._podiumBgImage){
-    G._podiumBgImage=new Image();
-    G._podiumBgImage.src=FWA_PODIUM_BACKGROUND;
-  }
-  const img=G._podiumBgImage;
-  if(img.complete && img.naturalWidth){
-    const scale=Math.max(W/img.naturalWidth,H/img.naturalHeight);
-    const dw=img.naturalWidth*scale,dh=img.naturalHeight*scale;
-    ctx.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh);
-  }else{
-    ctx.fillStyle='#050914';ctx.fillRect(0,0,W,H);
-  }
-
-  ctx.fillStyle='rgba(3,6,17,.46)';ctx.fillRect(0,0,W,H);
-  const glow=ctx.createRadialGradient(cx,780,20,cx,780,620);
-  glow.addColorStop(0,'rgba(255,211,77,.24)');
-  glow.addColorStop(1,'rgba(255,211,77,0)');
-  ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
-
-  ctx.textAlign='center';
-  ctx.fillStyle='#fff';
-  ctx.font='900 58px system-ui,sans-serif';
-  ctx.shadowColor='#000';ctx.shadowBlur=14;
-  ctx.fillText(
-    G.podiumStep===3?'THIRD PLACE':
-    G.podiumStep===2?'SECOND PLACE':'CHAMPION',
-    cx,430
-  );
-
-  if(c && sprites.get(c.code)){
-    ctx.shadowColor='rgba(255,211,77,.85)';
-    ctx.shadowBlur=32;
-    ctx.drawImage(sprites.get(c.code),cx-150,500,300,300);
-  }
-
-  ctx.shadowBlur=10;
-  ctx.fillStyle='#fff';
-  ctx.font='900 72px system-ui,sans-serif';
-  ctx.fillText(rec?.name||'—',cx,900);
-
-  ctx.fillStyle='#ffd34d';
-  ctx.font='900 70px system-ui,sans-serif';
-  if(G.podiumStep===1)ctx.fillText('WORLD CONQUERED',cx,1010);
-
-  function podiumBlock(x,y,w,h,label,rank,entry,active){
-    ctx.save();
-    ctx.fillStyle=active?'rgba(255,211,77,.92)':'rgba(8,12,25,.68)';
-    ctx.strokeStyle=active?'#ffe27b':'rgba(255,255,255,.35)';
-    ctx.lineWidth=4;
-    roundRect(x,y,w,h,12);ctx.fill();ctx.stroke();
-    const cc=entry&&countryByCode(entry.code);
-    if(cc&&sprites.get(cc.code))ctx.drawImage(sprites.get(cc.code),x+w/2-38,y+20,76,52);
-    ctx.textAlign='center';ctx.fillStyle=active?'#17130a':'#fff';
-    ctx.font='900 25px system-ui,sans-serif';ctx.fillText(label,x+w/2,y+h-52);
-    ctx.font='900 42px system-ui,sans-serif';ctx.fillText(String(rank),x+w/2,y+h-12);
-    ctx.restore();
-  }
-  const third=window.__FWA_THIRD,second=window.__FWA_SECOND,champ=window.__FWA_CHAMPION;
-  podiumBlock(75,1120,270,330,'THIRD',3,third,G.podiumStep===3);
-  podiumBlock(405,1040,270,410,'SECOND',2,second,G.podiumStep===2);
-  podiumBlock(735,950,270,500,'CHAMPION',1,champ,G.podiumStep===1);
-
-  ctx.shadowBlur=0;
-  ctx.restore();
+function verifiedFlagForCode(code){
+  const cc=String(code||'').toUpperCase();
+  if(cc.length!==2)return cc||'—';
+  return String.fromCodePoint(0x1F1E6+cc.charCodeAt(0)-65,0x1F1E6+cc.charCodeAt(1)-65);
 }
-
+function verifiedCountry(code){
+  const c=countryByCode(code);
+  return c ? c.name : (code||'—');
+}
+function updateVerifiedPodium(){
+  const root=document.getElementById('verifiedPresentation');
+  const scene=document.getElementById('verifiedPodium');
+  const lb=document.getElementById('verifiedLeaderboard');
+  if(!root||!scene||!lb)return;
+  root.style.display='block';scene.style.display='block';lb.style.display='none';
+  const step=G.podiumStep===3?3:G.podiumStep===2?2:1;
+  const rec=step===3?window.__FWA_THIRD:step===2?window.__FWA_SECOND:window.__FWA_CHAMPION;
+  const code=rec?.code||'';
+  const name=rec?.name||verifiedCountry(code);
+  const flag=verifiedFlagForCode(code);
+  document.getElementById('vRankTitle').textContent=step===3?'THIRD PLACE':step===2?'SECOND PLACE':'CHAMPION';
+  document.getElementById('vFeatureLabel').textContent=step===1?'YOUR CHAMPION IS!':step===2?'SECOND PLACE':'THIRD PLACE';
+  document.getElementById('vFlag').textContent=flag;
+  document.getElementById('vCountry').textContent=String(name).toUpperCase();
+  document.getElementById('vWorld').textContent=step===1?'WORLD CONQUERED':'';
+  const third=window.__FWA_THIRD, second=window.__FWA_SECOND, champ=window.__FWA_CHAMPION;
+  document.getElementById('vBlockFlag3').textContent=verifiedFlagForCode(third?.code);
+  document.getElementById('vBlockFlag2').textContent=verifiedFlagForCode(second?.code);
+  document.getElementById('vBlockFlag1').textContent=verifiedFlagForCode(champ?.code);
+  document.querySelectorAll('#verifiedPodium .vBlock').forEach(x=>x.classList.remove('active'));
+  document.getElementById(step===3?'vBlock3':step===2?'vBlock2':'vBlock1').classList.add('active');
+}
+function buildVerifiedLeaderboard(){
+  const box=document.getElementById('vLbRows');
+  if(!box)return;
+  const results=window.__FWA_TOURNAMENT_RESULTS||Object.create(null);
+  const order={
+    'WORLD CONQUERED':0,'SECOND PLACE':1,'THIRD PLACE':2,
+    'FINAL':3,'SEMIFINAL':4,'QUARTERFINAL':5,
+    'ROUND OF 16':6,'KNOCKOUT ROUND 2':7,'KNOCKOUT ROUND 1':8,
+    'ROUND OF 32':9,'QUALIFICATION WINNER':10,'QUALIFICATION':11
+  };
+  const entries=Object.keys(results).map(k=>results[k]).sort((a,b)=>
+    (order[a.stage]??99)-(order[b.stage]??99) ||
+    (b.survival||0)-(a.survival||0)
+  ).slice(0,64);
+  box.innerHTML='';
+  entries.forEach(function(e,i){
+    const row=document.createElement('div');row.className='vLbRow';
+    const name=document.createElement('span');name.className='vLbName';
+    name.textContent=(i+1)+'. '+verifiedFlagForCode(e.code)+' '+(e.name||e.code||'');
+    const stage=document.createElement('span');stage.className='vLbStage';stage.textContent=e.stage||'';
+    row.append(name,stage);box.appendChild(row);
+  });
+}
+function updateVerifiedLeaderboard(){
+  const root=document.getElementById('verifiedPresentation');
+  const scene=document.getElementById('verifiedPodium');
+  const lb=document.getElementById('verifiedLeaderboard');
+  if(!root||!scene||!lb)return;
+  root.style.display='block';scene.style.display='none';lb.style.display='block';
+  if(!lb.dataset.builtForCycle){
+    buildVerifiedLeaderboard();
+    lb.dataset.builtForCycle=String(G?.roundNo||Date.now());
+  }
+  const secs=Math.max(0,Math.ceil(G.leaderboardTimer||0));
+  document.getElementById('vLbTimer').textContent='NEXT BATTLE STARTS IN '+String(Math.floor(secs/60)).padStart(2,'0')+':'+String(secs%60).padStart(2,'0');
+}
+function hideVerifiedPresentation(){
+  const root=document.getElementById('verifiedPresentation');
+  if(root)root.style.display='none';
+}
+function drawPodium(){
+  updateVerifiedPodium();
+}
+function drawLeaderboard(){
+  updateVerifiedLeaderboard();
+}
 function updatePodium(dt){
   G.podiumTimer+=Math.max(0,Math.min(dt,0.25));
 
@@ -2578,6 +2632,7 @@ function updatePodium(dt){
     G.phase='LEADERBOARD';
     G.tPhase=0;
     G.leaderboardTimer=60;
+    const __lb=document.getElementById('verifiedLeaderboard'); if(__lb)__lb.dataset.builtForCycle='';
     playPodiumCrowd('leaderboard',60);
   }
 }
@@ -3642,7 +3697,7 @@ function drawEquipmentFX(){
   for(const f of floaters){ctx.globalAlpha=Math.max(0,Math.min(1,f.t));ctx.font='800 14px Trebuchet MS,sans-serif';ctx.textAlign='center';ctx.fillStyle=f.c||'#fff';ctx.shadowColor='#000';ctx.shadowBlur=5;ctx.fillText(f.text,CFG.CX+f.x,CFG.CY+f.y);ctx.globalAlpha=1;}
   ctx.restore();
 }
-function render(){elapsed=(G.t||0)/1000;drawBackdrop();if(G.phase==='PODIUM'){drawPodium();return;}if(G.phase==='LEADERBOARD'){drawLeaderboard();return;}ctx.save();if(G.shake>0.2)ctx.translate(rnd(-G.shake,G.shake),rnd(-G.shake,G.shake));drawArena();drawSpokes();drawHub();drawEnhancedBalls();drawEquipmentFX();ctx.restore();drawEnhancedHUD();drawBanner();drawEnhancedLower();drawKillCard();if(G.phase==='WINNER'){drawWinner();}}
+function render(){elapsed=(G.t||0)/1000;drawBackdrop();if(G.phase==='PODIUM'){drawPodium();return;}if(G.phase==='LEADERBOARD'){drawLeaderboard();return;}hideVerifiedPresentation();ctx.save();if(G.shake>0.2)ctx.translate(rnd(-G.shake,G.shake),rnd(-G.shake,G.shake));drawArena();drawSpokes();drawHub();drawEnhancedBalls();drawEquipmentFX();ctx.restore();drawEnhancedHUD();drawBanner();drawEnhancedLower();drawKillCard();if(G.phase==='WINNER'){drawWinner();}}
 
 /* Replace chat source with a small browser bridge. Live mode uses the same API
    endpoint shipped by the circular-ring build; simulation mode keeps the arena
