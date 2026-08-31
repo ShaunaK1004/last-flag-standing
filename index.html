@@ -75,7 +75,7 @@
   .vLbTimer{position:absolute;bottom:2.2%;left:0;right:0;text-align:center;font-size:clamp(14px,4vw,23px);font-weight:900;color:#ffd34f;text-shadow:0 0 10px rgba(255,211,79,.5)}
 
 </style>
-</head>
+<style id="fixed-9x16-composition">html,body{margin:0;width:100%;height:100%;overflow:hidden}#wrap{width:min(100vw,56.25vh)!important;height:min(100vh,177.7777778vw)!important;aspect-ratio:9/16!important;margin:auto!important;overflow:hidden!important}#wrap>canvas{width:100%!important;height:100%!important;aspect-ratio:9/16!important;display:block!important}#app,#game,#game-container,.game-container,.arena-container{width:100%!important;height:100%!important;aspect-ratio:9/16!important;margin:0!important;overflow:hidden!important}</style></head>
 <body>
 <div id="wrap">
   <canvas height="1920" id="c" width="1080"></canvas>
@@ -101,7 +101,7 @@
     <div id="verifiedLeaderboard" class="verifiedScene">
       <div class="vLbTitle">FINAL TOURNAMENT LEADERBOARD</div>
       <div class="vLbRows" id="vLbRows"></div>
-      <div class="vLbTimer" id="vLbTimer">NEXT BATTLE STARTS IN 01:00</div>
+      <div class="vLbTimer" id="vLbTimer">NEXT BATTLE STARTS IN 00:15</div>
     </div>
   </div>
 </div>
@@ -2673,9 +2673,9 @@ function updatePodium(dt){
      the second spoken line. Even if audio fails, the next tournament still starts. */
   if(G.podiumStep===1 && G.podiumTimer>=11.0){
     podiumResetMedia();
-    G.phase='LEADERBOARD'; G.tPhase=0; G.leaderboardTimer=60;
+    G.phase='LEADERBOARD'; G.tPhase=0; G.leaderboardTimer=15;
     const __lb=document.getElementById('verifiedLeaderboard'); if(__lb)__lb.dataset.builtForCycle='';
-    playPodiumCrowd('leaderboard',60);
+    playPodiumCrowd('leaderboard',15);
   }
 }
 
