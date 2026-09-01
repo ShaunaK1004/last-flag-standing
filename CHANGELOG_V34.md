@@ -36,3 +36,4 @@ Shield and Revival now trigger directly from a valid chat keyword.
 - Added direct chat triggers for KATANA and ELECTRIC.
 - Fixed FLAME SWORD being incorrectly detected as generic SWORD/KNIFE.
 - Fixed KATANA being incorrectly detected as generic SWORD/KNIFE.
+- Removed the final-leaderboard background audio playback and deleted `podium_audio/final_leaderboard_kulakovka_first_60s.wav`. The final leaderboard remains visual-only; podium third/second/champion audio is unchanged.
