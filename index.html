@@ -106,7 +106,6 @@
   </div>
 </div>
 <script>
-
 "use strict";
 /* ==========================================================================
    1. CONFIG  -  measured constants, with provenance
@@ -134,8 +133,7 @@ const CFG = {
   HOLE_OPEN_MS:   700,    // dilation ramp measured 0.4-1.0 s; midpoint
   FLASH_MS:       250,    // flash at +1.22s after onset minus 0.97s median crowded open = 0.25s after the kill
   HUD_DELAY_MS:   930,    // REMAINING at +1.5..2.3s after onset minus 0.97s open = 0.53..1.33s; midpoint
-  WINNER_MS:     3200,    // short winner hold: 3, 2, 1, 0 before the next round
-  WINNER_COUNTDOWN_MS: 3000, // visible countdown is exactly 3 -> 2 -> 1 -> 0
+  WINNER_MS:     10000,   // winner screen reads "NEXT DRAW IN 10S"; corroborated by 409.9 - 398 = 11.9 s
   BANNER_MS:      2200,
   INTRO_MS:       1600,
 
@@ -642,22 +640,6 @@ const COMMENTARY = {
     if (type==='TUMBLE') this.say('Tumble boost! Here we go.', true);
     if (type==='RAPID') this.say('Rapid fire! Things are moving fast.', true);
   },
-  theme(name){
-    const lines={
-      'ALIEN CROSSFIRE':'Alien crossfire is active. Watch those laser lines.',
-      'SOLAR FLARE':'Solar flares are crossing the arena. One hit could change everything.',
-      'BLACK HOLE':'Black holes are opening up. Stay clear of the event horizon.',
-      'ALIEN INVASION':'Incoming alien invasion! The arena is under fire.',
-      'GRAVITY VORTEX':'A gravity vortex is pulling the flags off course.',
-      'WORMHOLE':'Wormholes are open. A flag could disappear and reappear anywhere.',
-      'COMET CHASE':'Comets are cutting across the arena. Keep your eyes on the flags.',
-      'PLANETARY GRAVITY':'Planetary gravity is taking hold. Movement is getting unpredictable.',
-      'ORBITAL STRIKE':'Orbital strike detected. Watch for the incoming beam.',
-      'RED GIANT':'A red giant is expanding its danger zone. The safe space is shrinking.',
-      'CALM ARENA':'Calm arena. No special hazard this round.'
-    };
-    this.say(lines[name]||'A new arena theme is active.');
-  },
   winner(c,onDone){
     if (!c || !this.enabled || !('speechSynthesis' in window)) { if(onDone) onDone(); return; }
     /* Winner speech is terminal for this battle: cancel every queued/active line
@@ -685,404 +667,6 @@ const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 let G = null;
 function careers(){ try{ return JSON.parse(localStorage.getItem('cbr_wins')||'{}'); }catch(e){ return {}; } }
 function addWin(code){ try{ const c=careers(); c[code]=(c[code]||0)+1; localStorage.setItem('cbr_wins',JSON.stringify(c)); }catch(e){} }
-
-/* === THEME HAZARD SYSTEM v1 ===
-   Adapted from the verified theme mechanics in index (3).html.
-   The tested countryball/ring/gate simulation remains authoritative. Themes are
-   additive: a theme can create an additional elimination or movement effect, but
-   never disables the normal opening/hole elimination.
-*/
-const THEME_ROTATION = [
-  {name:'ALIEN CROSSFIRE', cls:'crossfire'},
-  {name:'SOLAR FLARE', cls:'solar'},
-  {name:'BLACK HOLE', cls:'blackhole'},
-  {name:'ALIEN INVASION', cls:'invasion'},
-  {name:'GRAVITY VORTEX', cls:'vortex'},
-  {name:'WORMHOLE', cls:'wormhole'},
-  {name:'COMET CHASE', cls:'comet'},
-  {name:'PLANETARY GRAVITY', cls:'planet'},
-  {name:'ORBITAL STRIKE', cls:'orbital'},
-  {name:'RED GIANT', cls:'redgiant'},
-  {name:'CALM ARENA', cls:'calm'}
-];
-let themeIndex=0, theme=THEME_ROTATION[0];
-let themeTime=0;
-let solarFlares=[], blackHoles=[], alienUFOs=[], vortexes=[], wormholes=null, wormholeTransfers=[];
-let comets=[], gravityPlanet=null, orbitalSatellite=null, orbitalStrikes=[], redGiant=null;
-let crossfireAngle=0, crossfireEvents=[];
-let themeFlash=0, themeBursts=[];
-let themeSchedule={bands:{},nextAt:1.2};
-function themeBand(n){if(n>=33)return '64-33';if(n>=17)return '32-17';if(n>=11)return '16-11';if(n>=6)return '10-6';if(n>=2)return '5-2';return '1';}
-function themeBandTarget(b){return b==='64-33'?Math.floor(rnd(2,4)):b==='32-17'?Math.floor(rnd(1,3)):b==='16-11'||b==='10-6'?1:b==='5-2'?Math.floor(rnd(1,3)):0;}
-function resetThemeSchedule(){themeSchedule={bands:{},nextAt:1.2}; crossfireEvents=[];}
-function scheduleThemeEvent(){
-  const n=alive().length,b=themeBand(n);
-  if(theme.name==='ALIEN CROSSFIRE'){
-    if(!themeSchedule.bands[b])themeSchedule.bands[b]={target:themeBandTarget(b),done:0};
-    const q=themeSchedule.bands[b];
-    if(q.done<q.target && themeTime>=themeSchedule.nextAt && crossfireEvents.length===0){
-      spawnCrossfireEvent(); q.done++; themeSchedule.nextAt=themeTime+rnd(2.4,4.1);
-    }
-    return;
-  }
-  if(theme.name==='ALIEN INVASION'){
-    if(!themeSchedule.bands[b])themeSchedule.bands[b]={target:themeBandTarget(b),done:0};
-    const q=themeSchedule.bands[b];
-    if(q.done<q.target && themeTime>=themeSchedule.nextAt && alienUFOs.length===0){
-      triggerThemeEvent(); q.done++; themeSchedule.nextAt=themeTime+rnd(2.8,4.8);
-    }
-    return;
-  }
-  if(theme.name==='ORBITAL STRIKE'){
-    if(!themeSchedule.bands[b]){
-      themeSchedule.bands[b]={target:themeBandTarget(b),done:0};
-      // Every newly-entered survivor band gets its own firing window.
-      if(themeSchedule.nextAt===Infinity) themeSchedule.nextAt=themeTime+rnd(1.8,3.2);
-    }
-    const q=themeSchedule.bands[b];
-    if(!orbitalSatellite) triggerThemeEvent();
-    // The satellite is persistent: orbit -> brake/stop -> fire one strike -> resume.
-    // q.done counts actual laser shots, not satellite appearances.
-    if(q.done<q.target && themeTime>=themeSchedule.nextAt && orbitalSatellite && orbitalSatellite.state==='orbit'){
-      orbitalSatellite.state='pause';
-      orbitalSatellite.pauseUntil=themeTime+rnd(.75,1.05);
-      themeSchedule.nextAt=Infinity;
-    }
-    return;
-  }
-  if(['CALM ARENA','SOLAR FLARE','COMET CHASE'].includes(theme.name))return;
-  if(!themeSchedule.bands[b])themeSchedule.bands[b]={target:themeBandTarget(b),done:0};
-  const q=themeSchedule.bands[b];
-  if(q.done<q.target&&themeTime>=themeSchedule.nextAt){triggerThemeEvent();q.done++;themeSchedule.nextAt=themeTime+rnd(2.8,4.6);}
-}
-function spawnCrossfireEvent(){
-  const a=rnd(0,Math.PI*2);
-  // Crossfire is stationary during each event. The flags move through the
-  // visible laser; the laser itself does NOT rotate.
-  crossfireEvents.push({angle:a,age:0,dur:rnd(3.2,4.8),hit:{}});
-}
-function updateCrossfire(dt){
-  for(let i=crossfireEvents.length-1;i>=0;i--){
-    const e=crossfireEvents[i];
-    e.age+=dt;
-    const fadeIn=Math.min(1,e.age/.22), fadeOut=Math.min(1,(e.dur-e.age)/.28);
-    e.alpha=Math.max(0,Math.min(fadeIn,fadeOut));
-    const angles=[e.angle,e.angle+Math.PI/2];
-    for(const b of alive()){
-      if(e.hit[b.c.code])continue;
-      const bx=b.x+CFG.CX,by=b.y+CFG.CY;
-      let hit=false;
-      for(const a of angles){
-        const nx=-Math.sin(a),ny=Math.cos(a);
-        const d=Math.abs((bx-CFG.CX)*nx+(by-CFG.CY)*ny);
-        if(d<CFG.BALL_R+6){hit=true;break;}
-      }
-      if(hit){e.hit[b.c.code]=1;themeKill(b,'alien crossfire laser');}
-    }
-    if(e.age>=e.dur)crossfireEvents.splice(i,1);
-  }
-}
-function outsidePoint(m=45){const a=rnd(0,Math.PI*2),r=CFG.ARENA_R+m;return{x:CFG.CX+Math.cos(a)*r,y:CFG.CY+Math.sin(a)*r,a};}
-function triggerThemeEvent(){
-  if(theme.name==='BLACK HOLE'){const p=randomThemePoint(CFG.ARENA_R*.22,CFG.ARENA_R*.68);blackHoles.push({x:p.x,y:p.y,r:rnd(30,38),pulse:rnd(0,6.28),hit:{},until:themeTime+rnd(3.2,5.2),a:Math.atan2(p.y-CFG.CY,p.x-CFG.CX)});}
-  else if(theme.name==='ALIEN INVASION'){
-    const a=Math.floor(rnd(0,8))*Math.PI/4+rnd(-.05,.05);
-    const spawnR=CFG.ARENA_R+145, holdR=CFG.ARENA_R+42;
-    const p={x:CFG.CX+Math.cos(a)*spawnR,y:CFG.CY+Math.sin(a)*spawnR};
-    const army=Math.floor(rnd(3,6));
-    for(let i=0;i<army;i++){
-      const off=(i-(army-1)/2)*22;
-      alienUFOs.push({x:p.x-Math.sin(a)*off,y:p.y+Math.cos(a)*off,ang:a,age:0,fire:0,state:'approach',hit:{},
-        sx:p.x-Math.sin(a)*off,sy:p.y+Math.cos(a)*off,
-        tx:CFG.CX+Math.cos(a)*holdR-Math.sin(a)*off,ty:CFG.CY+Math.sin(a)*holdR+Math.cos(a)*off,
-        arriveAt:.95,holdUntil:1.95,fireStart:1.95,fireEnd:2.12,exitAt:3.12,exitSpeed:300});
-    }
-  }
-  else if(theme.name==='GRAVITY VORTEX'){const p=randomThemePoint(CFG.ARENA_R*.22,CFG.ARENA_R*.68);vortexes.push({x:p.x,y:p.y,r:rnd(32,42),spin:rnd(0,6.28),hit:{},until:themeTime+rnd(3.2,5.4),a:Math.atan2(p.y-CFG.CY,p.x-CFG.CX)});}
-  else if(theme.name==='WORMHOLE'){const r=CFG.ARENA_R*rnd(.50,.62),a1=-Math.PI/4+rnd(-.08,.08),a2=3*Math.PI/4+rnd(-.08,.08);const ax=CFG.CX+Math.cos(a1)*r,ay=CFG.CY+Math.sin(a1)*r,bx=CFG.CX+Math.cos(a2)*r,by=CFG.CY+Math.sin(a2)*r;wormholes={a:{x:ax,y:ay,r:38,pulse:0,ang:a1},b:{x:bx,y:by,r:38,pulse:Math.PI,ang:a2},hit:{},until:themeTime+rnd(3.5,6.5)};}
-  else if(theme.name==='PLANETARY GRAVITY'){const p=outsidePoint(rnd(58,82));gravityPlanet={x:p.x,y:p.y,r:rnd(44,54),pulse:0,hit:{},until:themeTime+rnd(3.5,6.5),a:p.a};}
-  else if(theme.name==='ORBITAL STRIKE'){
-    orbitalSatellite={angle:rnd(0,Math.PI*2),speed:rnd(.42,.56),state:'orbit',pauseUntil:0,fireUntil:0,until:Infinity,shotPulse:0};
-  }
-  else if(theme.name==='RED GIANT'){const p=outsidePoint(rnd(105,135));redGiant={x:p.x,y:p.y,r:65,pulse:0,hit:{},until:themeTime+rnd(4.0,7.0),a:p.a};}
-}
-
-
-const THEME_TINTS={
-  crossfire:'rgba(100,8,70,.28)', solar:'rgba(150,55,4,.24)', blackhole:'rgba(65,10,110,.30)',
-  invasion:'rgba(0,85,105,.25)', vortex:'rgba(90,15,130,.28)', wormhole:'rgba(0,100,130,.24)',
-  comet:'rgba(0,70,120,.24)', planet:'rgba(115,35,8,.25)', orbital:'rgba(20,60,130,.24)',
-  redgiant:'rgba(130,15,8,.27)', calm:'rgba(12,30,80,.12)'
-};
-function themeName(){ return theme.name; }
-function themeSetForRound(){
-  theme=THEME_ROTATION[themeIndex % THEME_ROTATION.length];
-  themeIndex=(themeIndex+1)%THEME_ROTATION.length;
-  themeTime=0; themeFlash=0; crossfireAngle=rnd(0,Math.PI*2);
-  resetThemeObjects();
-  resetThemeSchedule();
-  COMMENTARY.theme(theme.name);
-}
-function resetThemeObjects(){
-  solarFlares=[]; blackHoles=[]; alienUFOs=[]; vortexes=[]; wormholes=null; wormholeTransfers=[];
-  comets=[]; gravityPlanet=null; orbitalSatellite=null; orbitalStrikes=[]; redGiant=null; themeBursts=[];
-}
-function themeKill(b, reason){
-  if(!b || !b.alive) return false;
-  const hx=b.x+CFG.CX, hy=b.y+CFG.CY;
-  kill(b);
-  themeBursts.push({x:hx,y:hy,age:0,reason:reason||'hazard'});
-  themeFlash=Math.max(themeFlash,1);
-  return true;
-}
-function insideArena(b){ return Math.hypot(b.x,b.y) <= CFG.ARENA_R+20; }
-function pointSeg(px,py,ax,ay,bx,by){
-  const abx=bx-ax,aby=by-ay,L=abx*abx+aby*aby||1;
-  const t=clamp(((px-ax)*abx+(py-ay)*aby)/L,0,1);
-  return Math.hypot(px-(ax+abx*t),py-(ay+aby*t));
-}
-function randomThemePoint(min,max){const a=rnd(0,Math.PI*2),r=rnd(min,max);return{x:CFG.CX+Math.cos(a)*r,y:CFG.CY+Math.sin(a)*r};}
-
-function spawnThemeObjects(){
-  if(theme.name==='BLACK HOLE'){
-    const n=Math.floor(rnd(2,4));
-    for(let i=0;i<n;i++){const p=randomThemePoint(CFG.ARENA_R*.18,CFG.ARENA_R*.62);blackHoles.push({x:p.x,y:p.y,r:rnd(28,38),pulse:rnd(0,6.28),hit:{}});}
-  } else if(theme.name==='GRAVITY VORTEX'){
-    const p=randomThemePoint(CFG.ARENA_R*.18,CFG.ARENA_R*.62); vortexes=[{x:p.x,y:p.y,r:rnd(34,48),spin:rnd(0,6.28),hit:{}}];
-  } else if(theme.name==='WORMHOLE'){
-    const a=randomThemePoint(CFG.ARENA_R*.18,CFG.ARENA_R*.38), b=randomThemePoint(CFG.ARENA_R*.60,CFG.ARENA_R*.82);
-    wormholes={a:{x:a.x,y:a.y,r:30,pulse:0},b:{x:b.x,y:b.y,r:30,pulse:Math.PI},hit:{}};
-  } else if(theme.name==='PLANETARY GRAVITY'){
-    const a=rnd(0,Math.PI*2),r=CFG.ARENA_R+90; gravityPlanet={x:CFG.CX+Math.cos(a)*r,y:CFG.CY+Math.sin(a)*r,r:55,pulse:0,hit:{}};
-  } else if(theme.name==='ORBITAL STRIKE'){
-    orbitalSatellite={angle:rnd(0,6.28),speed:.55,fireNext:1.8};
-  } else if(theme.name==='RED GIANT'){
-    const a=rnd(0,Math.PI*2),r=CFG.ARENA_R+120; redGiant={x:CFG.CX+Math.cos(a)*r,y:CFG.CY+Math.sin(a)*r,r:65,pulse:0,hit:{}};
-  }
-}
-function updateTheme(dt){
-  themeTime+=dt; themeBursts.forEach(x=>x.age+=dt); themeBursts=themeBursts.filter(x=>x.age<.6);
-  scheduleThemeEvent();
-  if(theme.name==='ALIEN CROSSFIRE'){
-    updateCrossfire(dt);
-    return;
-  }
-  if(theme.name==='SOLAR FLARE'){
-    if(Math.random()<dt*.75){const side=Math.floor(rnd(0,4)),m=90;let sx,sy,ex,ey;if(side===0){sx=rnd(0,W);sy=-m;ex=rnd(0,W);ey=H+m;}else if(side===1){sx=W+m;sy=rnd(0,H);ex=-m;ey=rnd(0,H);}else if(side===2){sx=rnd(0,W);sy=H+m;ex=rnd(0,W);ey=-m;}else{sx=-m;sy=rnd(0,H);ex=W+m;ey=rnd(0,H);}const dx=ex-sx,dy=ey-sy,L=Math.hypot(dx,dy)||1;solarFlares.push({x:sx,y:sy,px:sx,py:sy,vx:dx/L*260,vy:dy/L*260,hit:{},life:0});}
-    for(let i=solarFlares.length-1;i>=0;i--){const f=solarFlares[i];f.px=f.x;f.py=f.y;f.x+=f.vx*dt;f.y+=f.vy*dt;for(const b of alive())if(!f.hit[b.c.code]&&pointSeg(b.x+CFG.CX,b.y+CFG.CY,f.px,f.py,f.x,f.y)<CFG.BALL_R+8){f.hit[b.c.code]=1;themeKill(b,'solar flare');}if(f.x<-120||f.x>W+120||f.y<-120||f.y>H+120)solarFlares.splice(i,1);}return;
-  }
-  if(theme.name==='BLACK HOLE'){for(let i=blackHoles.length-1;i>=0;i--){const h=blackHoles[i];h.pulse+=dt*3;for(const b of alive()){const bx=b.x+CFG.CX,by=b.y+CFG.CY,dx=h.x-bx,dy=h.y-by,d=Math.hypot(dx,dy)||1;if(d<h.r+CFG.BALL_R+5){themeKill(b,'black hole');continue;}if(d<h.r+185){const a=.13*(1-(d-h.r)/185);b.vx+=dx/d*a*dt*60;b.vy+=dy/d*a*dt*60;}}if(themeTime>=h.until)blackHoles.splice(i,1);}return;}
-  if(theme.name==='ALIEN INVASION'){
-    for(let i=alienUFOs.length-1;i>=0;i--){
-      const u=alienUFOs[i]; u.age+=dt;
-      if(u.state==='approach'){
-        const t=Math.min(1,u.age/u.arriveAt), e=1-Math.pow(1-t,3);
-        u.x=u.sx+(u.tx-u.sx)*e; u.y=u.sy+(u.ty-u.sy)*e;
-        u.fire=0;
-        if(u.age>=u.arriveAt) u.state='hold';
-      }
-      if(u.state==='hold'){
-        u.fire=0;
-        // Hold at the perimeter for a full second so the audience can read the invasion.
-        if(u.age>=u.fireStart) u.state='fire';
-      }
-      if(u.state==='fire'){
-        u.fire=1;
-        const ex=CFG.CX-Math.cos(u.ang)*(CFG.ARENA_R+8), ey=CFG.CY-Math.sin(u.ang)*(CFG.ARENA_R+8);
-        for(const b of alive()) if(!u.hit[b.c.code] && pointSeg(b.x+CFG.CX,b.y+CFG.CY,u.x,u.y,ex,ey)<CFG.BALL_R+7){u.hit[b.c.code]=1;themeKill(b,'alien invasion laser');}
-        if(u.age>=u.fireEnd) { u.fire=0; u.state='wait'; }
-      } else if(u.state==='wait'){
-        u.fire=0;
-        // One second after the shot before the formation retreats.
-        if(u.age>=u.exitAt) u.state='exit';
-      } else if(u.state==='exit'){
-        u.fire=0; u.x += Math.cos(u.ang)*u.exitSpeed*dt; u.y += Math.sin(u.ang)*u.exitSpeed*dt;
-        if(Math.hypot(u.x-CFG.CX,u.y-CFG.CY)>CFG.ARENA_R+260) alienUFOs.splice(i,1);
-      }
-    }
-    return;
-  }
-  if(theme.name==='GRAVITY VORTEX'){for(let i=vortexes.length-1;i>=0;i--){const v=vortexes[i];v.spin+=dt*4.5;for(const b of alive()){const bx=b.x+CFG.CX,by=b.y+CFG.CY,dx=v.x-bx,dy=v.y-by,d=Math.hypot(dx,dy)||1;if(d<v.r+CFG.BALL_R+4){themeKill(b,'gravity vortex');continue;}if(d<v.r+175){const a=.16*(1-(d-v.r)/175);b.vx+=dx/d*a*dt*60;b.vy+=dy/d*a*dt*60;b.vx+=(-dy/d*.055)*dt*60;b.vy+=(dx/d*.055)*dt*60;}}if(themeTime>=v.until)vortexes.splice(i,1);}return;}
-  if(theme.name==='WORMHOLE'&&wormholes){wormholes.a.pulse+=dt*5;wormholes.b.pulse+=dt*5;for(const b of alive()){const bx=b.x+CFG.CX,by=b.y+CFG.CY,da=Math.hypot(bx-wormholes.a.x,by-wormholes.a.y),db=Math.hypot(bx-wormholes.b.x,by-wormholes.b.y);if(da<wormholes.a.r+CFG.BALL_R+10&&!wormholes.hit[b.c.code]){wormholes.hit[b.c.code]=1;const ox=bx,oy=by;b.x=wormholes.b.x-CFG.CX;b.y=wormholes.b.y-CFG.CY;b.vx*=-.85;b.vy*=-.85;wormholeTransfers.push({b:b.c,age:0,dur:1.05,from:{x:ox,y:oy},to:{x:b.x+CFG.CX,y:b.y+CFG.CY}});}else if(db<wormholes.b.r+CFG.BALL_R+10&&!wormholes.hit[b.c.code]){wormholes.hit[b.c.code]=1;const ox=bx,oy=by;b.x=wormholes.a.x-CFG.CX;b.y=wormholes.a.y-CFG.CY;b.vx*=-.85;b.vy*=-.85;wormholeTransfers.push({b:b.c,age:0,dur:1.05,from:{x:ox,y:oy},to:{x:b.x+CFG.CX,y:b.y+CFG.CY}});}}wormholeTransfers.forEach(t=>t.age+=dt);wormholeTransfers=wormholeTransfers.filter(t=>t.age<t.dur);if(themeTime>=wormholes.until){wormholes=null;wormholeTransfers=[];}return;}
-  if(theme.name==='COMET CHASE'){if(Math.random()<dt*.30){const side=Math.floor(rnd(0,4)),m=100;let sx,sy,ex,ey;if(side===0){sx=-m;sy=rnd(0,H);ex=W+m;ey=sy+rnd(-300,300);}else if(side===1){sx=W+m;sy=rnd(0,H);ex=-m;ey=sy+rnd(-300,300);}else if(side===2){sx=rnd(0,W);sy=-m;ex=sx+rnd(-300,300);ey=H+m;}else{sx=rnd(0,W);sy=H+m;ex=sx+rnd(-300,300);ey=-m;}const dx=ex-sx,dy=ey-sy,L=Math.hypot(dx,dy)||1;comets.push({x:sx,y:sy,px:sx,py:sy,vx:dx/L*300,vy:dy/L*300,hit:{},life:0});}for(let i=comets.length-1;i>=0;i--){const c=comets[i];c.px=c.x;c.py=c.y;c.x+=c.vx*dt;c.y+=c.vy*dt;for(const b of alive())if(!c.hit[b.c.code]&&pointSeg(b.x+CFG.CX,b.y+CFG.CY,c.px,c.py,c.x,c.y)<CFG.BALL_R+10){c.hit[b.c.code]=1;themeKill(b,'comet');}if(c.x<-140||c.x>W+140||c.y<-140||c.y>H+140)comets.splice(i,1);}return;}
-  if(theme.name==='PLANETARY GRAVITY'&&gravityPlanet){const p=gravityPlanet;p.pulse+=dt;for(const b of alive()){const bx=b.x+CFG.CX,by=b.y+CFG.CY,dx=p.x-bx,dy=p.y-by,d=Math.hypot(dx,dy)||1;if(d<p.r+CFG.BALL_R+4){themeKill(b,'planetary gravity');continue;}if(d<265){const a=.18*(1-d/265);b.vx+=dx/d*a*dt*60;b.vy+=dy/d*a*dt*60;}}if(themeTime>=p.until)gravityPlanet=null;return;}
-  if(theme.name==='ORBITAL STRIKE'&&orbitalSatellite){
-    const sat=orbitalSatellite;
-    if(sat.state==='orbit') sat.angle=(sat.angle+sat.speed*dt)%(Math.PI*2);
-    if(sat.state==='pause' && themeTime>=sat.pauseUntil){
-      sat.state='fire'; sat.fireUntil=themeTime+rnd(.38,.55); sat.shotPulse=0;
-      const a=sat.angle;
-      const sx=CFG.CX+Math.cos(a)*(CFG.ARENA_R+62), sy=CFG.CY+Math.sin(a)*(CFG.ARENA_R+62);
-      orbitalStrikes.push({x:sx,y:sy,a:a+Math.PI,age:0,hit:{},dur:.62});
-      const band=themeBand(alive().length), q=themeSchedule.bands[band];
-      if(q) q.done++;
-    }
-    if(sat.state==='fire'){
-      sat.shotPulse+=dt;
-      if(themeTime>=sat.fireUntil){
-        sat.state='orbit';
-        const band=themeBand(alive().length),q=themeSchedule.bands[band];
-        if(q && q.done<q.target) themeSchedule.nextAt=themeTime+rnd(2.8,4.4); else themeSchedule.nextAt=Infinity;
-      }
-    }
-    for(let i=orbitalStrikes.length-1;i>=0;i--){
-      const q=orbitalStrikes[i]; q.age+=dt;
-      const len=CFG.ARENA_R*1.78;
-      const dx=Math.cos(q.a)*len,dy=Math.sin(q.a)*len;
-      for(const b of alive()) if(!q.hit[b.c.code]&&pointSeg(b.x+CFG.CX,b.y+CFG.CY,q.x,q.y,q.x+dx,q.y+dy)<CFG.BALL_R+9){q.hit[b.c.code]=1;themeKill(b,'orbital laser');}
-      if(q.age>q.dur) orbitalStrikes.splice(i,1);
-    }
-    return;
-  }
-  if(theme.name==='RED GIANT'&&redGiant){const p=redGiant;p.pulse+=dt;const safe=CFG.ARENA_R-45*Math.min(1,p.pulse/3.2);for(const b of alive())if(Math.hypot(b.x,b.y)>safe)themeKill(b,'red giant');if(themeTime>=p.until)redGiant=null;}
-}
-function drawTheme(){
-  const n=theme.name;
-  // Theme objects are deliberately rendered AFTER the arena/ring and BEFORE countryballs.
-  // This makes hazards occupy the same visual layer as the gameplay, rather than appearing
-  // as a backdrop between the page background and the arena.
-  ctx.save();
-  ctx.globalCompositeOperation='lighter';
-  if(n==='ALIEN CROSSFIRE'){
-    // Short-lived laser event: beams visibly originate beyond the ring perimeter,
-    // cross the playable arena, interact with balls, then fade out completely.
-    for(const e of crossfireEvents){
-      const alpha=e.alpha==null?1:e.alpha;
-      ctx.strokeStyle='rgba(120,220,255,'+(0.78*alpha)+')';
-      ctx.lineWidth=5;ctx.shadowColor='#58d9ff';ctx.shadowBlur=22;
-      for(const a of [e.angle,e.angle+Math.PI/2]){
-        const startR=CFG.ARENA_R-6, endR=CFG.ARENA_R-6;
-        const sx=CFG.CX-Math.cos(a)*startR, sy=CFG.CY-Math.sin(a)*startR;
-        const ex=CFG.CX+Math.cos(a)*endR, ey=CFG.CY+Math.sin(a)*endR;
-        ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();
-        ctx.fillStyle='rgba(190,245,255,'+(0.95*alpha)+')';
-        ctx.beginPath();ctx.arc(sx,sy,4,0,7);ctx.fill();
-        ctx.beginPath();ctx.arc(ex,ey,4,0,7);ctx.fill();
-      }
-    }
-  } else if(n==='SOLAR FLARE'){
-    solarFlares.forEach(f=>{const a=Math.atan2(f.vy,f.vx);ctx.save();ctx.translate(f.x,f.y);ctx.rotate(a);const g=ctx.createLinearGradient(-130,0,15,0);g.addColorStop(0,'rgba(255,80,10,0)');g.addColorStop(.7,'rgba(255,160,40,.75)');g.addColorStop(1,'#fff4bf');ctx.strokeStyle=g;ctx.lineWidth=14;ctx.shadowColor='#ff8b20';ctx.shadowBlur=24;ctx.beginPath();ctx.moveTo(-130,0);ctx.lineTo(12,0);ctx.stroke();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(10,0,7,0,7);ctx.fill();ctx.restore();});
-  } else if(n==='BLACK HOLE'){
-    // Realistic black-hole treatment: deep black event horizon surrounded by a
-    // bright, silver-white accretion disk and subtle gravitational lensing.
-    blackHoles.forEach(h=>{
-      const pulse=h.pulse;
-      ctx.save();
-      ctx.translate(h.x,h.y);
-      // gravitational lensing halo
-      const lens=ctx.createRadialGradient(0,0,h.r*.72,0,0,h.r*2.35);
-      lens.addColorStop(0,'rgba(255,255,255,.18)');
-      lens.addColorStop(.22,'rgba(235,242,248,.12)');
-      lens.addColorStop(.52,'rgba(170,190,205,.055)');
-      lens.addColorStop(1,'rgba(120,140,160,0)');
-      ctx.fillStyle=lens; ctx.beginPath(); ctx.arc(0,0,h.r*2.35,0,Math.PI*2); ctx.fill();
-      // silver accretion disk: several compressed, rotating elliptical rings
-      ctx.globalCompositeOperation='lighter';
-      for(let k=0;k<7;k++){
-        const rr=h.r+10+k*5.2;
-        const alpha=.88-k*.09;
-        const grad=ctx.createLinearGradient(-rr,0,rr,0);
-        grad.addColorStop(0,`rgba(110,125,140,${alpha*.55})`);
-        grad.addColorStop(.18,`rgba(220,228,235,${alpha*.72})`);
-        grad.addColorStop(.42,`rgba(255,255,255,${alpha})`);
-        grad.addColorStop(.58,`rgba(245,248,250,${alpha*.95})`);
-        grad.addColorStop(.82,`rgba(185,198,210,${alpha*.65})`);
-        grad.addColorStop(1,`rgba(80,95,110,${alpha*.35})`);
-        ctx.strokeStyle=grad; ctx.lineWidth=3.2; ctx.shadowColor='rgba(240,248,255,.95)'; ctx.shadowBlur=11;
-        ctx.beginPath(); ctx.ellipse(0,0,rr,Math.max(5,rr*.24),pulse*.025,0,Math.PI*2); ctx.stroke();
-      }
-      // bright inner rim
-      ctx.strokeStyle='rgba(255,255,255,.96)'; ctx.lineWidth=4; ctx.shadowColor='#ffffff'; ctx.shadowBlur=20;
-      ctx.beginPath(); ctx.ellipse(0,0,h.r+9,h.r*.28,pulse*.03,0,Math.PI*2); ctx.stroke();
-      // event horizon stays genuinely black
-      ctx.globalCompositeOperation='source-over'; ctx.shadowColor='#000'; ctx.shadowBlur=18;
-      ctx.fillStyle='#010204'; ctx.beginPath(); ctx.arc(0,0,h.r*.92,0,Math.PI*2); ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,.58)'; ctx.lineWidth=2.2; ctx.shadowBlur=8;
-      ctx.beginPath(); ctx.arc(0,0,h.r*.94,0,Math.PI*2); ctx.stroke();
-      ctx.restore();
-    });
-  } else if(n==='ALIEN INVASION'){
-    alienUFOs.forEach(u=>{ctx.save();ctx.translate(u.x,u.y);ctx.fillStyle='rgba(90,235,255,.9)';ctx.shadowColor='#55e7ff';ctx.shadowBlur=20;ctx.beginPath();ctx.ellipse(0,0,28,12,0,0,7);ctx.fill();ctx.fillStyle='#d8fbff';ctx.beginPath();ctx.ellipse(0,-7,13,8,0,0,7);ctx.fill();ctx.restore();if(u.fire>.5){const ex=CFG.CX-Math.cos(u.ang)*(CFG.ARENA_R+30),ey=CFG.CY-Math.sin(u.ang)*(CFG.ARENA_R+30);ctx.strokeStyle='rgba(90,220,255,.7)';ctx.lineWidth=7;ctx.shadowColor='#5be0ff';ctx.shadowBlur=16;ctx.beginPath();ctx.moveTo(u.x,u.y);ctx.lineTo(ex,ey);ctx.stroke();}});
-  } else if(n==='GRAVITY VORTEX'){
-    vortexes.forEach(v=>{ctx.save();ctx.translate(v.x,v.y);ctx.rotate(v.spin);for(let k=0;k<5;k++){ctx.strokeStyle='rgba(180,105,255,'+(0.5-k*.07)+')';ctx.lineWidth=4;ctx.shadowColor='#a45cff';ctx.shadowBlur=18;ctx.beginPath();ctx.arc(0,0,v.r+12+k*12,.2+k*.35,Math.PI*1.7+k*.5);ctx.stroke();}ctx.fillStyle='#05010b';ctx.beginPath();ctx.arc(0,0,v.r,0,7);ctx.fill();ctx.restore();});
-  } else if(n==='WORMHOLE'&&wormholes){
-    // Chromatic gravitational-lensing wormhole: deep throat + captured light
-    // bands whose hue shifts around the portal as the spacetime tunnel rotates.
-    [wormholes.a,wormholes.b].forEach((w,i)=>{
-      ctx.save(); ctx.translate(w.x,w.y); ctx.rotate(w.pulse*.12);
-      const rr=w.r;
-      const halo=ctx.createRadialGradient(0,0,rr*.35,0,0,rr*1.9);
-      halo.addColorStop(0,'rgba(255,255,255,.18)');
-      halo.addColorStop(.35,i?'rgba(70,210,255,.16)':'rgba(255,105,210,.16)');
-      halo.addColorStop(.68,'rgba(150,110,255,.08)');
-      halo.addColorStop(1,'rgba(0,0,0,0)');
-      ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(0,0,rr*1.9,0,Math.PI*2); ctx.fill();
-      ctx.globalCompositeOperation='lighter';
-      const hues=i?[70,175,245,305]:[305,210,135,55];
-      for(let k=0;k<7;k++){
-        const r0=rr+8+k*5.2, squish=.42+k*.015;
-        const hue=hues[k%hues.length], alpha=.82-k*.065;
-        ctx.strokeStyle=`hsla(${hue},95%,${66+k*3}%,${alpha})`; ctx.lineWidth=3.2;
-        ctx.shadowColor=`hsla(${hue},100%,75%,.9)`; ctx.shadowBlur=15;
-        ctx.beginPath(); ctx.ellipse(0,0,r0,r0*squish,(w.pulse*.035)+(k*.12),0,Math.PI*2); ctx.stroke();
-      }
-      // Captured-light crescent / throat rim
-      const ring=ctx.createLinearGradient(-rr,0,rr,0);
-      ring.addColorStop(0,'rgba(70,180,255,.75)'); ring.addColorStop(.25,'rgba(255,255,255,.95)');
-      ring.addColorStop(.5,'rgba(205,120,255,.95)'); ring.addColorStop(.75,'rgba(255,235,120,.9)'); ring.addColorStop(1,'rgba(70,220,255,.7)');
-      ctx.strokeStyle=ring; ctx.lineWidth=5; ctx.shadowColor='#cfefff'; ctx.shadowBlur=22;
-      ctx.beginPath(); ctx.ellipse(0,0,rr+4,rr*.36,w.pulse*.04,0,Math.PI*2); ctx.stroke();
-      ctx.globalCompositeOperation='source-over';
-      const core=ctx.createRadialGradient(0,0,2,0,0,rr*.82);
-      core.addColorStop(0,'#000108'); core.addColorStop(.7,'#030711'); core.addColorStop(1,'rgba(15,25,45,.7)');
-      ctx.fillStyle=core; ctx.beginPath(); ctx.arc(0,0,rr*.72,0,Math.PI*2); ctx.fill();
-      ctx.strokeStyle='rgba(245,250,255,.7)'; ctx.lineWidth=1.8; ctx.shadowColor='#ffffff'; ctx.shadowBlur=8;
-      ctx.beginPath(); ctx.arc(0,0,rr*.74,0,Math.PI*2); ctx.stroke();
-      ctx.restore();
-    });
-  } else if(n==='COMET CHASE'){
-    comets.forEach(c=>{const a=Math.atan2(c.vy,c.vx);ctx.save();ctx.translate(c.x,c.y);ctx.rotate(a);const g=ctx.createLinearGradient(-140,0,15,0);g.addColorStop(0,'rgba(60,190,255,0)');g.addColorStop(.7,'rgba(110,220,255,.55)');g.addColorStop(1,'#fff');ctx.strokeStyle=g;ctx.lineWidth=15;ctx.shadowColor='#66d9ff';ctx.shadowBlur=24;ctx.beginPath();ctx.moveTo(-140,0);ctx.lineTo(12,0);ctx.stroke();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(12,0,9,0,7);ctx.fill();ctx.restore();});
-  } else if(n==='PLANETARY GRAVITY'&&gravityPlanet){const p=gravityPlanet;const g=ctx.createRadialGradient(p.x,p.y,3,p.x,p.y,p.r*2.2);g.addColorStop(0,'#ffe0a8');g.addColorStop(.3,'#e7773d');g.addColorStop(.75,'#7b321d');g.addColorStop(1,'rgba(255,80,20,0)');ctx.fillStyle=g;ctx.shadowColor='#ff8b55';ctx.shadowBlur=30;ctx.beginPath();ctx.arc(p.x,p.y,p.r*2,0,7);ctx.fill();
-  } else if(n==='ORBITAL STRIKE'&&orbitalSatellite){
-    const sat=orbitalSatellite, a=sat.angle;
-    const sx=CFG.CX+Math.cos(a)*(CFG.ARENA_R+62), sy=CFG.CY+Math.sin(a)*(CFG.ARENA_R+62);
-    // Detailed satellite stays outside the arena and rotates around the ring perimeter.
-    ctx.save();
-    ctx.translate(sx,sy);
-    ctx.rotate(a+Math.PI/2);
-    const glow=sat.state==='fire'?1.35:1;
-    ctx.shadowColor='#6fd7ff'; ctx.shadowBlur=18*glow;
-    // Solar panels
-    const panel=ctx.createLinearGradient(-58,0,-18,0); panel.addColorStop(0,'#18345c');panel.addColorStop(.5,'#4c8fc5');panel.addColorStop(1,'#132844');
-    ctx.fillStyle=panel; ctx.strokeStyle='rgba(190,225,255,.75)'; ctx.lineWidth=1.5;
-    ctx.fillRect(-72,-13,43,26);ctx.strokeRect(-72,-13,43,26);ctx.fillRect(29,-13,43,26);ctx.strokeRect(29,-13,43,26);
-    ctx.strokeStyle='rgba(210,240,255,.35)';ctx.lineWidth=1;
-    for(let x=-64;x<=64;x+=10){ctx.beginPath();ctx.moveTo(x,-13);ctx.lineTo(x,13);ctx.stroke();}
-    // Main satellite bus
-    const body=ctx.createLinearGradient(-28,-11,28,11);body.addColorStop(0,'#53687f');body.addColorStop(.45,'#d7e6f2');body.addColorStop(.7,'#6c7e91');body.addColorStop(1,'#273747');
-    ctx.fillStyle=body;ctx.fillRect(-27,-10,54,20);ctx.strokeStyle='#eaf7ff';ctx.strokeRect(-27,-10,54,20);
-    // Antenna and dish
-    ctx.strokeStyle='#dbeeff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(27,0);ctx.lineTo(48,0);ctx.stroke();
-    ctx.beginPath();ctx.arc(49,0,10,-Math.PI*.72,Math.PI*.72);ctx.stroke();
-    // Energy emitter
-    ctx.fillStyle=sat.state==='fire'?'#fff8d5':'#9fe7ff';ctx.shadowColor=sat.state==='fire'?'#ff4d42':'#70d9ff';ctx.shadowBlur=sat.state==='fire'?35:18;
-    ctx.beginPath();ctx.arc(0,12,6*glow,0,Math.PI*2);ctx.fill();
-    ctx.restore();
-    // Orbital path hint stays outside the playable ring and never touches it.
-    ctx.save();ctx.strokeStyle='rgba(90,180,255,.14)';ctx.lineWidth=2;ctx.setLineDash([6,10]);ctx.beginPath();ctx.arc(CFG.CX,CFG.CY,CFG.ARENA_R+62,0,Math.PI*2);ctx.stroke();ctx.restore();
-    orbitalStrikes.forEach(s=>{
-      const len=CFG.ARENA_R*1.78, dx=Math.cos(s.a)*len,dy=Math.sin(s.a)*len;
-      const fade=Math.min(1,s.age/.08)*Math.min(1,(s.dur-s.age)/.12);
-      ctx.save();ctx.globalAlpha=Math.max(0,fade);
-      const grad=ctx.createLinearGradient(s.x,s.y,s.x+dx,s.y+dy);grad.addColorStop(0,'#fff');grad.addColorStop(.08,'#ff8b73');grad.addColorStop(.5,'#ff2020');grad.addColorStop(1,'rgba(255,45,30,.05)');
-      ctx.strokeStyle=grad;ctx.lineWidth=9;ctx.shadowColor='#ff3b2f';ctx.shadowBlur=28;ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+dx,s.y+dy);ctx.stroke();
-      ctx.strokeStyle='rgba(255,245,230,.98)';ctx.lineWidth=2.5;ctx.shadowBlur=8;ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.x+dx,s.y+dy);ctx.stroke();
-      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(s.x, s.y, 7,0,Math.PI*2);ctx.fill();ctx.restore();
-    });
-  } else if(n==='RED GIANT'&&redGiant){const p=redGiant,g=ctx.createRadialGradient(p.x,p.y,5,p.x,p.y,p.r*2.4);g.addColorStop(0,'#fff0b0');g.addColorStop(.3,'#ffad4d');g.addColorStop(.65,'#ff4b2e');g.addColorStop(1,'rgba(255,45,20,0)');ctx.fillStyle=g;ctx.shadowColor='#ff4f28';ctx.shadowBlur=40;ctx.beginPath();ctx.arc(p.x,p.y,p.r*2.4,0,7);ctx.fill();ctx.strokeStyle='rgba(255,110,65,.35)';ctx.lineWidth=4;const safe=CFG.ARENA_R-45*Math.min(1,p.pulse/8);ctx.beginPath();ctx.arc(CFG.CX,CFG.CY,safe,0,7);ctx.stroke();}
-  ctx.restore();
-}
-/* === END THEME HAZARD SYSTEM === */
 
 /* The opening layout. Two things here are deliberate and both were forced by measurement.
 
@@ -1570,42 +1154,17 @@ function roundRect(g,x,y,w,h,r){ g.beginPath();
    Sizing needs no cover-fit maths: the source art is 900x1600 and the canvas is
    1080x1920. Both are exactly 9:16 (0.562500), so a straight scale to W,H covers
    with zero crop and zero letterbox - checked in bg_scrim.py, which asserts it. */
-// Theme-specific 9:16 backdrops supplied as a matched visual set.
-// The gameplay arena/ring is still rendered by the canvas above these images;
-// these are only the photographic/cosmic environment behind the arena.
-const THEME_BACKGROUNDS = {
-  'ALIEN CROSSFIRE':'bg_crossfire.png',
-  'SOLAR FLARE':'bg_solar_flare.png',
-  'BLACK HOLE':'bg_black_hole.png',
-  'ALIEN INVASION':'bg_alien_invasion.png',
-  'GRAVITY VORTEX':'bg_gravity_vortex.png',
-  'WORMHOLE':'bg_wormhole.png',
-  'COMET CHASE':'bg_comet_chase.png',
-  'PLANETARY GRAVITY':'bg_planetary_gravity.png',
-  'ORBITAL STRIKE':'bg_orbital_strike.png',
-  'RED GIANT':'bg_red_giant.png'
-};
-const THEME_BG_IMAGES = {};
-const THEME_BG_READY = {};
-if (typeof Image === 'function') {
-  Object.keys(THEME_BACKGROUNDS).forEach(name => {
-    const im = new Image();
-    THEME_BG_IMAGES[name] = im;
-    THEME_BG_READY[name] = false;
-    im.onload = () => { THEME_BG_READY[name] = im.naturalWidth > 0 && im.naturalHeight > 0; };
-    im.onerror = () => { THEME_BG_READY[name] = false; };
-    im.src = THEME_BACKGROUNDS[name];
-  });
+const BG = (typeof Image === 'function') ? new Image() : null;
+let bgOk = false;
+if (BG){
+  BG.onload  = () => { bgOk = BG.naturalWidth > 0 && BG.naturalHeight > 0; };
+  BG.onerror = () => { bgOk = false; };
+  BG.src = 'bg.jpg';
 }
 
 function drawBackdrop(){
-  const themeBg = (typeof theme !== 'undefined') ? THEME_BG_IMAGES[theme.name] : null;
-  const themeBgReady = (typeof theme !== 'undefined') ? THEME_BG_READY[theme.name] : false;
-  // CALM ARENA deliberately uses the original neutral background. If any themed
-  // asset is unavailable, fall back to the same proven bg.jpg instead of risking
-  // a blank/black stream.
-  if (themeBgReady && themeBg){
-    ctx.drawImage(themeBg, 0, 0, W, H);
+  if (bgOk){
+    ctx.drawImage(BG, 0, 0, W, H);
     /* Scrim alpha 0.46 is MEASURED, not chosen. Two steps, in this order:
 
        bg_scrim.py first tested the obvious argument - white HUD text over the
@@ -1638,22 +1197,6 @@ function drawBackdrop(){
     ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
   }
   ctx.globalAlpha=1;
-}
-
-/* ---- text that cannot overflow ----------------------------------------------
-   `system-ui` resolves to a different face on every machine - Segoe UI on Windows,
-   SF on macOS, whatever fontconfig picks inside an OBS build on Linux - and their
-   advance widths differ by well over 10%. Any layout that hard-codes an x position
-   for a string is one machine away from a collision. So set the size from the
-   measured width of the actual string, then draw.
-   Returns the px size used, so callers can position the next segment. */
-function fitFont(text, maxW, size, weight, extra){
-  const stack = (extra||'') + 'system-ui,sans-serif';
-  for (let s=size; s>12; s--){
-    ctx.font = weight+' '+s+'px '+stack;
-    if (ctx.measureText(text).width <= maxW) return s;
-  }
-  return 12;
 }
 
 /* ---- text that cannot overflow ----------------------------------------------
@@ -2056,43 +1599,12 @@ function drawWinner(){
   ctx.fillText(w.c.name, cx, cy+265);
   ctx.fillStyle=PAL.gold; ctx.font='900 92px system-ui,sans-serif';
   ctx.fillText('SURVIVES', cx, cy+372);
-  const lasted=Number.isFinite(Number(w.lasted))?Math.max(0,Number(w.lasted)):0;
-  const mm=String(Math.floor(lasted/60)).padStart(2,'0'), ss=String(Math.floor(lasted%60)).padStart(2,'0');
+  const mm=String(Math.floor(w.lasted/60)).padStart(2,'0'), ss=String(Math.floor(w.lasted%60)).padStart(2,'0');
   const wins=careers()[w.c.code]||1;
-  const left=Math.max(0,Math.ceil((CFG.WINNER_COUNTDOWN_MS-G.tPhase)/1000));
+  const left=Math.ceil((CFG.WINNER_MS-G.tPhase)/1000);
   ctx.fillStyle=PAL.dim; ctx.font='700 34px system-ui,sans-serif';
   ctx.fillText(`LASTED ${mm}:${ss}  ·  ${wins} CAREER WIN${wins===1?'':'S'}  ·  NEXT DRAW IN ${left}S`, cx, cy+440);
   ctx.restore();
-}
-
-function drawWormholeTransfers(){
-  if(!wormholes || !wormholeTransfers.length) return;
-  wormholeTransfers.forEach(function(t){
-    const p=clamp(t.age/t.dur,0,1);
-    const e=p<.5?(p*2):((1-p)*2);
-    const x=t.from.x+(t.to.x-t.from.x)*p, y=t.from.y+(t.to.y-t.from.y)*p;
-    ctx.save();
-    ctx.globalAlpha=.95*e;
-    ctx.strokeStyle='rgba(120,220,255,.95)'; ctx.lineWidth=5; ctx.shadowColor='#62ddff'; ctx.shadowBlur=20;
-    ctx.beginPath(); ctx.arc(x,y,CFG.BALL_R+10+18*e,0,Math.PI*2); ctx.stroke();
-    for(let k=0;k<3;k++){
-      ctx.globalAlpha=.55*e*(1-k*.2); ctx.lineWidth=3;
-      ctx.beginPath(); ctx.arc(x,y,CFG.BALL_R+18+k*9,0,Math.PI*2); ctx.stroke();
-    }
-    ctx.restore();
-  });
-}
-
-function drawThemeBursts(){
-  if(!themeBursts.length) return;
-  themeBursts.forEach(function(b){
-    const t=clamp(b.age/.42,0,1), r=18+82*t, a=1-t;
-    ctx.save(); ctx.globalAlpha=a; ctx.translate(b.x,b.y);
-    ctx.strokeStyle='rgba(255,245,190,.95)'; ctx.lineWidth=5; ctx.shadowColor='#fff1a8'; ctx.shadowBlur=22;
-    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
-    for(let i=0;i<8;i++){ const q=i*Math.PI/4; ctx.beginPath(); ctx.moveTo(Math.cos(q)*10,Math.sin(q)*10); ctx.lineTo(Math.cos(q)*r*.72,Math.sin(q)*r*.72); ctx.stroke(); }
-    ctx.restore();
-  });
 }
 
 function render(){
@@ -2820,7 +2332,6 @@ function createDefaultBall(code){
   return {c,user:'',custom:false,x,y,vx:Math.cos(rnd(0,Math.PI*2))*CFG.BALL_SPEED,vy:Math.sin(rnd(0,Math.PI*2))*CFG.BALL_SPEED,alive:true,shield:false,r:CFG.BALL_R,level:1,hitCool:0,weaponFlash:0,weaponRecoil:0,specialUntil:0,specialKind:null,frozenUntil:0,sniperShots:0,shotgunShots:0,fuse:0,sniperUntil:0,shotgunUntil:0,swordUntil:0,weaponAngle:0};
 }
 function startEnhancedRound(){
-  themeSetForRound();
   hideVerifiedPresentation();
   fixedCTAAlternation++;
   cancelFixedCTATimers();
@@ -2877,19 +2388,6 @@ function enhancedClose(){G.phase='CLOSED';G.tPhase=0;G.holeT=0;G.openKills=0;G.k
 function tick(dtms){
   const dt=Math.min(0.25,dtms/1000);G.t+=dtms;G.tPhase+=dtms;G.roundTime+=dt;G.bannerT=Math.max(0,G.bannerT-dtms);G.flash=Math.max(0,G.flash-dtms/CFG.FLASH_MS);G.shake=Math.max(0,G.shake-dtms*.05);if(G.tumbleT>0)G.tumbleT-=dtms;
   if(G.phase==='WINNER'){
-    // Speech remains the normal V34 winner reveal, but it is not allowed to hold
-    // the tournament indefinitely. At the measured WINNER_MS boundary, advance
-    // the same tournament controller even if SpeechSynthesis never fires onend.
-    if(G.tPhase>=CFG.WINNER_MS && !G._winnerAdvanced){
-      G._winnerAdvanced=true;
-      try{ finishEnhancedRound(); }
-      catch(err){
-        if(G.stage==='qualifying') startEnhancedRound();
-        else if(G.stage==='final') showPodiumAndLeaderboard();
-        else completeKOStage();
-      }
-      return;
-    }
     if(!G._winnerSpeechStarted){
       G._winnerSpeechStarted=true; G._winnerSpoken=false; G.winnerFade=0;
       const winnerCode=G.winner&&G.winner.c;
@@ -2927,7 +2425,6 @@ function tick(dtms){
   for(let i=outMarks.length-1;i>=0;i--){outMarks[i].t-=dt;if(outMarks[i].t<=0)outMarks.splice(i,1);}
   for(let i=floaters.length-1;i>=0;i--){floaters[i].t-=dt;floaters[i].y-=26*dt;if(floaters[i].t<=0)floaters.splice(i,1);}
   if(G.roundTime>=300&&G.stage==='qualifying'&&!G.wildcardUnlocked){G.wildcardUnlocked=true;showBanner('WILD CARD UNLOCKED · TYPE 10 TIMES','#ffd75a');COMMENTARY.say('Wild Card entry is now unlocked. Type your country ten times!');}
-  updateTheme(dt);
   oldStep(dt);
   const aliveNow=G.balls.filter(b=>b.alive).length;
   /* Two fixed promotional lines per qualification round. They are deliberately
@@ -2980,7 +2477,6 @@ function startKnockout(){
   window.__FWA_KO_POOL=pool;window.__FWA_STAGE='r32';startKOStage('r32',pool);
 }
 function startKOStage(stage,pool){
-  themeSetForRound();
   window.__FWA_PROGRESS=window.__FWA_PROGRESS||Object.create(null);
   for(const p of (pool||[])){ if(p&&p.code){ const q=window.__FWA_PROGRESS[p.code]||{code:p.code,name:p.name,stages:[]}; q.name=p.name||q.name; q.user=p.user||q.user; if(!q.stages.includes(stage))q.stages.push(stage); window.__FWA_PROGRESS[p.code]=q; }}
   G={balls:[],dead:[],phase:'INTRO',tPhase:0,t:0,spokeA:rnd(0,Math.PI*2),holeT:0,closing:false,flash:0,banner:null,bannerT:0,pendingKills:[],openKills:0,killQuota:1,rapidLeft:0,tumbleT:0,winner:null,winnerFade:0,elimCard:null,lastKill:null,_winnerSpeechStarted:false,_winnerSpoken:false,_winnerAdvanced:false,drawStart:performance.now(),roundNo:(window.__FWA_ENH_ROUND||0)+1,shielded:null,comebackFx:0,shake:0,spawnSkips:0,roundTime:0,stage};window.__FWA_ENH_ROUND=G.roundNo;currentChatUsers=new Map();equipPickups=[];bullets=[];COMMENTARY.reset();COMMENTARY.start();
@@ -4252,16 +3748,7 @@ function render(){
   hideVerifiedPresentation();
   ctx.save();
   if(G.shake>0.2)ctx.translate(rnd(-G.shake,G.shake),rnd(-G.shake,G.shake));
-  drawArena();drawSpokes();drawHub();
-  // V20 theme render order: arena/ring/hub -> live theme hazard -> countryballs.
-  // The V20 theme mechanics were already transplanted verbatim; this call makes
-  // those same gameplay objects visible at the exact layer where they can interact
-  // with the countryballs.
-  drawTheme();
-  drawEnhancedBalls();
-  drawWormholeTransfers();
-  drawThemeBursts();
-  drawEquipmentFX();
+  drawArena();drawSpokes();drawHub();drawEnhancedBalls();drawEquipmentFX();
   ctx.restore();drawEnhancedHUD();drawBanner();drawEnhancedLower();drawKillCard();
   if(G.phase==='WINNER'){drawWinner();}
 }
@@ -4323,8 +3810,7 @@ function frame(now){
 }
 
 /* First-run roster: preserve old waiting list, then start the requested 20+12 base. */
-window.__FWA_QUAL_RESULTS=[];window.__FWA_PROGRESS=Object.create(null);window.__FWA_KO_POOL=[];window.__FWA_STAGE='qualifying';window.__FWA_SF_SURVIVORS=[];window.__FWA_SEMIFINAL_LOSERS=[];window.__FWA_STAGE_WINNERS=[];window.__FWA_START_WAITERS=[];window.__FWA_TOURNAMENT_RESULTS=Object.create(null);autoEquipIndex=0;autoEquipNext=nextDefaultEquipDelay();defaultEquipSpawnsThisRound=0;startEnhancedRound();startChat();
-</script>
+window.__FWA_QUAL_RESULTS=[];window.__FWA_PROGRESS=Object.create(null);window.__FWA_KO_POOL=[];window.__FWA_STAGE='qualifying';window.__FWA_SF_SURVIVORS=[];window.__FWA_SEMIFINAL_LOSERS=[];window.__FWA_STAGE_WINNERS=[];window.__FWA_START_WAITERS=[];window.__FWA_TOURNAMENT_RESULTS=Object.create(null);autoEquipIndex=0;autoEquipNext=nextDefaultEquipDelay();defaultEquipSpawnsThisRound=0;startEnhancedRound();startChat();</script>
 
 </body>
 </html>
