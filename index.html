@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<!--
+  FLAGS WAR ARENA  -  single-file build for OBS / YouTube Live
+  ================================================================
+  Design space is 1080x1920. Every geometric constant below was measured from the
+  reference clip (video_2026-08-25_12-27-41.mp4) and converted with
+  capture px x 1.875 = design px. Provenance is noted per constant; see
+  COUNTRYBALL_ROYALE_plan.md for the derivations.
+
+  Assets: flags are drawn procedurally; sound effects are synthesised with WebAudio and live commentary uses browser speech synthesis, so
+  neither can fail. The ONE binary is bg.jpg, which must be deployed next to this
+  file - same origin, same commit, no CDN. If it is missing or fails to decode the
+  build falls back to the original procedural starfield and keeps running; a 24/7
+  unattended stream must not be able to go black over an image.
+  Drop in audio/loop.mp3 later if you want a music bed.
+
+  Deliberate deviations from the reference, all reported rather than silent:
+   - true circles (the reference recording is vertically stretched 3.7%; that is a
+     capture defect, not a design choice)
+   - |v| is pinned to a constant. The reference's speed distribution could not be
+     measured, and elastic exchange plus rounding lets balls stall, which looks
+     broken on a 24/7 stream.
+   - no gear icon / no operator controls. Nothing to leave in the wrong position.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Flags War Arena</title>
+<style>
+  :root { color-scheme: dark }
+  html,body{margin:0;padding:0;background:#000;overflow:hidden;height:100%}
+  #wrap{position:fixed;inset:0;display:grid;place-items:center}
+  canvas{display:block;image-rendering:auto}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c" width="1080" height="1920"></canvas></div>
+<script>
+"use strict";
+/* ==========================================================================
+   1. CONFIG  -  measured constants, with provenance
+   ========================================================================== */
+const W = 1080, H = 1920;
+
+const CFG = {
+  // ---- geometry (design px) -------------------------------------------------
+  ARENA_R:        483,    // measured 257.8 capture px x 1.875; radius constant to +-1.02px over the whole clip
+  CX:             540,
+  CY:             860,
+  HUB_R:          127.5,  // measured 68 x 1.875; hub/arena = 0.264
+  HOLE_R:         66,     // measured 35 x 1.875; the hole ramps to this then HOLDS (it does not keep growing)
+  BALL_R:         37.5,   // measured 20 x 1.875; ball/arena = 0.0776
+
+  SPOKE_N:        6,      // harmonic k=6 dominant in angular occupancy; independently 60deg blob spacing
+  SPOKE_IN:       261,    // 362 - 101
+  SPOKE_OUT:      463,    // 362 + 101  (tip sits 20px short of the rim: narrower than a ball, so effectively sealed)
+  SPOKE_CAP:      12.7,   // measured 6.75 x 1.875
+  SPOKE_DEG_S:   -28,     // three estimators agreed -27..-30 deg/s; negative = counter-clockwise on screen
+                          // one revolution = 360/28 = 12.86 s
+
+  // ---- timing (ms) ----------------------------------------------------------
+  CLOSED_MS:      4130,   // median of measured closed runs (all samples 4.01-4.62 s)
+  HOLE_OPEN_MS:   700,    // dilation ramp measured 0.4-1.0 s; midpoint
+  FLASH_MS:       250,    // flash at +1.22s after onset minus 0.97s median crowded open = 0.25s after the kill
+  HUD_DELAY_MS:   930,    // REMAINING at +1.5..2.3s after onset minus 0.97s open = 0.53..1.33s; midpoint
+  WINNER_MS:     10000,   // winner screen reads "NEXT DRAW IN 10S"; corroborated by 409.9 - 398 = 11.9 s
+  BANNER_MS:      2200,
+  INTRO_MS:       1600,
+
+  // ---- physics -------------------------------------------------------------
+  N_BALLS:        64,     // read from the COUNTRIES panel; 64 every single round
+  BALL_SPEED:     230,    // TUNING TARGET, not a measurement - but it lands inside the only
+                          // bracket the clip gave up. Three tracking attempts failed to
+                          // measure the speed distribution and could only bracket the scale at
+                          // 150-250 design px/s; 230 is fitted independently, from the two
+                          // open-phase durations, and falls inside that bracket. Two unrelated
+                          // routes agreeing is the closest thing to confirmation available here.
+  SUCTION:        190,    // px/s^2 inward while the hub is open. Fitted, not guessed, by
+                          // calibrate.js. See CALIBRATION.md for the grid and the residuals.
+  SUCTION_FALL:   0,      // exponent of a 1/r^n falloff, normalised at SUCTION_R0. This is a
+                          // model choice decided by measurement, not a fitted knob:
+                          //   n=1, a 2-D point sink (v_r = -Q/2*pi*r, the textbook field for
+                          //   "the hole sucks"), is REFUTED. I predicted it would lengthen the
+                          //   sparse open phase, because with four balls left they sit against
+                          //   the rim where a 1/r field is weak. It did the opposite: sparse
+                          //   fell to 1.5-2.3 s against a measured 4.32 s across the whole
+                          //   (speed, suction) grid. Prediction failed, so the model is out.
+                          //   n=0, uniform, fits both measured durations to within 7%.
+  SUCTION_R0:     66,     // = HOLE_R. Normalising radius, only used when SUCTION_FALL > 0.
+  SUCTION_RAMP:   0.65,   // extra suction per second of an opening beyond the first second,
+                          // as a multiple of SUCTION. DERIVED, not tuned: pinned |v| with a
+                          // constant inward pull has a stable circular orbit at r=v^2/a=278 px,
+                          // so a lone tangential ball never reaches the 66 px mouth. Breaking
+                          // that orbit needs the pull to reach v^2/HOLE_R = 802 px/s^2 = 4.22x
+                          // SUCTION. Spending the surplus over ~5 s from the 1 s dead zone
+                          // gives (4.22-1)/5 = 0.64; 0.65 rounds it up so the orbit is provably
+                          // gone by 5.95 s, just past the reference's longest opening (5.71 s).
+                          // At 1 s it is exactly 1.0x, so every calibrated target - all of
+                          // which come from openings under 2 s - is untouched.
+  DT:             1/120,  // fixed timestep. 41.5% packing will jitter on variable dt.
+  RELAX:          8,      // positional solve passes per substep (cheap: broadphase cuts the
+                          // 2016 brute-force pairs to ~200 candidates)
+  SETTLE:         60,     // opening-layout relaxation passes. MEASURED by settle_sweep.js over
+                          // 12 draws: worst residual overlap 69.5 px at 0 passes, 2.06 at 10,
+                          // 0.059 at 25, 0.000 at 50 and every row beyond; worst spoke
+                          // penetration 49.1 px at 0 and 0.000 from 10 passes on. 50 is the
+                          // first fully converged row, so 60 carries 20% headroom. Costs ~19 ms,
+                          // once per draw, i.e. once per ~6 minutes - it never touches a frame.
+
+  // ---- special events ------------------------------------------------------
+  // DOUBLE_DRAW is MEASURED: 3 of 186 openings took two balls = 1.6%, and that is a
+  // lower bound because 1 Hz sampling cannot resolve two kills more than 1 s apart.
+  // The other four were described by an AI summary of a longer stream and did NOT
+  // appear in the 20 min I measured, which bounds each at rarer than 1/186 openings.
+  // So they are set rare. These five numbers are the intended tuning surface.
+  P_DOUBLE:       0.025,
+  P_SHIELD:       0.008,
+  P_TUMBLE:       0.006,
+  P_RAPID:        0.005,
+  P_COMEBACK:     0.006,
+  RAPID_N:        4,      // openings in a rapid-fire burst
+  RAPID_CLOSED:   1300,   // shortened closed phase during rapid fire
+  TUMBLE_MS:      3000,
+  TUMBLE_SPIN:    2.6,    // spoke omega multiplier while tumbling
+  TUMBLE_SPEED:   1.55,   // ball speed multiplier while tumbling
+};
+
+// Test hook: verify_sim.js sweeps constants through this. No effect in production.
+if (typeof window !== 'undefined' && window.__CBR_OVERRIDE__) Object.assign(CFG, window.__CBR_OVERRIDE__);
+
+const PAL = {
+  rim:'#31e1f7', rimGlow:'rgba(49,225,247,0.55)',
+  hubGold:'#f5c23b', hubMag:'#ff3ea5', spoke:'#8b7fd4',
+  ink:'#ffffff', dim:'#9aa7c7', panel:'rgba(10,14,34,0.72)',
+  gold:'#ffd34d', bad:'#ff4d6d', shield:'#5ef2c8',
+};
+
+/* ==========================================================================
+   2. COUNTRIES  -  64 flags, drawn procedurally
+   At 75 px across, a flag reads by its colour blocks and one dominant motif;
+   fine detail is invisible. So complex flags are deliberately simplified.
+   ops: h/v = equal bands, hw/vw = weighted bands, then overlays.
+   All overlay coords are fractions of the flag rect.
+   ========================================================================== */
+const F = (name, code, ops) => ({name, code, ops});
+const COUNTRIES = [
+  F('FRANCE','FR',[['v','#0b2e109'.slice(0,7)||'#002654','#ffffff','#ce1126']]),
+  F('GERMANY','DE',[['h','#111111','#dd0000','#ffce00']]),
+  F('ITALY','IT',[['v','#009246','#ffffff','#ce2b37']]),
+  F('SPAIN','ES',[['hw',[[1,'#aa151b'],[2,'#f1bf00'],[1,'#aa151b']]],['rect','#c8102e',0.28,0.42,0.16,0.16]]),
+  F('PORTUGAL','PT',[['vw',[[2,'#046a38'],[3,'#da291c']]],['disc','#ffe900',0.4,0.5,0.13],['ring','#c8102e',0.4,0.5,0.13,0.03]]),
+  F('NETHERLANDS','NL',[['h','#ae1c28','#ffffff','#21468b']]),
+  F('BELGIUM','BE',[['v','#111111','#fdda24','#ef3340']]),
+  F('POLAND','PL',[['h','#ffffff','#dc143c']]),
+  F('UKRAINE','UA',[['h','#0057b7','#ffd700']]),
+  F('RUSSIA','RU',[['h','#ffffff','#0039a6','#d52b1e']]),
+  F('ROMANIA','RO',[['v','#002b7f','#fcd116','#ce1126']]),
+  F('HUNGARY','HU',[['h','#ce2939','#ffffff','#477050']]),
+  F('CZECHIA','CZ',[['h','#ffffff','#d7141a'],['tri','#11457e',0.52]]),
+  F('AUSTRIA','AT',[['h','#ed2939','#ffffff','#ed2939']]),
+  F('SWITZERLAND','CH',[['fill','#d52b1e'],['cross','#ffffff',0.19,0.62]]),
+  F('SWEDEN','SE',[['fill','#006aa7'],['nordic','#fecc00',0.17]]),
+  F('NORWAY','NO',[['fill','#ba0c2f'],['nordic','#ffffff',0.27],['nordic','#00205b',0.13]]),
+  F('DENMARK','DK',[['fill','#c8102e'],['nordic','#ffffff',0.17]]),
+  F('FINLAND','FI',[['fill','#ffffff'],['nordic','#002f6c',0.19]]),
+  F('ICELAND','IS',[['fill','#02529c'],['nordic','#ffffff',0.26],['nordic','#dc1e35',0.12]]),
+  F('IRELAND','IE',[['v','#169b62','#ffffff','#ff883e']]),
+  F('UNITED KINGDOM','GB',[['fill','#012169'],['diag','#ffffff',0.30],['diag','#c8102e',0.16],['cross','#ffffff',0.36,1],['cross','#c8102e',0.21,1]]),
+  F('GREECE','GR',[['stripes9','#0d5eaf','#ffffff'],['rect','#0d5eaf',0,0,0.56,0.56],['cross','#ffffff',0.12,0.56,0.28,0.28]]),
+  F('TURKEY','TR',[['fill','#e30a17'],['cres','#ffffff',0.40,0.5,0.19],['star','#ffffff',0.60,0.5,0.085,5,-90]]),
+  F('BULGARIA','BG',[['h','#ffffff','#00966e','#d62612']]),
+  F('SERBIA','RS',[['h','#c6363c','#0c4076','#ffffff'],['rect','#c6363c',0.30,0.16,0.12,0.5]]),
+  F('CROATIA','HR',[['h','#ff0000','#ffffff','#171796'],['rect','#ff0000',0.42,0.30,0.16,0.34]]),
+  F('LITHUANIA','LT',[['h','#fdb913','#006a44','#c1272d']]),
+  F('LATVIA','LV',[['hw',[[2,'#9e3039'],[1,'#ffffff'],[2,'#9e3039']]]]),
+  F('ESTONIA','EE',[['h','#0072ce','#111111','#ffffff']]),
+  F('UNITED STATES','US',[['stripes13','#b31942','#ffffff'],['rect','#0a3161',0,0,0.5,0.54],['dots','#ffffff',0,0,0.5,0.54,6,5]]),
+  F('CANADA','CA',[['vw',[[1,'#d80621'],[2,'#ffffff'],[1,'#d80621']]],['leaf','#d80621']]),
+  F('MEXICO','MX',[['v','#006847','#ffffff','#ce1126'],['disc','#8a5a2b',0.5,0.5,0.11]]),
+  F('BRAZIL','BR',[['fill','#009c3b'],['diamond','#ffdf00',0.44],['disc','#002776',0.5,0.5,0.17],['band','#ffffff',0.5,0.5,0.17]]),
+  F('ARGENTINA','AR',[['h','#74acdf','#ffffff','#74acdf'],['sun','#f6b40e',0.5,0.5,0.10]]),
+  F('CHILE','CL',[['hw',[[1,'#ffffff'],[1,'#d52b1e']]],['rect','#0039a6',0,0,0.34,0.5],['star','#ffffff',0.17,0.25,0.11,5,-90]]),
+  F('COLOMBIA','CO',[['hw',[[2,'#fcd116'],[1,'#003893'],[1,'#ce1126']]]]),
+  F('PERU','PE',[['v','#d91023','#ffffff','#d91023']]),
+  F('VENEZUELA','VE',[['h','#ffcc00','#00247d','#cf142b'],['dots','#ffffff',0.30,0.44,0.40,0.16,4,1]]),
+  F('URUGUAY','UY',[['stripes9','#ffffff','#0038a8'],['rect','#ffffff',0,0,0.44,0.44],['sun','#fcd116',0.22,0.22,0.13]]),
+  F('CUBA','CU',[['stripes5','#002a8f','#ffffff'],['tri','#cf142b',0.46],['star','#ffffff',0.15,0.5,0.10,5,-90]]),
+  F('INDIA','IN',[['h','#ff9933','#ffffff','#138808'],['ring','#000080',0.5,0.5,0.115,0.022],['spokes','#000080',0.5,0.5,0.115,12]]),
+  F('PAKISTAN','PK',[['vw',[[1,'#ffffff'],[3,'#01411c']]],['cres','#ffffff',0.58,0.5,0.17],['star','#ffffff',0.74,0.38,0.07,5,-90]]),
+  F('BANGLADESH','BD',[['fill','#006a4e'],['disc','#f42a41',0.46,0.5,0.21]]),
+  F('CHINA','CN',[['fill','#de2910'],['star','#ffde00',0.24,0.28,0.15,5,-90],['dots','#ffde00',0.42,0.10,0.16,0.34,1,4]]),
+  F('JAPAN','JP',[['fill','#ffffff'],['disc','#bc002d',0.5,0.5,0.22]]),
+  F('SOUTH KOREA','KR',[['fill','#ffffff'],['taeguk',0.5,0.5,0.20],['bars','#111111']]),
+  F('VIETNAM','VN',[['fill','#da251d'],['star','#ffff00',0.5,0.5,0.20,5,-90]]),
+  F('THAILAND','TH',[['hw',[[1,'#a51931'],[1,'#f4f5f8'],[2,'#2d2a4a'],[1,'#f4f5f8'],[1,'#a51931']]]]),
+  F('INDONESIA','ID',[['h','#ce1126','#ffffff']]),
+  F('PHILIPPINES','PH',[['h','#0038a8','#ce1126'],['tri','#ffffff',0.50],['sun','#fcd116',0.17,0.5,0.10]]),
+  F('MALAYSIA','MY',[['stripes13','#cc0001','#ffffff'],['rect','#010066',0,0,0.5,0.54],['cres','#ffcc00',0.20,0.27,0.13],['star','#ffcc00',0.34,0.27,0.09,7,-90]]),
+  F('SINGAPORE','SG',[['h','#ed2939','#ffffff'],['cres','#ffffff',0.22,0.25,0.14],['dots','#ffffff',0.30,0.14,0.16,0.22,2,2]]),
+  F('AUSTRALIA','AU',[['fill','#00008b'],['rect','#00008b',0,0,0.5,0.5],['diag2','#ffffff',0.5,0.5],['star','#ffffff',0.25,0.75,0.10,7,-90],['dots','#ffffff',0.58,0.18,0.38,0.64,2,3]]),
+  F('EGYPT','EG',[['h','#ce1126','#ffffff','#111111'],['disc','#c09300',0.5,0.5,0.09]]),
+  F('MOROCCO','MA',[['fill','#c1272d'],['star','#006233',0.5,0.5,0.21,5,-90]]),
+  F('NIGERIA','NG',[['v','#008751','#ffffff','#008751']]),
+  F('GHANA','GH',[['h','#ce1126','#fcd116','#006b3f'],['star','#111111',0.5,0.5,0.11,5,-90]]),
+  F('KENYA','KE',[['hw',[[2,'#111111'],[1,'#ffffff'],[2,'#bb0000'],[1,'#ffffff'],[2,'#006600']]],['shield','#bb0000',0.5,0.5]]),
+  F('SOUTH AFRICA','ZA',[['h','#e03c31','#ffffff','#007749'],['tri','#111111',0.44],['ychev','#ffb81c']]),
+  F('ETHIOPIA','ET',[['h','#078930','#fcdd09','#da121a'],['disc','#0f47af',0.5,0.5,0.19],['star','#fcdd09',0.5,0.5,0.13,5,-90]]),
+  F('SAUDI ARABIA','SA',[['fill','#006c35'],['rect','#ffffff',0.24,0.62,0.52,0.055],['dots','#ffffff',0.28,0.34,0.44,0.14,3,1]]),
+  F('UNITED ARAB EMIRATES','AE',[['h','#00732f','#ffffff','#111111'],['rect','#ff0000',0,0,0.28,1]]),
+  F('ISRAEL','IL',[['fill','#ffffff'],['rect','#0038b8',0,0.13,1,0.11],['rect','#0038b8',0,0.76,1,0.11],['star','#0038b8',0.5,0.5,0.17,6,-90]]),
+  /* ---- pool beyond the field of 64 ---------------------------------------------
+     The direction says each cycle starts "with a new set of 64 countries" and that
+     "the set of 64 countries participating in each round is determined by the
+     system itself". With exactly 64 defined that is impossible - the set is forced,
+     only the seating changes. These 36 take the pool to 100, so a round draws 64 of
+     100 and the field genuinely differs between rounds. The COUNTRIES panel still
+     reads 64 because the FIELD is still 64; it is the pool that grew.
+     Every entry uses only ops that already existed, so this adds no drawing code.
+     ------------------------------------------------------------------------------ */
+  F('BELARUS','BY',[['hw',[[2,'#c8313e'],[1,'#4aa657']]],['rect','#ffffff',0,0,0.12,1]]),
+  F('SLOVAKIA','SK',[['h','#ffffff','#0b4ea2','#ee1c25'],['shield','#ee1c25',0.36,0.5]]),
+  F('SLOVENIA','SI',[['h','#ffffff','#005ce6','#ed1c24'],['shield','#005ce6',0.30,0.42]]),
+  F('NORTH MACEDONIA','MK',[['fill','#d20000'],['sun','#ffe600',0.5,0.5,0.15]]),
+  F('GEORGIA','GE',[['fill','#ffffff'],['cross','#ff0000',0.17,1]]),
+  F('ARMENIA','AM',[['h','#d90012','#0033a0','#f2a800']]),
+  F('AZERBAIJAN','AZ',[['h','#0092bc','#e8112d','#00ae65'],['cres','#ffffff',0.44,0.5,0.12],['star','#ffffff',0.58,0.5,0.06,8,-90]]),
+  F('KAZAKHSTAN','KZ',[['fill','#00afca'],['sun','#fec50c',0.52,0.46,0.13]]),
+  F('UZBEKISTAN','UZ',[['h','#0099b5','#ffffff','#1eb53a'],['cres','#ffffff',0.18,0.17,0.075]]),
+  F('NEW ZEALAND','NZ',[['fill','#00247d'],['diag2','#ffffff',0.5,0.5],['dots','#c8102e',0.56,0.20,0.36,0.60,2,2]]),
+  F('ALGERIA','DZ',[['vw',[[1,'#006233'],[1,'#ffffff']]],['cres','#d21034',0.5,0.5,0.18],['star','#d21034',0.60,0.5,0.075,5,-90]]),
+  F('TUNISIA','TN',[['fill','#e70013'],['disc','#ffffff',0.5,0.5,0.25],['cres','#e70013',0.5,0.5,0.16],['star','#e70013',0.57,0.5,0.07,5,-90]]),
+  F('LIBYA','LY',[['hw',[[1,'#e70013'],[2,'#111111'],[1,'#239e46']]],['cres','#ffffff',0.47,0.5,0.10],['star','#ffffff',0.56,0.5,0.05,5,-90]]),
+  F('SUDAN','SD',[['h','#d21034','#ffffff','#111111'],['tri','#007229',0.40]]),
+  F('SENEGAL','SN',[['v','#00853f','#fdef42','#e31b23'],['star','#00853f',0.5,0.5,0.11,5,-90]]),
+  F('MALI','ML',[['v','#14b53a','#fcd116','#ce1126']]),
+  F('CAMEROON','CM',[['v','#007a5e','#ce1126','#fcd116'],['star','#fcd116',0.5,0.5,0.11,5,-90]]),
+  F('IVORY COAST','CI',[['v','#f77f00','#ffffff','#009e60']]),
+  F('UGANDA','UG',[['hw',[[1,'#111111'],[1,'#fcdc04'],[1,'#d90000'],[1,'#111111'],[1,'#fcdc04'],[1,'#d90000']]],['disc','#ffffff',0.5,0.5,0.14]]),
+  F('ANGOLA','AO',[['h','#cc092f','#111111'],['ring','#ffcb00',0.5,0.5,0.13,0.03],['spokes','#ffcb00',0.5,0.5,0.13,10]]),
+  F('QATAR','QA',[['vw',[[1,'#ffffff'],[3,'#8a1538']]]]),
+  F('KUWAIT','KW',[['h','#007a3d','#ffffff','#ce1126'],['tri','#111111',0.30]]),
+  F('JORDAN','JO',[['h','#111111','#ffffff','#007a3d'],['tri','#ce1126',0.40],['star','#ffffff',0.13,0.5,0.06,7,-90]]),
+  F('LEBANON','LB',[['hw',[[1,'#ee161f'],[2,'#ffffff'],[1,'#ee161f']]],['leaf','#00a850']]),
+  F('IRAQ','IQ',[['h','#ce1126','#ffffff','#111111'],['dots','#007a3d',0.34,0.42,0.32,0.16,3,1]]),
+  F('IRAN','IR',[['h','#239f40','#ffffff','#da0000'],['disc','#da0000',0.5,0.5,0.075]]),
+  F('OMAN','OM',[['h','#ffffff','#db161b','#008000'],['rect','#db161b',0,0,0.26,1]]),
+  F('MYANMAR','MM',[['h','#fecb00','#34b233','#ea2839'],['star','#ffffff',0.5,0.5,0.19,5,-90]]),
+  F('CAMBODIA','KH',[['hw',[[1,'#032ea1'],[2,'#e00025'],[1,'#032ea1']]],['rect','#ffffff',0.42,0.40,0.16,0.20]]),
+  F('LAOS','LA',[['hw',[[1,'#ce1126'],[2,'#002868'],[1,'#ce1126']]],['disc','#ffffff',0.5,0.5,0.14]]),
+  F('MONGOLIA','MN',[['v','#c4272f','#0066b3','#c4272f'],['rect','#f9cf02',0.09,0.30,0.05,0.40]]),
+  F('TAIWAN','TW',[['fill','#fe0000'],['rect','#000095',0,0,0.5,0.5],['sun','#ffffff',0.25,0.25,0.10]]),
+  F('NORTH KOREA','KP',[['hw',[[1,'#024fa2'],[3,'#ed1c27'],[1,'#024fa2']]],['disc','#ffffff',0.36,0.5,0.15],['star','#ed1c27',0.36,0.5,0.11,5,-90]]),
+  F('PARAGUAY','PY',[['h','#d52b1e','#ffffff','#0038a8'],['ring','#0038a8',0.5,0.5,0.09,0.02],['star','#0038a8',0.5,0.5,0.05,5,-90]]),
+  F('BOLIVIA','BO',[['h','#d52b1e','#f9e300','#007a33']]),
+  F('ECUADOR','EC',[['hw',[[2,'#ffdd00'],[1,'#0f47af'],[1,'#ce1126']]],['disc','#0f47af',0.5,0.5,0.08]]),
+];
+COUNTRIES[0].ops = [['v','#002654','#ffffff','#ce1126']]; // fix FR literal
+
+/* ---- flag painter -------------------------------------------------------- */
+function paintFlag(ctx, ops, w, h){
+  const px = (f)=>f*w, py=(f)=>f*h;
+  ctx.fillStyle = '#dddddd'; ctx.fillRect(0,0,w,h);
+  for (const op of ops){
+    const k = op[0];
+    if (k==='fill'){ ctx.fillStyle=op[1]; ctx.fillRect(0,0,w,h); }
+    else if (k==='h'){ const n=op.length-1; for(let i=0;i<n;i++){ ctx.fillStyle=op[i+1]; ctx.fillRect(0,Math.floor(h*i/n),w,Math.ceil(h/n)+1);} }
+    else if (k==='v'){ const n=op.length-1; for(let i=0;i<n;i++){ ctx.fillStyle=op[i+1]; ctx.fillRect(Math.floor(w*i/n),0,Math.ceil(w/n)+1,h);} }
+    else if (k==='hw'){ const tot=op[1].reduce((a,b)=>a+b[0],0); let y=0; for(const [wt,c] of op[1]){ const hh=h*wt/tot; ctx.fillStyle=c; ctx.fillRect(0,Math.floor(y),w,Math.ceil(hh)+1); y+=hh; } }
+    else if (k==='vw'){ const tot=op[1].reduce((a,b)=>a+b[0],0); let x=0; for(const [wt,c] of op[1]){ const ww=w*wt/tot; ctx.fillStyle=c; ctx.fillRect(Math.floor(x),0,Math.ceil(ww)+1,h); x+=ww; } }
+    else if (k==='stripes5'||k==='stripes9'||k==='stripes13'){
+      const n = k==='stripes5'?5 : k==='stripes9'?9 : 13;
+      for(let i=0;i<n;i++){ ctx.fillStyle = (i%2===0)?op[1]:op[2]; ctx.fillRect(0,Math.floor(h*i/n),w,Math.ceil(h/n)+1); }
+    }
+    else if (k==='rect'){ ctx.fillStyle=op[1]; ctx.fillRect(px(op[2]),py(op[3]),px(op[4]),py(op[5])); }
+    else if (k==='disc'){ ctx.fillStyle=op[1]; ctx.beginPath(); ctx.arc(px(op[2]),py(op[3]),px(op[4]),0,7); ctx.fill(); }
+    else if (k==='ring'){ ctx.strokeStyle=op[1]; ctx.lineWidth=px(op[5]); ctx.beginPath(); ctx.arc(px(op[2]),py(op[3]),px(op[4]),0,7); ctx.stroke(); }
+    else if (k==='band'){ ctx.strokeStyle='#ffffff'; ctx.lineWidth=py(0.035); ctx.beginPath(); ctx.arc(px(op[2]),py(op[3])+py(0.10),px(op[4])*1.15,Math.PI*1.15,Math.PI*1.85); ctx.stroke(); }
+    else if (k==='cross'){
+      const t=op[2], sc=op[3]===1?1:(op[3]||1);
+      const cw=w*sc, ch=h*sc, ox=(w-cw)/2, oy=(h-ch)/2;
+      ctx.fillStyle=op[1];
+      if(op.length>4){ const rx=px(op[4]),ry=py(op[5]); ctx.fillRect(ox,oy+ch/2-py(t)/2,cw,py(t)); ctx.fillRect(ox+cw/2-px(t)/2,oy,px(t),ch); }
+      else { ctx.fillRect(ox,oy+ch/2-py(t)/2,cw,py(t)); ctx.fillRect(ox+cw/2-px(t)/2,oy,px(t),ch); }
+    }
+    else if (k==='nordic'){ const t=op[2]; ctx.fillStyle=op[1]; ctx.fillRect(0,h*0.5-py(t)/2,w,py(t)); ctx.fillRect(w*0.36-px(t)/2,0,px(t),h); }
+    else if (k==='diag'){ const t=op[2]; ctx.save(); ctx.strokeStyle=op[1]; ctx.lineWidth=px(t); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(w,h); ctx.moveTo(w,0); ctx.lineTo(0,h); ctx.stroke(); ctx.restore(); }
+    else if (k==='diag2'){ ctx.save(); ctx.strokeStyle=op[1]; ctx.lineWidth=px(0.05); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(px(op[2]),py(op[3])); ctx.moveTo(px(op[2]),0); ctx.lineTo(0,py(op[3])); ctx.stroke(); ctx.restore(); }
+    else if (k==='tri'){ ctx.fillStyle=op[1]; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(px(op[2]),h/2); ctx.lineTo(0,h); ctx.closePath(); ctx.fill(); }
+    else if (k==='diamond'){ ctx.fillStyle=op[1]; ctx.beginPath(); ctx.moveTo(w/2,h*(0.5-op[2])); ctx.lineTo(w*(0.5+op[2]*0.92),h/2); ctx.lineTo(w/2,h*(0.5+op[2])); ctx.lineTo(w*(0.5-op[2]*0.92),h/2); ctx.closePath(); ctx.fill(); }
+    else if (k==='star'){ star(ctx,px(op[2]),py(op[3]),px(op[4]),op[5],op[6],op[1]); }
+    else if (k==='sun'){ ctx.fillStyle=op[1]; ctx.beginPath(); ctx.arc(px(op[2]),py(op[3]),px(op[4]),0,7); ctx.fill();
+      ctx.strokeStyle=op[1]; ctx.lineWidth=px(0.014);
+      for(let i=0;i<16;i++){ const a=i*Math.PI/8; ctx.beginPath(); ctx.moveTo(px(op[2])+Math.cos(a)*px(op[4])*1.15, py(op[3])+Math.sin(a)*px(op[4])*1.15); ctx.lineTo(px(op[2])+Math.cos(a)*px(op[4])*1.7, py(op[3])+Math.sin(a)*px(op[4])*1.7); ctx.stroke(); } }
+    else if (k==='cres'){
+      // A real lune, traced as two arcs. The first build filled a disc and then bit a
+      // second disc out of it with globalCompositeOperation='destination-out' - which
+      // erases the DESTINATION, i.e. it cut through the flag underneath as well and
+      // left a transparent hole. Clipped into a ball sprite that hole showed the arena
+      // floor through Turkey, Pakistan, Malaysia and Singapore. A path needs no
+      // compositing, so nothing beneath the crescent is destroyed.
+      const cx=px(op[2]), cy=py(op[3]), r=px(op[4]);
+      const d=r*0.36, ri=r*0.84;                      // identical offset and inner radius
+      const xi=(d*d+r*r-ri*ri)/(2*d);                 // circle-circle intersection
+      const yi=Math.sqrt(Math.max(0,r*r-xi*xi));
+      const th=Math.atan2(yi,xi), ph=Math.atan2(yi,xi-d);
+      ctx.fillStyle=op[1]; ctx.beginPath();
+      ctx.arc(cx,   cy, r,  th, 2*Math.PI-th, false); // outer major arc, around the left
+      ctx.arc(cx+d, cy, ri, -ph, ph,          true);  // inner arc back through the left
+      ctx.closePath(); ctx.fill(); }
+    else if (k==='spokes'){ ctx.strokeStyle=op[1]; ctx.lineWidth=px(0.008);
+      for(let i=0;i<op[5];i++){ const a=i*2*Math.PI/op[5]; ctx.beginPath(); ctx.moveTo(px(op[2]),py(op[3])); ctx.lineTo(px(op[2])+Math.cos(a)*px(op[4]), py(op[3])+Math.sin(a)*px(op[4])); ctx.stroke(); } }
+    else if (k==='dots'){ const [_,c,x,y,ww,hh,cols,rows]=op; ctx.fillStyle=c;
+      for(let i=0;i<cols;i++) for(let j=0;j<rows;j++){
+        const fx=x+(ww)*((i+0.5)/cols), fy=y+(hh)*((j+0.5)/rows);
+        star(ctx,px(fx),py(fy),px(Math.min(ww/cols,hh/rows)*0.42),5,-90,c);} }
+    else if (k==='leaf'){ ctx.fillStyle=op[1]; ctx.save(); ctx.translate(w/2,h/2); const s=w*0.16;
+      ctx.beginPath();
+      const pts=[[0,-1.15],[0.22,-0.5],[0.62,-0.62],[0.42,-0.16],[0.95,0.06],[0.5,0.36],[0.62,0.72],[0.15,0.52],[0.06,1.15],[-0.06,1.15],[-0.15,0.52],[-0.62,0.72],[-0.5,0.36],[-0.95,0.06],[-0.42,-0.16],[-0.62,-0.62],[-0.22,-0.5]];
+      pts.forEach((p,i)=> i?ctx.lineTo(p[0]*s,p[1]*s):ctx.moveTo(p[0]*s,p[1]*s));
+      ctx.closePath(); ctx.fill(); ctx.restore(); }
+    else if (k==='taeguk'){ const cx=px(op[1]),cy=py(op[2]),r=px(op[3]);
+      ctx.fillStyle='#cd2e3a'; ctx.beginPath(); ctx.arc(cx,cy,r,Math.PI,0); ctx.fill();
+      ctx.fillStyle='#0047a0'; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI); ctx.fill();
+      ctx.fillStyle='#cd2e3a'; ctx.beginPath(); ctx.arc(cx-r/2,cy,r/2,0,7); ctx.fill();
+      ctx.fillStyle='#0047a0'; ctx.beginPath(); ctx.arc(cx+r/2,cy,r/2,0,7); ctx.fill(); }
+    else if (k==='bars'){ ctx.fillStyle=op[1]; const bw=px(0.15),bh=py(0.028);
+      [[0.16,0.18],[0.84,0.18],[0.16,0.82],[0.84,0.82]].forEach(([fx,fy])=>{
+        for(let i=0;i<3;i++) ctx.fillRect(px(fx)-bw/2, py(fy)-bh*2+i*bh*1.7, bw, bh); }); }
+    else if (k==='shield'){ ctx.fillStyle=op[1]; ctx.beginPath(); ctx.ellipse(px(op[2]),py(op[3]),px(0.09),py(0.26),0,0,7); ctx.fill();
+      ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.ellipse(px(op[2]),py(op[3]),px(0.04),py(0.18),0,0,7); ctx.fill(); }
+    else if (k==='ychev'){ ctx.fillStyle=op[1]; ctx.save(); ctx.beginPath();
+      ctx.moveTo(0,0); ctx.lineTo(px(0.10),0); ctx.lineTo(px(0.56),h/2); ctx.lineTo(px(0.10),h); ctx.lineTo(0,h); ctx.lineTo(px(0.46),h/2); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  }
+}
+function star(ctx,cx,cy,r,n,rotDeg,color){
+  ctx.fillStyle=color; ctx.beginPath();
+  const rot=(rotDeg||0)*Math.PI/180, ir = n===6? r*0.577 : r*0.382;
+  for(let i=0;i<n*2;i++){ const a=rot+i*Math.PI/n, rr=(i%2===0)?r:ir;
+    const x=cx+Math.cos(a)*rr, y=cy+Math.sin(a)*rr; i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+  ctx.closePath(); ctx.fill();
+}
+
+/* ---- ball sprites: flag clipped to a circle, plus a gloss highlight ------ */
+const SPR = 96;                       // sprite px; ball is 75 design px so this is ~1.3x
+const sprites = new Map();
+function buildSprites(){
+  for (const c of COUNTRIES){
+    const cv = document.createElement('canvas'); cv.width=cv.height=SPR;
+    const g = cv.getContext('2d');
+    // draw the 3:2 flag into a square, slightly zoomed so the motif dominates
+    const fw = SPR*1.34, fh = SPR;
+    const off = document.createElement('canvas'); off.width=fw; off.height=fh;
+    paintFlag(off.getContext('2d'), c.ops, fw, fh);
+    g.save(); g.beginPath(); g.arc(SPR/2,SPR/2,SPR/2-1,0,7); g.clip();
+    g.drawImage(off, (SPR-fw)/2, 0);
+    // spherical shading
+    const sh = g.createRadialGradient(SPR*0.34,SPR*0.30,SPR*0.05, SPR*0.5,SPR*0.5,SPR*0.62);
+    sh.addColorStop(0,'rgba(255,255,255,0.45)'); sh.addColorStop(0.42,'rgba(255,255,255,0.06)');
+    sh.addColorStop(0.75,'rgba(0,0,0,0.10)'); sh.addColorStop(1,'rgba(0,0,0,0.46)');
+    g.fillStyle=sh; g.fillRect(0,0,SPR,SPR);
+    g.restore();
+    g.strokeStyle='rgba(255,255,255,0.55)'; g.lineWidth=2;
+    g.beginPath(); g.arc(SPR/2,SPR/2,SPR/2-1.5,0,7); g.stroke();
+    sprites.set(c.code, cv);
+  }
+}
+
+/* ==========================================================================
+   3. AUDIO  -  synthesised, no files
+   ========================================================================== */
+let AC=null;
+function ac(){ if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  if(AC && AC.state==='suspended') AC.resume(); return AC; }
+function blip(freq, dur, type, gain, slideTo){
+  const a=ac(); if(!a) return;
+  const o=a.createOscillator(), g=a.createGain();
+  o.type=type||'sine'; o.frequency.setValueAtTime(freq,a.currentTime);
+  if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, a.currentTime+dur);
+  g.gain.setValueAtTime(0,a.currentTime);
+  g.gain.linearRampToValueAtTime(gain||0.25, a.currentTime+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime+dur);
+  o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime+dur+0.02);
+}
+function noise(dur, gain, hp){
+  const a=ac(); if(!a) return;
+  const n=Math.floor(a.sampleRate*dur), b=a.createBuffer(1,n,a.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.2);
+  const s=a.createBufferSource(); s.buffer=b;
+  const f=a.createBiquadFilter(); f.type='highpass'; f.frequency.value=hp||1200;
+  const g=a.createGain(); g.gain.value=gain||0.22;
+  s.connect(f).connect(g).connect(a.destination); s.start();
+}
+const SFX = {
+  kill(){ blip(180,0.28,'sine',0.30,52); noise(0.34,0.26,1500); },
+  double(){ SFX.kill(); setTimeout(()=>SFX.kill(),150); },
+  shield(){ blip(880,0.30,'triangle',0.20,1320); },
+  tumble(){ blip(90,0.55,'sawtooth',0.18,320); noise(0.5,0.14,400); },
+  rapid(){ [0,90,180].forEach((d,i)=>setTimeout(()=>blip(600+i*180,0.10,'square',0.16),d)); },
+  comeback(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>blip(f,0.20,'triangle',0.18),i*80)); },
+  win(){ [523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>blip(f,0.42,'triangle',0.22),i*130)); },
+  open(){ blip(300,0.14,'square',0.10,220); },
+};
+
+/* ==========================================================================
+   3A. LIVE COMMENTARY - short, energetic stream-style TTS
+   --------------------------------------------------------------------------
+   Commentary follows the simulation rather than a prerecorded script. It calls
+   eliminations, shields, comebacks and special events, then drops occasional
+   audience prompts and exact survival milestones. This keeps the narration
+   synchronized even though every draw is randomized.
+   ========================================================================== */
+const COMMENTARY = {
+  enabled: true,
+  speaking: false,
+  queue: [],
+  lastAudience: -999999,
+  lastMilestone: 64,
+  voice: null,
+  // Slightly slower and warmer than the original robotic cadence.
+  rate: 1.01,
+  pitch: 1.08,
+  volume: 0.92,
+  pickVoice(){
+    if (!('speechSynthesis' in window)) return;
+    const vs = speechSynthesis.getVoices();
+    if (!vs.length) return;
+
+    // Prefer clearly female English voices first. Browser voice names differ by OS,
+    // so use several common Windows/Chrome/macOS names before falling back to a
+    // general English voice.
+    const female = [
+      /Microsoft.*(Zira|Jenny|Aria|Sonia|Ava|Emma|Sara|Michelle|Ana)/i,
+      /Google US English/i,
+      /(Samantha|Karen|Victoria|Moira|Tessa|Susan|Hazel|Libby|Linda|Heera)/i,
+      /(Female|Woman)/i
+    ];
+    const english = vs.filter(v=>/^en[-_]/i.test(v.lang));
+    for (const rx of female){
+      const hit=english.find(v=>rx.test(v.name));
+      if (hit){ this.voice=hit; return; }
+    }
+    this.voice = english.find(v=>/US|GB|AU|CA|IN/i.test(v.lang)) || english[0] || vs[0];
+  },
+  start(){
+    if (!('speechSynthesis' in window)) return;
+    this.enabled=true;
+    this.pickVoice();
+    if (speechSynthesis.paused) speechSynthesis.resume();
+    this.flush();
+  },
+  say(text, priority=false){
+    if (!this.enabled || !('speechSynthesis' in window) || !text) return;
+    if (priority) this.queue.unshift(text); else this.queue.push(text);
+    if (this.queue.length>10) this.queue.splice(0,this.queue.length-10);
+    this.flush();
+  },
+  flush(){
+    if (this.speaking || !this.queue.length || !this.enabled || !('speechSynthesis' in window)) return;
+    const text=this.queue.shift();
+    const u=new SpeechSynthesisUtterance(text);
+    u.voice=this.voice || undefined;
+    u.rate=this.rate;
+    u.pitch=this.pitch;
+    u.volume=this.volume;
+    // Keep the delivery clean: short breaths/pauses are created naturally by
+    // punctuation instead of chopping every line into separate robotic phrases.
+    this.speaking=true;
+    u.onend=()=>{ this.speaking=false; setTimeout(()=>this.flush(),150); };
+    u.onerror=()=>{ this.speaking=false; setTimeout(()=>this.flush(),180); };
+    speechSynthesis.speak(u);
+  },
+  reset(){
+    this.queue.length=0;
+    this.speaking=false;
+    this.lastAudience=-999999;
+    this.lastMilestone=64;
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+  },
+  audience(n){
+    const now=performance.now();
+    if (now-this.lastAudience<28000) return;
+
+    // Conversational lines are intentionally varied. They sound like a host
+    // checking in with the room, rather than repeating an AI-style CTA.
+    const lines = [
+      'Alright, where are you watching from? Drop your country in the chat.',
+      'I want to know who is still here. Where are you watching from?',
+      'Is your country still in? Let me know in the comments.',
+      'If you see your flag in there, you know what to do. Hit that like button.',
+      'Still backing your country? Give the stream a like and keep watching.',
+      'Who are you rooting for? Tell me your country in the comments.',
+      'Keep those flags coming. Where are you watching from?',
+      'If your country is still alive, make some noise in the chat.',
+      'You enjoying this one? Drop a like and let us keep it going.',
+      'I need to see those country names in the comments. Who is still alive?'
+    ];
+    this.lastAudience=now;
+    this.say(lines[Math.floor(Math.random()*lines.length)]);
+  },
+  milestone(n){
+    if (n===32 && this.lastMilestone>32){
+      this.lastMilestone=32;
+      this.say('Halfway there... down to the final thirty-two.', true);
+    } else if (n===10 && this.lastMilestone>10){
+      this.lastMilestone=10;
+      this.say('Final ten countries now. This is getting serious.', true);
+    } else if (n===5 && this.lastMilestone>5){
+      this.lastMilestone=5;
+      this.say('Final five! Who takes it home?', true);
+    } else if (n===2 && this.lastMilestone>2){
+      this.lastMilestone=2;
+      this.say('It is down to the final two...', true);
+    }
+  },
+  elimination(c){
+    const n=alive().length;
+    this.say(c.name+' is out.');
+    this.milestone(n);
+    // Let the elimination breathe before an audience line. This avoids the
+    // clipped, machine-generated feeling of back-to-back announcements.
+    const chance = n>10 ? 0.09 : n<=10 ? 0.15 : 0;
+    if (Math.random()<chance){
+      const delay = 850 + Math.random()*950;
+      setTimeout(()=>this.audience(n), delay);
+    }
+  },
+  shield(c){
+    this.say(c.name+' is shielded.');
+  },
+  comeback(c){
+    this.say(c.name+' is back in!', true);
+  },
+  event(type){
+    if (type==='DOUBLE') this.say('Double draw! Two balls this round.', true);
+    if (type==='TUMBLE') this.say('Tumble boost! Here we go.', true);
+    if (type==='RAPID') this.say('Rapid fire! Things are moving fast.', true);
+  },
+  winner(c){
+    this.say(c.name+' wins!', true);
+    setTimeout(()=>this.say('What a finish! Was that your country? Let me know in the comments.'), 1100);
+  }
+};
+if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged=()=>COMMENTARY.pickVoice();
+
+/* ==========================================================================
+   4. STATE
+   ========================================================================== */
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+
+let G = null;
+function careers(){ try{ return JSON.parse(localStorage.getItem('cbr_wins')||'{}'); }catch(e){ return {}; } }
+function addWin(code){ try{ const c=careers(); c[code]=(c[code]||0)+1; localStorage.setItem('cbr_wins',JSON.stringify(c)); }catch(e){} }
+
+/* The opening layout. Two things here are deliberate and both were forced by measurement.
+
+   sqrt() on the radius, not a flat rnd(): sampling r uniformly puts equal counts in equal
+   RADIAL bands, which means the inner bands are packed far denser than the outer ones. At
+   41.5% average packing that jams the middle, the 400-try budget runs out, and balls get
+   placed on top of each other. sqrt(u) gives equal counts per unit AREA.
+
+   Spoke clearance in the reject test: without it, the 64 opening positions ignored the six
+   spokes completely, and since the spokes span r=261..463 that is most of the arena. The
+   harness caught a ball 2.4 px from a spoke centreline - 47.814 px inside a 50.2 px
+   clearance - on the first playing frame of a draw. */
+function newDraw(){
+  // Fisher-Yates over the whole pool, then take the first N_BALLS. Before this the code
+  // read pool[i] in declaration order, so with a 100-entry pool the field would have been
+  // the same first 64 every single round and the last 36 flags would never once appear.
+  // Unbiased matters here: a lazy sort(()=>Math.random()-0.5) is NOT uniform, and a
+  // country that is quietly rarer than the rest is exactly the kind of bug nobody sees.
+  const pool = COUNTRIES.slice();
+  for (let i=pool.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    const t=pool[i]; pool[i]=pool[j]; pool[j]=t;
+  }
+  const balls = [];
+  const spokeA0 = rnd(0,Math.PI*2);
+  const segs=[];
+  for(let i=0;i<CFG.SPOKE_N;i++){
+    const a=spokeA0+i*2*Math.PI/CFG.SPOKE_N, ca=Math.cos(a), sa=Math.sin(a);
+    segs.push({ax:ca*CFG.SPOKE_IN, ay:sa*CFG.SPOKE_IN, bx:ca*CFG.SPOKE_OUT, by:sa*CFG.SPOKE_OUT});
+  }
+  const clearOfSpokes=(x,y)=>segs.every(s=>{
+    const ex=s.bx-s.ax, ey=s.by-s.ay, L2=ex*ex+ey*ey;
+    const t=clamp(((x-s.ax)*ex+(y-s.ay)*ey)/L2,0,1);
+    return Math.hypot(x-(s.ax+ex*t), y-(s.ay+ey*t)) > CFG.SPOKE_CAP+CFG.BALL_R+1;
+  });
+  const rMin=CFG.HOLE_R+CFG.BALL_R+4, rMax=CFG.ARENA_R-CFG.BALL_R-8;
+  for (let i=0;i<CFG.N_BALLS;i++){
+    const c = pool[i];
+    let x,y,tries=0;
+    do{
+      const a=rnd(0,Math.PI*2);
+      const r=Math.sqrt(rnd(rMin*rMin/(rMax*rMax),1))*rMax;   // equal area density in [rMin,rMax]
+      x=Math.cos(a)*r; y=Math.sin(a)*r; tries++;
+    } while(tries<200 && (!clearOfSpokes(x,y)
+            || balls.some(b=>(b.x-x)**2+(b.y-y)**2 < (CFG.BALL_R*2+1)**2)));
+    const a2=rnd(0,Math.PI*2);
+    balls.push({c, x, y, vx:Math.cos(a2)*CFG.BALL_SPEED, vy:Math.sin(a2)*CFG.BALL_SPEED, shield:false, alive:true});
+  }
+  G = {
+    balls, dead: [],                     // dead = [{c}] in elimination order
+    phase:'INTRO', tPhase:0, t:0,
+    spokeA: spokeA0,                     // the same angle the layout was cleared against
+    holeT:0,                             // 0..1 dilation
+    closing:false,                       // the closing ramp; see closeHub()
+    flash:0, banner:null, bannerT:0,
+    pendingKills:[],                     // kills waiting to hit the HUD
+    openKills:0, killQuota:1,
+    rapidLeft:0, tumbleT:0,
+    winner:null, drawStart:0, roundNo:(G?G.roundNo+1:1),
+    shielded:null, comebackFx:0,
+    shake:0,
+    spawnSkips:0,                        // comebacks refused for want of a clear spot
+  };
+  G.settleResidual = settle(CFG.SETTLE);
+  COMMENTARY.reset();
+}
+
+/* Positional-only relaxation of the opening layout: separate every overlapping pair, then
+   push everything back out of the walls, repeat. No velocity, no time - this all happens
+   before the first frame is drawn, so nothing pops on screen.
+
+   Why this exists rather than a bigger try budget: the layout is provably not reachable by
+   rejection sampling. Reachable area for a ball centre is the r=107.5..445.5 annulus minus
+   the six spoke capsules at clearance 50.2 px, which is 428,563 px^2. Sixty-four balls need
+   282,743 px^2 = 66% of it. Random sequential placement jams at 54.7%, so the search cannot
+   succeed no matter how long it runs - but 66% is well under the 90.7% hexagonal maximum,
+   which is exactly the regime where relaxation works and rejection does not.
+   Returns the worst residual overlap so the caller can see the layout quality instead of
+   assuming it; verify_sim.js asserts on it. */
+function settle(iters){
+  const A=alive(), segs=spokeSegs(), R2=CFG.BALL_R*2;
+  for (let k=0;k<iters;k++){
+    for (let i=0;i<A.length;i++) for (let j=i+1;j<A.length;j++){
+      const a=A[i], b=A[j];
+      const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy);
+      if (d<R2){
+        if (d<0.0001){ b.x+=rnd(-1,1); b.y+=rnd(-1,1); continue; }
+        const nx=dx/d, ny=dy/d, ov=(R2-d)/2;
+        a.x-=nx*ov; a.y-=ny*ov; b.x+=nx*ov; b.y+=ny*ov;
+      }
+    }
+    for (const b of A) project(b, false, segs, G.spokeA);
+  }
+  // read-only measurement of what is actually left, AFTER the last wall pass - a residual
+  // measured before the final projection would not be the residual the game starts with.
+  let worst=0;
+  for (let i=0;i<A.length;i++) for (let j=i+1;j<A.length;j++)
+    worst=Math.max(worst, R2-Math.hypot(A[j].x-A[i].x, A[j].y-A[i].y));
+  return worst;
+}
+function alive(){ return G.balls.filter(b=>b.alive); }
+
+/* ==========================================================================
+   5. PHYSICS
+   ========================================================================== */
+function spokeSegs(){
+  const segs=[];
+  for(let i=0;i<CFG.SPOKE_N;i++){
+    const a = G.spokeA + i*2*Math.PI/CFG.SPOKE_N;
+    const ca=Math.cos(a), sa=Math.sin(a);
+    segs.push({ax:ca*CFG.SPOKE_IN, ay:sa*CFG.SPOKE_IN, bx:ca*CFG.SPOKE_OUT, by:sa*CFG.SPOKE_OUT});
+  }
+  return segs;
+}
+
+/* Only the angularly nearest spoke can ever touch a given ball, so the solver tests one
+   spoke instead of six. This is exact, not an approximation: spokes are 60 deg apart, the
+   required clearance is SPOKE_CAP+BALL_R = 50.2 px, and the two nearest spoke surfaces are
+   never closer together than 2*pi*261/6 = 273 px (at the inner caps, their tightest point).
+   So two spokes cannot both be within 50.2 px of one ball. */
+function nearSpoke(b, segs, base){
+  let k = Math.round((Math.atan2(b.y,b.x) - base) / (Math.PI/3));
+  return segs[((k % CFG.SPOKE_N) + CFG.SPOKE_N) % CFG.SPOKE_N];
+}
+
+/* Positional projection onto every solid surface. Position only, no velocity change.
+   Order is spokes -> rim so the RIM is exact: it is the most visible wall and a
+   ball outside it reads as a bug instantly. One static fact (asserted in verify_sim.js)
+   makes that order safe rather than lucky: a ball centre can never exceed r=445.5 while
+   a spoke tip sits at r=463, so the closest point on a spoke is never its outer cap and
+   the push-out is always perpendicular to the radius. It cannot fight the rim clamp.
+   The hub is NOT a surface - see the note above closeHub(). */
+function project(b, open, segs, base){
+  const minS = CFG.SPOKE_CAP + CFG.BALL_R;
+  const s = nearSpoke(b, segs, base);
+  const ex=s.bx-s.ax, ey=s.by-s.ay, L2=ex*ex+ey*ey;
+  let t=((b.x-s.ax)*ex+(b.y-s.ay)*ey)/L2; t=clamp(t,0,1);
+  const px=s.ax+ex*t, py=s.ay+ey*t;
+  let nx=b.x-px, ny=b.y-py, dd=Math.hypot(nx,ny);
+  if (dd<minS){
+    if (dd<0.0001){ nx=-py; ny=px; dd=Math.hypot(nx,ny)||1; }
+    b.x=px+nx/dd*minS; b.y=py+ny/dd*minS;
+  }
+  const d=Math.hypot(b.x,b.y);
+  const lim=CFG.ARENA_R-CFG.BALL_R;
+  if (d>lim && d>0.0001){ b.x=b.x/d*lim; b.y=b.y/d*lim; }
+}
+
+/* Uniform-grid broadphase. Built once per substep and reused across every relaxation
+   pass: 64 balls is 2016 brute-force pairs but only ~200 real candidates, and the
+   relaxation loop runs 5x per substep at 120 Hz, so the saving is ~10x. */
+function broadphase(A, cell){
+  const m = new Map(), out = [];
+  for (let i=0;i<A.length;i++){
+    const b=A[i]; b.__i=i;
+    b.__gx=Math.floor(b.x/cell)+64; b.__gy=Math.floor(b.y/cell)+64;
+    const k=b.__gx*1024+b.__gy;
+    let l=m.get(k); if(!l){ l=[]; m.set(k,l); } l.push(b);
+  }
+  for (const b of A){
+    for (let dx=0; dx<=1; dx++) for (let dy=-1; dy<=1; dy++){
+      if (dx===0 && dy<0) continue;                 // half neighbourhood: each pair once
+      const l=m.get((b.__gx+dx)*1024+(b.__gy+dy)); if(!l) continue;
+      for (const o of l){
+        if (dx===0 && dy===0 && o.__i<=b.__i) continue;
+        out.push(b,o);
+      }
+    }
+  }
+  return out;
+}
+
+/* The one definition of "how fast a ball is allowed to be", so the physics pin and every
+   spawn path cannot disagree. They did: the tumble grant and the comeback spawn each wrote
+   BALL_SPEED directly, and verify_sim.js caught the gap as a speed error of exactly
+   1 - 1/TUMBLE_SPEED = 35.4839%. Two copies of a rule is one copy too many. */
+function curSpeed(){ return CFG.BALL_SPEED * (G.tumbleT>0?CFG.TUMBLE_SPEED:1); }
+function pinTo(b, sp){
+  const m=Math.hypot(b.vx,b.vy);
+  if (m<0.001){ const a=rnd(0,Math.PI*2); b.vx=Math.cos(a)*sp; b.vy=Math.sin(a)*sp; }
+  else { b.vx=b.vx/m*sp; b.vy=b.vy/m*sp; }
+}
+
+/* A revived ball must not appear inside a wall, inside another ball, or inside the mouth.
+   The first build spawned at a fixed r = ARENA_R-BALL_R-6 = 439.5 px, which lies inside the
+   spoke span 261..463 - so a comeback could materialise in the middle of a rotating spoke.
+   verify_sim.js caught it: 47.204 px of spoke penetration (the theoretical maximum is
+   SPOKE_CAP+BALL_R = 50.2) and 38.759 px of ball-ball overlap, both on comeback frames.
+   Rejection sampling, uniform over the disc (sqrt for equal area density, not equal radius
+   density), keeping the roomiest candidate so the search always terminates. Returns null
+   only if the arena is genuinely too full, in which case the comeback is skipped and
+   counted rather than forced. */
+function freeSpot(self){
+  const segs=spokeSegs(), A=alive(), rmax=CFG.ARENA_R-CFG.BALL_R-2;
+  let best=null, bestClr=-1e9;
+  for (let k=0;k<400;k++){
+    const a=rnd(0,Math.PI*2), r=Math.sqrt(rnd(0,1))*rmax;
+    const x=Math.cos(a)*r, y=Math.sin(a)*r;
+    let clr = Math.hypot(x,y) - (CFG.HOLE_R+CFG.BALL_R);   // never into the mouth: that would
+    for (const s of segs){                                 // hand the opening a second kill
+      const ex=s.bx-s.ax, ey=s.by-s.ay, L2=ex*ex+ey*ey;
+      let t=((x-s.ax)*ex+(y-s.ay)*ey)/L2; t=clamp(t,0,1);
+      const d=Math.hypot(x-(s.ax+ex*t), y-(s.ay+ey*t)) - (CFG.SPOKE_CAP+CFG.BALL_R);
+      if (d<clr) clr=d;
+    }
+    for (const o of A){
+      if (o===self) continue;
+      const d=Math.hypot(x-o.x,y-o.y) - CFG.BALL_R*2;
+      if (d<clr) clr=d;
+    }
+    if (clr>bestClr){ bestClr=clr; best={x,y}; }
+    if (clr>1.5) return {x,y};
+  }
+  return bestClr>1.5 ? best : null;
+}
+
+function step(dt){
+  const om = (CFG.SPOKE_DEG_S*Math.PI/180) * (G.tumbleT>0?CFG.TUMBLE_SPIN:1);
+  G.spokeA = (G.spokeA + om*dt) % (Math.PI*2);      // wrapped every step: no float drift over days
+  const speed = curSpeed();
+  const open = (G.phase==='OPEN');
+  const segs = spokeSegs();
+  const base = G.spokeA;
+  const A = alive();
+
+  for (const b of A){
+    /* Suction: an inward acceleration for the whole OPEN phase, falling off as a 2-D point
+       sink (1/r, normalised at the hole edge). Because |v| is pinned below, this is pure
+       steering - it rotates the heading toward the centre and never changes the speed.
+       Applied for the whole phase including the closing ramp, because that is exactly
+       the window over which the reference's -50.6 px/s inward drift was measured.
+
+       CLOSING THE ORBIT LOOPHOLE. Pinned |v| plus a constant inward acceleration has an
+       exact stable circular orbit at r = v^2/a = 230^2/190 = 278 px. A ball that arrives
+       there moving tangentially stays there: suction turns the heading but can never
+       shorten the radius, so it orbits outside the 66 px mouth indefinitely. In a crowd
+       this is invisible because collisions break the orbit within a frame or two. With two
+       survivors there is nothing left to perturb it, which is why sparse openings had a
+       61.6 s tail while the reference's longest is 5.71 s.
+
+       Making the orbit fit inside the mouth needs v^2/HOLE_R = 802 px/s^2, 4.2x SUCTION,
+       which would ruin the crowded timing that IS calibrated (0.97 s, matched exactly).
+       So instead the pull ramps up with how long this opening has already run. Balls in
+       the reference are eaten quickly, so the ramp is dormant during the window every
+       measured target came from: at 1 s it is 1.0x, and it only reaches the orbit-breaking
+       4.2x near 6 s - past the reference's longest opening, and only ever reached in the
+       stalled two-ball case this exists to resolve. */
+    if (open){
+      const d=Math.hypot(b.x,b.y);
+      if (d>1){
+        const urge = 1 + CFG.SUCTION_RAMP*Math.max(0, G.tPhase/1000 - 1);
+        const a = CFG.SUCTION * urge *
+                  Math.pow(CFG.SUCTION_R0/Math.max(d,CFG.SUCTION_R0), CFG.SUCTION_FALL);
+        b.vx -= (b.x/d)*a*dt; b.vy -= (b.y/d)*a*dt;
+      }
+    }
+    b.x += b.vx*dt; b.y += b.vy*dt;
+
+    // --- rim ---
+    const d=Math.hypot(b.x,b.y), lim=CFG.ARENA_R-CFG.BALL_R;
+    if (d>lim){
+      const nx=b.x/d, ny=b.y/d;
+      b.x=nx*lim; b.y=ny*lim;
+      const vn=b.vx*nx+b.vy*ny; if(vn>0){ b.vx-=2*vn*nx; b.vy-=2*vn*ny; }
+    }
+    // --- no hub term: the hub is floor, not obstacle. Measured, see closeHub(). ---
+    // --- spoke: rotating capsule, with the surface velocity added in ---
+    {
+      const s = nearSpoke(b, segs, base);
+      const ex=s.bx-s.ax, ey=s.by-s.ay;
+      const L2=ex*ex+ey*ey;
+      let t=((b.x-s.ax)*ex+(b.y-s.ay)*ey)/L2; t=clamp(t,0,1);
+      const px=s.ax+ex*t, py=s.ay+ey*t;
+      let nx=b.x-px, ny=b.y-py;
+      let dist=Math.hypot(nx,ny);
+      const min=CFG.SPOKE_CAP+CFG.BALL_R;
+      if (dist<min){
+        if (dist<0.001){ nx=-py; ny=px; dist=Math.hypot(nx,ny)||1; }
+        nx/=dist; ny/=dist;
+        b.x=px+nx*min; b.y=py+ny*min;
+        // surface velocity of the rotating spoke at the contact point
+        const svx=-om*py, svy=om*px;
+        const rvx=b.vx-svx, rvy=b.vy-svy;
+        const vn=rvx*nx+rvy*ny;
+        if (vn<0){ b.vx=rvx-2*vn*nx+svx; b.vy=rvy-2*vn*ny+svy; }
+      }
+    }
+  }
+
+  // --- positional solve ----------------------------------------------------
+  // Interleaved: separate overlapping pairs, then re-project onto every wall.
+  // The ORDER matters and the first build had it wrong - the pair pass ran last, so a
+  // crowd at the centre could shove a ball back inside the hub and it stayed there.
+  // verify_sim.js found a 97 px penetration. Walls must have the final word.
+  const R2=(CFG.BALL_R*2);
+  const pairs = broadphase(A, R2 + speed*dt*2 + 6);
+  for (let pass=0; pass<CFG.RELAX; pass++){
+    for (let k=0;k<pairs.length;k+=2){
+      const a=pairs[k], b=pairs[k+1];
+      const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy);
+      if (d<R2 && d>0.0001){
+        const nx=dx/d, ny=dy/d, ov=(R2-d)/2;
+        a.x-=nx*ov; a.y-=ny*ov; b.x+=nx*ov; b.y+=ny*ov;
+        if (pass===0){
+          const va=a.vx*nx+a.vy*ny, vb=b.vx*nx+b.vy*ny;
+          if (va-vb>0){ const p=va-vb;
+            a.vx-=p*nx; a.vy-=p*ny; b.vx+=p*nx; b.vy+=p*ny; }
+        }
+      }
+    }
+    for (const b of A) project(b, open, segs, base);
+  }
+
+  // --- pin |v| (see header note) -------------------------------------------
+  for (const b of A) pinTo(b, speed);
+
+  // --- the hole eats -------------------------------------------------------
+  // Purely geometric: a ball dies when its centre is inside the current hole. There is
+  // no extra threshold - the dilation ramp alone makes an instant kill rare, and the
+  // reference gives me the hole radius but not a "lethal fraction" of it.
+  if (open && !G.closing && G.holeT>0){
+    const rr = CFG.HOLE_R*G.holeT;
+    for (const b of A){
+      if (Math.hypot(b.x,b.y) < rr){
+        if (b.shield){                       // shielded: ejected, shield breaks
+          b.shield=false; G.shielded=null;
+          const d=Math.hypot(b.x,b.y)||1;
+          const ux=b.x/d, uy=b.y/d;
+          b.x=ux*(CFG.HOLE_R+CFG.BALL_R+20); b.y=uy*(CFG.HOLE_R+CFG.BALL_R+20);
+          b.vx=ux*speed; b.vy=uy*speed;
+          showBanner('SHIELD HELD','#5ef2c8'); SFX.shield();
+          beginClosing();                    // an opening spent with no kill
+        } else {
+          kill(b);
+          if (G.openKills>=G.killQuota) beginClosing();
+        }
+        break;
+      }
+    }
+  }
+}
+
+/* ==========================================================================
+   6. GAME FLOW
+   ========================================================================== */
+function showBanner(text, color){ G.banner={text,color:color||PAL.gold}; G.bannerT=CFG.BANNER_MS; }
+
+function kill(b){
+  b.alive=false; G.openKills++;
+  G.dead.push({c:b.c});
+  G.flash=1; G.shake=Math.max(G.shake,12);
+  setTimeout(()=>{ if(G) G.pendingKills.push(b.c); }, CFG.HUD_DELAY_MS);
+  if (G.killQuota>1 && G.openKills===2) SFX.double(); else SFX.kill();
+  G.lastKill={c:b.c, t:0};
+  COMMENTARY.elimination(b.c);
+}
+
+/* THE HUB IS NOT A COLLIDER. This is measured, and it replaced a wrong first build.
+
+   I originally assumed the closed hub was a solid disc. It is not: in the reference,
+   balls roll straight across it. Over 484 steady-CLOSED frames (phase read from the ring
+   hue, +-1 s around every phase edge discarded so a half-closed hole cannot fake it) there
+   are 50 ball-sized, ball-shaped blobs whose centres lie inside r=88 capture px - the
+   closest approach a wall would allow - and 43 of those are strictly inside the hub disc.
+   The closest sits at r=4.6 capture = 9 design px, dead centre, and at t=284.00..284.50 a
+   single ball tracks r = 16.9, 8.1, 4.6, 11.3, 19.8: a clean chord through the middle while
+   the ring is gold. Confirmed by eye too, in vid/hub_top.png.
+
+   So the hub disc is floor. Only the open hole is lethal. That removes three things the
+   first build needed: the hub collision term, the "wait until the hub is clear before
+   closing" tail, and closeHub()'s ejection sweep. The tail was the worse mistake - a probe
+   showed 6-12 of 64 balls are over the hub at any instant, so "wait until clear" could
+   never fire and every opening ran to its 4 s deadlock guard, inflating open durations ~5x
+   and diluting the inward-drift signal to zero.
+
+   What remains is the shrink ramp, which is now just the closing animation: it mirrors the
+   dilation rate (no new constant) and stops being lethal immediately, so the quota is never
+   exceeded by a ball that wanders in while the hole is disappearing. */
+function beginClosing(){ G.closing=true; }
+
+function closeHub(){
+  G.phase='CLOSED'; G.tPhase=0; G.holeT=0; G.openKills=0; G.killQuota=1; G.closing=false;
+  if (G.rapidLeft>0) G.rapidLeft--;
+}
+
+function openHub(){
+  G.phase='OPEN'; G.tPhase=0; G.openKills=0; G.killQuota=1; G.closing=false; SFX.open();
+  const n = alive().length;
+  // event rolls. guards keep a draw from ending without a winner.
+  if (n>3 && Math.random()<CFG.P_DOUBLE){ G.killQuota=2; showBanner('DOUBLE DRAW','#ff9f1c'); COMMENTARY.event('DOUBLE'); }
+  if (n>2 && !G.shielded && Math.random()<CFG.P_SHIELD){
+    const A=alive(); const b=A[Math.floor(Math.random()*A.length)];
+    b.shield=true; G.shielded=b; showBanner('SHIELDED · '+b.c.name, PAL.shield); SFX.shield(); COMMENTARY.shield(b.c);
+  }
+  if (Math.random()<CFG.P_TUMBLE){
+    G.tumbleT=CFG.TUMBLE_MS; G.shake=18; showBanner('TUMBLE BOOST','#ffd34d'); SFX.tumble(); COMMENTARY.event('TUMBLE');
+    // Boost NOW, not on the next physics step. openHub() runs AFTER step() inside tick(), so
+    // deferring left one frame where tumbleT>0 while every |v| was still the base speed.
+    for (const b of alive()) pinTo(b, curSpeed());
+  }
+  if (G.rapidLeft<=0 && n>8 && Math.random()<CFG.P_RAPID){ G.rapidLeft=CFG.RAPID_N; showBanner('RAPID FIRE','#ff4d6d'); SFX.rapid(); COMMENTARY.event('RAPID'); }
+  if (n>=4 && G.dead.length>=6 && Math.random()<CFG.P_COMEBACK){
+    const i=Math.floor(Math.random()*G.dead.length);
+    const b=G.balls.find(x=>x.c.code===G.dead[i].c.code);
+    const p=b?freeSpot(b):null;
+    if (p){
+      const c=G.dead.splice(i,1)[0].c;      // splice only on success: the first build removed
+      b.alive=true; b.shield=false;         // the country first, so a failed revive deleted it
+      b.x=p.x; b.y=p.y;                     // from the eliminated grid and it never came back
+      const a2=rnd(0,Math.PI*2), sp=curSpeed();
+      b.vx=Math.cos(a2)*sp; b.vy=Math.sin(a2)*sp;
+      G.comebackFx=1; showBanner('COMEBACK · '+c.name,'#5ef2c8'); SFX.comeback(); COMMENTARY.comeback(c);
+    } else G.spawnSkips++;                  // no room, or no such ball: reported, not forced
+  }
+}
+
+function tick(dtms){
+  const dt=dtms/1000;
+  G.t+=dtms; G.tPhase+=dtms;
+  if (G.bannerT>0) G.bannerT-=dtms;
+  if (G.tumbleT>0) G.tumbleT-=dtms;
+  if (G.flash>0) G.flash=Math.max(0,G.flash-dtms/CFG.FLASH_MS);
+  if (G.shake>0) G.shake=Math.max(0,G.shake-dtms*0.05);
+  if (G.comebackFx>0) G.comebackFx=Math.max(0,G.comebackFx-dtms/700);
+  if (G.lastKill) G.lastKill.t+=dtms;
+
+  if (G.phase==='INTRO'){
+    if (G.tPhase>=CFG.INTRO_MS){ G.phase='CLOSED'; G.tPhase=0; G.drawStart=performance.now(); }
+    return;
+  }
+  if (G.phase==='WINNER'){
+    if (G.tPhase>=CFG.WINNER_MS) newDraw();
+    return;
+  }
+
+  // physics only while playing
+  let acc = dtms/1000;
+  while (acc >= CFG.DT){ step(CFG.DT); acc-=CFG.DT; }
+  if (acc>0) step(acc);
+
+  if (G.phase==='CLOSED'){
+    const dur = G.rapidLeft>0 ? CFG.RAPID_CLOSED : CFG.CLOSED_MS;
+    if (G.tPhase>=dur) openHub();
+  } else if (G.phase==='OPEN'){
+    if (G.closing){
+      G.holeT = Math.max(0, G.holeT - dtms/CFG.HOLE_OPEN_MS);
+      if (G.holeT<=0) closeHub();              // nothing to wait for: the hub is floor
+    } else {
+      G.holeT = Math.min(1, G.tPhase/CFG.HOLE_OPEN_MS);
+    }
+  }
+
+  if (alive().length<=1 && G.phase!=='WINNER'){
+    const w=alive()[0];
+    if (w){ G.winner={c:w.c, lasted:(performance.now()-G.drawStart)/1000};
+      addWin(w.c.code); G.phase='WINNER'; G.tPhase=0; SFX.win(); COMMENTARY.winner(w.c); }
+  }
+}
+
+/* ==========================================================================
+   7. RENDER
+   ========================================================================== */
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+function fit(){
+  const s=Math.min(innerWidth/W, innerHeight/H);
+  cv.style.width=(W*s)+'px'; cv.style.height=(H*s)+'px';
+}
+addEventListener('resize',fit); fit();
+
+function roundRect(g,x,y,w,h,r){ g.beginPath();
+  g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r);
+  g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
+
+/* ---- backdrop photo ---------------------------------------------------------
+   The only binary asset in the build. Two things are deliberate:
+
+   (1) `typeof Image` guard. Every headless harness (verify_sim.js, calibrate.js,
+       flag_trace.js, ...) evaluates this <script> inside a Node vm sandbox that has
+       no Image constructor. Feature-detecting here keeps all of them working with
+       zero changes, and costs one comparison at load.
+   (2) bgOk stays false until the decode actually succeeds, and drawBackdrop()
+       falls back to the procedural starfield. A missing or corrupt bg.jpg degrades
+       the look; it cannot stop the stream.
+
+   Sizing needs no cover-fit maths: the source art is 900x1600 and the canvas is
+   1080x1920. Both are exactly 9:16 (0.562500), so a straight scale to W,H covers
+   with zero crop and zero letterbox - checked in bg_scrim.py, which asserts it. */
+const BG = (typeof Image === 'function') ? new Image() : null;
+let bgOk = false;
+if (BG){
+  BG.onload  = () => { bgOk = BG.naturalWidth > 0 && BG.naturalHeight > 0; };
+  BG.onerror = () => { bgOk = false; };
+  BG.src = 'bg.jpg';
+}
+
+function drawBackdrop(){
+  if (bgOk){
+    ctx.drawImage(BG, 0, 0, W, H);
+    /* Scrim alpha 0.46 is MEASURED, not chosen. Two steps, in this order:
+
+       bg_scrim.py first tested the obvious argument - white HUD text over the
+       bright shirt and nebula - and REFUTED it. In this artwork every band where
+       white text lands is already near-black (worst band p95 luminance 0.037,
+       i.e. 12.1:1 against white) because the bright regions sit behind the ARENA,
+       not behind the header. With no scrim at all the worst case is 14.99:1, far
+       past the 3:1 that WCAG asks of large bold text. So contrast does not set it.
+
+       bg_match.py therefore measured the dimming in the mockup Dell supplied as
+       the target, by least-squares fitting mockup = k*photo + c over 155 blocks
+       that lie outside both rings and outside every panel:
+           R alpha 0.504   G 0.448   B 0.420   ->  mean 0.457   (rms 19-28/255)
+       0.46 is that figure. The fit also implies a scrim colour near rgb(30,22,25),
+       but that intercept is inside its own residual noise, so this keeps the
+       arena's blue-black instead of inventing a warm grey from it. */
+    ctx.fillStyle = 'rgba(6,9,24,0.46)'; ctx.fillRect(0,0,W,H);
+    return;
+  }
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#0a0f24'); g.addColorStop(0.5,'#131a3a'); g.addColorStop(1,'#080b1a');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // deterministic starfield so nothing accumulates over days
+  ctx.fillStyle='rgba(255,255,255,0.55)';
+  let s=12345;
+  for(let i=0;i<170;i++){
+    s=(s*1103515245+12345)&0x7fffffff;
+    const x=(s%W), y=((s>>9)%H), r=((s>>17)%3)*0.5+0.4;
+    ctx.globalAlpha=0.20+((s>>5)%60)/160;
+    ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ---- text that cannot overflow ----------------------------------------------
+   `system-ui` resolves to a different face on every machine - Segoe UI on Windows,
+   SF on macOS, whatever fontconfig picks inside an OBS build on Linux - and their
+   advance widths differ by well over 10%. Any layout that hard-codes an x position
+   for a string is one machine away from a collision. So set the size from the
+   measured width of the actual string, then draw.
+   Returns the px size used, so callers can position the next segment. */
+function fitFont(text, maxW, size, weight, extra){
+  const stack = (extra||'') + 'system-ui,sans-serif';
+  for (let s=size; s>12; s--){
+    ctx.font = weight+' '+s+'px '+stack;
+    if (ctx.measureText(text).width <= maxW) return s;
+  }
+  return 12;
+}
+
+function drawArena(){
+  const {CX,CY,ARENA_R}=CFG;
+  // glow
+  ctx.save();
+  const gg=ctx.createRadialGradient(CX,CY,ARENA_R*0.8,CX,CY,ARENA_R*1.12);
+  gg.addColorStop(0,'rgba(49,225,247,0.12)'); gg.addColorStop(1,'rgba(49,225,247,0)');
+  ctx.fillStyle=gg; ctx.beginPath(); ctx.arc(CX,CY,ARENA_R*1.12,0,7); ctx.fill();
+  // floor
+  const fl=ctx.createRadialGradient(CX,CY-60,40,CX,CY,ARENA_R);
+  fl.addColorStop(0,'rgba(40,52,102,0.55)'); fl.addColorStop(1,'rgba(12,16,38,0.85)');
+  ctx.fillStyle=fl; ctx.beginPath(); ctx.arc(CX,CY,ARENA_R,0,7); ctx.fill();
+  // rim
+  ctx.lineWidth=11; ctx.strokeStyle=PAL.rim; ctx.shadowColor=PAL.rimGlow; ctx.shadowBlur=26;
+  ctx.beginPath(); ctx.arc(CX,CY,ARENA_R,0,7); ctx.stroke();
+  ctx.shadowBlur=0; ctx.restore();
+}
+
+function drawSpokes(){
+  const {CX,CY}=CFG;
+  ctx.save(); ctx.translate(CX,CY);
+  ctx.lineCap='round'; ctx.lineWidth=CFG.SPOKE_CAP*2;
+  const hot = G.tumbleT>0;
+  ctx.strokeStyle = hot? 'rgba(255,190,90,0.85)' : 'rgba(139,127,212,0.78)';
+  ctx.shadowColor = hot? 'rgba(255,170,60,0.7)' : 'rgba(139,127,212,0.45)';
+  ctx.shadowBlur = hot? 22 : 10;
+  for (const s of spokeSegs()){
+    ctx.beginPath(); ctx.moveTo(s.ax,s.ay); ctx.lineTo(s.bx,s.by); ctx.stroke();
+  }
+  ctx.shadowBlur=0; ctx.restore();
+}
+
+function drawHub(){
+  const {CX,CY,HUB_R}=CFG;
+  const open = (G.phase==='OPEN');
+  ctx.save(); ctx.translate(CX,CY);
+  // pinwheel (8 slices), lit when closed
+  ctx.save(); ctx.rotate(G.spokeA*0.6);
+  for(let i=0;i<8;i++){
+    ctx.beginPath(); ctx.moveTo(0,0);
+    ctx.arc(0,0,HUB_R-8, i*Math.PI/4, (i+1)*Math.PI/4); ctx.closePath();
+    ctx.fillStyle = (i%2===0)
+      ? (open?'rgba(70,40,80,0.75)':'rgba(150,140,220,0.55)')
+      : (open?'rgba(45,25,55,0.75)':'rgba(112,102,190,0.55)');
+    ctx.fill();
+  }
+  ctx.restore();
+  // the hole
+  if (open && G.holeT>0){
+    const r=CFG.HOLE_R*G.holeT;
+    const hg=ctx.createRadialGradient(0,0,1,0,0,r);
+    hg.addColorStop(0,'#000000'); hg.addColorStop(0.75,'#05030a'); hg.addColorStop(1,'rgba(20,8,30,0.9)');
+    ctx.fillStyle=hg; ctx.beginPath(); ctx.arc(0,0,r,0,7); ctx.fill();
+  }
+  // ring
+  ctx.lineWidth=9;
+  ctx.strokeStyle = open? PAL.hubMag : PAL.hubGold;
+  ctx.shadowColor = open? 'rgba(255,62,165,0.75)' : 'rgba(245,194,59,0.6)';
+  ctx.shadowBlur = open? 26 : 14;
+  ctx.beginPath(); ctx.arc(0,0,HUB_R,0,7); ctx.stroke();
+  ctx.shadowBlur=0; ctx.restore();
+}
+
+function drawBalls(){
+  const {CX,CY,BALL_R}=CFG;
+  for (const b of G.balls){
+    if (!b.alive) continue;
+    const sp=sprites.get(b.c.code);
+    const x=CX+b.x, y=CY+b.y, d=BALL_R*2;
+    if (b.shield){
+      ctx.save(); ctx.strokeStyle=PAL.shield; ctx.lineWidth=5;
+      ctx.shadowColor=PAL.shield; ctx.shadowBlur=20;
+      ctx.beginPath(); ctx.arc(x,y,BALL_R+9,0,7); ctx.stroke(); ctx.restore();
+    }
+    ctx.drawImage(sp, x-BALL_R, y-BALL_R, d, d);
+  }
+}
+
+function panel(x,y,w,h,label,value,valColor){
+  roundRect(ctx,x,y,w,h,18); ctx.fillStyle=PAL.panel; ctx.fill();
+  ctx.strokeStyle='rgba(120,150,220,0.30)'; ctx.lineWidth=2; ctx.stroke();
+  ctx.textAlign='center';
+  ctx.fillStyle=PAL.dim; ctx.font='600 24px system-ui,sans-serif';
+  ctx.fillText(label, x+w/2, y+34);
+  ctx.fillStyle=valColor||PAL.ink; ctx.font='800 62px system-ui,sans-serif';
+  ctx.fillText(value, x+w/2, y+h-22);
+}
+
+/* ---- header layout ----------------------------------------------------------
+   The first build stacked the brand on two lines, then the panels below it, and
+   only then the prompt. That pushed "WHERE ARE / YOU FROM?" to baselines 412 and
+   466 - and the arena's top edge is at
+
+       CY - ARENA_R = 860 - 483 = 377
+
+   so both lines were drawn INSIDE the ring. It was not a near miss: the panels
+   already ended at 236+118 = 354, leaving a 23 px band, and two lines of 46 px
+   text need ~120 px. There was nowhere for the prompt to go.
+
+   The fix is the arrangement the target mockup uses: brand, both panels and the
+   gauge share ONE row, which buys back the whole band the second brand line and
+   the panel row used to occupy. The arena does not move, so every measured
+   constant (ARENA_R, CX, CY) and everything below the ring is untouched.
+
+   Horizontal budget, left to right, summing to exactly 1080:
+       28 margin + 416 brand + 24 + 210 panel + 16 + 210 panel + 36 + 92 gauge + 48
+   Vertical, with the clearances layout_check.js asserts against y=377:
+       row      30 .. 148
+       status  178 .. 206   (cap top .. descent)   30 px below the row
+       prompt  225 .. 338   (line 1 cap top .. line 2 descent)   39 px above 377 */
+const LAY = {
+  rowY:30, rowH:118, brandX:28, brandW:416,
+  p1X:468, p2X:694, pW:210,
+  gx:986, gy:89, gr:46,
+  statusY:200, statusF:30,
+  promptY1:258, promptF1:46,
+  promptY2:326, promptF2:58,
+};
+
+function drawHUD(){
+  const L=LAY;
+
+  // ---- brand: ONE line, two colours, one baseline -------------------------
+  // Sized from the measured width of the real string so it cannot spill into the
+  // COUNTRIES panel on a machine whose system-ui is wider than mine.
+  ctx.save();
+  ctx.textAlign='left';
+  const bs = fitFont('FLAGS WAR ARENA', L.brandW, 52, '900');
+  const by = L.rowY + L.rowH/2 + bs*0.36;      // optical centre of a caps-only line
+  ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=10;
+  ctx.font='900 '+bs+'px system-ui,sans-serif';
+  ctx.fillStyle=PAL.ink;  ctx.fillText('FLAGS WAR ', L.brandX, by);
+  const w1=ctx.measureText('FLAGS WAR ').width;
+  ctx.fillStyle=PAL.gold; ctx.fillText('ARENA', L.brandX+w1, by);
+  ctx.restore();
+
+  const shown = CFG.N_BALLS - G.dead.length;   // HUD lags the kill by HUD_DELAY_MS
+  panel(L.p1X, L.rowY, L.pW, L.rowH, 'COUNTRIES', String(CFG.N_BALLS));
+  panel(L.p2X, L.rowY, L.pW, L.rowH, 'REMAINING', String(Math.max(shown,1)), PAL.gold);
+
+  // gauge
+  ctx.textAlign='center';
+  const gx=L.gx, gy=L.gy, gr=L.gr;
+  ctx.save();
+  ctx.lineWidth=12; ctx.strokeStyle='rgba(255,255,255,0.12)';
+  ctx.beginPath(); ctx.arc(gx,gy,gr,0,7); ctx.stroke();
+  if (G.phase==='OPEN'){
+    ctx.strokeStyle=PAL.hubMag; ctx.beginPath(); ctx.arc(gx,gy,gr,0,7); ctx.stroke();
+    ctx.fillStyle=PAL.hubMag; ctx.font='900 56px system-ui,sans-serif'; ctx.fillText('!',gx,gy+20);
+  } else {
+    const dur = G.rapidLeft>0?CFG.RAPID_CLOSED:CFG.CLOSED_MS;
+    const left = Math.max(0, dur-G.tPhase), frac=1-left/dur;
+    ctx.strokeStyle=PAL.hubGold;
+    ctx.beginPath(); ctx.arc(gx,gy,gr,-Math.PI/2,-Math.PI/2+frac*Math.PI*2); ctx.stroke();
+    ctx.fillStyle=PAL.ink; ctx.font='900 46px system-ui,sans-serif';
+    ctx.fillText(String(Math.ceil(left/1000)), gx, gy+17);   // ceil(): matches the reference's 0.13s "5"
+  }
+  ctx.restore();
+
+  // ---- status slot --------------------------------------------------------
+  // One slot, two uses, so these two can never collide: normally the cycle line,
+  // and while RAPID FIRE is armed the badge takes the same baseline. The badge
+  // used to sit at y=508, which was 131 px inside the ring.
+  if (G.rapidLeft>0){
+    ctx.fillStyle=PAL.bad; ctx.font='800 '+L.statusF+'px system-ui,sans-serif';
+    ctx.fillText('RAPID FIRE  x'+G.rapidLeft, W/2, L.statusY);
+  } else {
+    ctx.fillStyle=PAL.dim; ctx.font='600 '+L.statusF+'px system-ui,sans-serif';
+    ctx.fillText('CYCLE '+G.roundNo+'   •   LIVE', W/2, L.statusY);
+  }
+
+  // ---- prompt: now entirely above the ring --------------------------------
+  ctx.save();
+  ctx.shadowColor='rgba(0,0,0,0.75)'; ctx.shadowBlur=12;
+  ctx.font='800 '+L.promptF1+'px system-ui,sans-serif';
+  ctx.fillStyle=PAL.ink;  ctx.fillText('WHERE ARE', W/2, L.promptY1);
+  ctx.font='900 '+L.promptF2+'px system-ui,sans-serif';
+  ctx.fillStyle=PAL.gold; ctx.fillText('YOU FROM?', W/2, L.promptY2);
+  ctx.restore();
+}
+
+function drawLower(){
+  const top=1408;
+  ctx.textAlign='center';
+  ctx.fillStyle=PAL.ink; ctx.font='800 40px system-ui,sans-serif';
+  ctx.fillText('ALL ELIMINATED', W/2, top);
+
+  // 4 x 16 lattice, left aligned, VERTICALLY CENTRED as it fills (as measured)
+  const cols=16, pitch=63, disc=42, x0=68;
+  const rows=Math.max(1,Math.ceil(G.dead.length/cols));
+  const rowPitch=49, blockH=rows*rowPitch;
+  const yMid=top+150, y0=yMid-blockH/2+rowPitch/2;
+  for(let i=0;i<G.dead.length;i++){
+    const r=Math.floor(i/cols), c=i%cols;
+    const x=x0+c*pitch, y=y0+r*rowPitch;
+    const sp=sprites.get(G.dead[i].c.code);
+    ctx.save(); ctx.globalAlpha=0.82;
+    ctx.drawImage(sp, x-disc/2, y-disc/2, disc, disc);
+    ctx.restore();
+  }
+  // progress bar
+  const bx=40, by=top+270, bw=W-80, bh=14;
+  roundRect(ctx,bx,by,bw,bh,7); ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.fill();
+  const f=G.dead.length/CFG.N_BALLS;
+  const gr=ctx.createLinearGradient(bx,0,bx+bw,0);
+  gr.addColorStop(0,'#31e1f7'); gr.addColorStop(0.6,'#ffd34d'); gr.addColorStop(1,'#ff4d6d');
+  roundRect(ctx,bx,by,Math.max(6,bw*f),bh,7); ctx.fillStyle=gr; ctx.fill();
+  ctx.fillStyle=PAL.dim; ctx.font='600 26px system-ui,sans-serif';
+  ctx.fillText(G.dead.length+' / '+CFG.N_BALLS+' ELIMINATED', W/2, by+52);
+
+  roundRect(ctx,40,by+78,W-80,74,16); ctx.fillStyle=PAL.panel; ctx.fill();
+  ctx.strokeStyle='rgba(120,150,220,0.25)'; ctx.lineWidth=2; ctx.stroke();
+  /* The emoji needs its own font stack: system-ui alone will not resolve U+1F44D,
+     and a Chromium build with no emoji face draws tofu. Named faces first, then
+     the generic 'emoji' family, then the normal stack for the letters.
+     Auto-fitted into the button's inner width (1000 - 2x28 padding). */
+  const CTA='\u{1F44D}  LIKE IF YOU SEE YOUR COUNTRY FLAG';
+  const EMO='"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",emoji,';
+  const cs=fitFont(CTA, W-80-56, 34, '800', EMO);
+  ctx.font='800 '+cs+'px '+EMO+'system-ui,sans-serif';
+  ctx.fillStyle=PAL.ink;
+  ctx.fillText(CTA, W/2, by+126);
+}
+
+function drawKillCard(){
+  if (!G.lastKill || G.lastKill.t>2600) return;
+  const a = G.lastKill.t<200 ? G.lastKill.t/200 : G.lastKill.t>2200 ? (2600-G.lastKill.t)/400 : 1;
+  const c=G.lastKill.c;
+  ctx.save(); ctx.globalAlpha=clamp(a,0,1);
+  const x=60,y=1258,w=620,h=110;
+  roundRect(ctx,x,y,w,h,20); ctx.fillStyle='rgba(14,10,30,0.88)'; ctx.fill();
+  ctx.strokeStyle=PAL.bad; ctx.lineWidth=3; ctx.stroke();
+  const sp=sprites.get(c.code); ctx.drawImage(sp,x+16,y+13,84,84);
+  ctx.textAlign='left';
+  ctx.fillStyle=PAL.bad; ctx.font='800 24px system-ui,sans-serif';
+  ctx.fillText('ELIMINATED', x+118, y+42);
+  ctx.fillStyle=PAL.ink; ctx.font='900 44px system-ui,sans-serif';
+  const name = c.name.length>16 ? c.name.slice(0,15)+'…' : c.name;
+  ctx.fillText(name, x+118, y+88);
+  ctx.restore(); ctx.textAlign='center';
+}
+
+function drawBanner(){
+  if (!G.banner || G.bannerT<=0) return;
+  const p=1-G.bannerT/CFG.BANNER_MS;
+  const a = p<0.1? p/0.1 : p>0.85? (1-p)/0.15 : 1;
+  ctx.save(); ctx.globalAlpha=clamp(a,0,1);
+  ctx.textAlign='center';
+  ctx.font='900 54px system-ui,sans-serif';
+  ctx.fillStyle='rgba(8,6,20,0.8)';
+  const tw=ctx.measureText(G.banner.text).width+70;
+  roundRect(ctx,W/2-tw/2,556,tw,84,20); ctx.fill();
+  ctx.strokeStyle=G.banner.color; ctx.lineWidth=3; ctx.stroke();
+  ctx.fillStyle=G.banner.color; ctx.fillText(G.banner.text, W/2, 614);
+  ctx.restore();
+}
+
+function drawWinner(){
+  const w=G.winner; if(!w) return;
+  ctx.save();
+  ctx.fillStyle='rgba(4,6,18,0.80)'; ctx.fillRect(0,0,W,H);
+  const cx=W/2, cy=760;
+  const t=G.tPhase/1000;
+  // laurel glow
+  const gg=ctx.createRadialGradient(cx,cy,20,cx,cy,330);
+  gg.addColorStop(0,'rgba(255,211,77,0.35)'); gg.addColorStop(1,'rgba(255,211,77,0)');
+  ctx.fillStyle=gg; ctx.beginPath(); ctx.arc(cx,cy,330,0,7); ctx.fill();
+  // rays
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(t*0.25);
+  for(let i=0;i<12;i++){ ctx.rotate(Math.PI/6);
+    ctx.fillStyle='rgba(255,211,77,0.10)';
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(300,-26); ctx.lineTo(300,26); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+  const sp=sprites.get(w.c.code), R=150;
+  ctx.drawImage(sp, cx-R, cy-R, R*2, R*2);
+  ctx.lineWidth=8; ctx.strokeStyle=PAL.gold; ctx.shadowColor='rgba(255,211,77,0.8)'; ctx.shadowBlur=30;
+  ctx.beginPath(); ctx.arc(cx,cy,R+10,0,7); ctx.stroke(); ctx.shadowBlur=0;
+  ctx.textAlign='center';
+  ctx.fillStyle=PAL.ink; ctx.font='900 76px system-ui,sans-serif';
+  ctx.fillText(w.c.name, cx, cy+265);
+  ctx.fillStyle=PAL.gold; ctx.font='900 92px system-ui,sans-serif';
+  ctx.fillText('SURVIVES', cx, cy+372);
+  const mm=String(Math.floor(w.lasted/60)).padStart(2,'0'), ss=String(Math.floor(w.lasted%60)).padStart(2,'0');
+  const wins=careers()[w.c.code]||1;
+  const left=Math.ceil((CFG.WINNER_MS-G.tPhase)/1000);
+  ctx.fillStyle=PAL.dim; ctx.font='700 34px system-ui,sans-serif';
+  ctx.fillText(`LASTED ${mm}:${ss}  ·  ${wins} CAREER WIN${wins===1?'':'S'}  ·  NEXT DRAW IN ${left}S`, cx, cy+440);
+  ctx.restore();
+}
+
+function render(){
+  drawBackdrop();
+  ctx.save();
+  if (G.shake>0.2){ ctx.translate(rnd(-G.shake,G.shake), rnd(-G.shake,G.shake)); }
+  drawArena(); drawSpokes(); drawHub(); drawBalls();
+  if (G.comebackFx>0){
+    ctx.save(); ctx.globalAlpha=G.comebackFx*0.5;
+    ctx.strokeStyle=PAL.shield; ctx.lineWidth=6;
+    ctx.beginPath(); ctx.arc(CFG.CX,CFG.CY,CFG.ARENA_R*(1-G.comebackFx*0.15),0,7); ctx.stroke();
+    ctx.restore();
+  }
+  // white flash, clipped to the arena (as measured: full-arena flash)
+  if (G.flash>0){
+    ctx.save(); ctx.beginPath(); ctx.arc(CFG.CX,CFG.CY,CFG.ARENA_R,0,7); ctx.clip();
+    ctx.fillStyle='rgba(255,255,255,'+(G.flash*0.62)+')'; ctx.fillRect(0,0,W,H); ctx.restore();
+  }
+  ctx.restore();
+  drawHUD(); drawBanner(); drawKillCard(); drawLower();
+  if (G.phase==='WINNER') drawWinner();
+  if (G.phase==='INTRO'){
+    ctx.save(); const a=1-G.tPhase/CFG.INTRO_MS;
+    ctx.fillStyle='rgba(4,6,18,'+clamp(a,0,1)*0.85+')'; ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=clamp(a,0,1); ctx.textAlign='center';
+    ctx.fillStyle=PAL.gold; ctx.font='900 80px system-ui,sans-serif';
+    ctx.fillText('DRAW #'+G.roundNo, W/2, 900);
+    ctx.fillStyle=PAL.ink; ctx.font='800 44px system-ui,sans-serif';
+    ctx.fillText('64 COUNTRIES ENTER', W/2, 980);
+    ctx.restore();
+  }
+}
+
+/* ==========================================================================
+   8. MAIN LOOP
+   ========================================================================== */
+buildSprites();
+newDraw();
+let last=performance.now();
+function frame(now){
+  let dt=now-last; last=now;
+  if (dt>250) dt=250;            // tab was backgrounded: do not fast-forward
+  tick(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// OBS autoplay: audio needs a gesture in some configs. Launch Chrome with
+// --autoplay-policy=no-user-gesture-required, or click once.
+addEventListener('pointerdown',()=>{ ac(); COMMENTARY.start(); });
+addEventListener('keydown',()=>{ ac(); COMMENTARY.start(); });
+
+/* Expose for the headless verification harness (verify_sim.js). */
+window.__CBR__ = { get G(){return G;}, CFG, step, tick, newDraw, alive, spokeSegs, COUNTRIES };
+</script>
+</body>
+</html>
