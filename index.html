@@ -1773,6 +1773,7 @@ let wildcardMentions=Object.create(null), alphaCountries=new Set();
 let shieldUses=0, revivalUses=0;
 let chatAbilityCounts=Object.create(null);
 let pendingRevivalTokens=Object.create(null);
+let pendingPriorityRewards=Object.create(null); // userKey -> { count, member } for paid events awaiting next country
 const CHAT_ABILITY_TRIGGER=10;
 const MAX_CHAT_SHIELDS=10, MAX_CHAT_REVIVALS=10;
 const PRIORITY_FLAG_DURATION=10;
@@ -2030,6 +2031,7 @@ function reviveFor(user,code){
   if(!b){G.dead.splice(d,0,rec);return false;}
   const ang=rnd(0,Math.PI*2),r=CFG.HOLE_R+CFG.BALL_R+55;
   b.alive=true;b.x=Math.cos(ang)*r;b.y=Math.sin(ang)*r;
+  if(b.normalOwned)currentChatUsers.set(uk,b);
   b.vx=Math.cos(ang+rnd(1.2,2.2))*curSpeed();b.vy=Math.sin(ang+rnd(1.2,2.2))*curSpeed();
   b.shield=true;b.shieldUntil=(G.t||0)+2.5;revivalUses++;
   G.comebackFx=1;SFX.comeback();COMMENTARY.comeback(b.c);showBanner('CHAT REVIVAL · '+b.c.name,'#5ef2c8');
@@ -2356,70 +2358,134 @@ function applyPriorityProtection(b){
   b.shieldUntil=Math.max(now+PRIORITY_FLAG_DURATION,b.shieldUntil||0);
   if(b.priorityUntil>0)b.shieldUntil=Math.min(b.shieldUntil,b.priorityUntil);
 }
-function addPriorityBall(user,code){
-  /* Paid priority spawns are NOT ordinary chat slots. They must still respect
-     the real arena capacity, but the 32 normal chat-entry cap must never block
-     a Super Chat/Super Sticker reward. */
+function hasAnyLiveUserFlag(user){
+  if(!G)return false;
+  const uk=userKey(user);
+  const b=G.balls.find(x=>x.alive&&x.user&&userKey(x.user)===uk);
+  return !!b;
+}
+function clearStaleNormalUserSlot(user){
+  const uk=userKey(user), b=currentChatUsers.get(uk);
+  if(b && (!b.alive || !G?.balls?.includes(b))) currentChatUsers.delete(uk);
+  return currentChatUsers.get(uk)||null;
+}
+function addPriorityBall(user,code,mode){
+  /* Priority rewards always create a NEW flag.  Only a normal/member-chat
+     priority flag participates in the one-live-flag-per-user rule. */
   if(!G||!code)return null;
   if(G.balls.filter(x=>x.alive).length>=MAX_FLAGS)return null;
   const uk=userKey(user),c=COUNTRIES.find(x=>x.code===String(code).toUpperCase());
   if(!c)return null;
+  if(mode==='member'){
+    clearStaleNormalUserSlot(user);
+    if(hasAnyLiveUserFlag(user))return null;
+  }
   let x,y,tries=0;
   const rMax=CFG.ARENA_R-CFG.BALL_R-12;
   do{
     const a=rnd(0,Math.PI*2),r=Math.sqrt(rnd(.05,1))*rMax;
     x=Math.cos(a)*r;y=Math.sin(a)*r;tries++;
   }while(tries<300 && G.balls.some(b=>b.alive&&Math.hypot(b.x-x,b.y-y)<CFG.BALL_R*2+3));
-  const b={c,user:String(user||'viewer'),custom:true,prioritySpawn:true,x,y,
-    vx:Math.cos(rnd(0,Math.PI*2))*CFG.BALL_SPEED,
-    vy:Math.sin(rnd(0,Math.PI*2))*CFG.BALL_SPEED,
+  const b={c,user:String(user||'viewer'),custom:true,prioritySpawn:true,normalOwned:mode==='member',
+    x,y,vx:Math.cos(rnd(0,Math.PI*2))*CFG.BALL_SPEED,vy:Math.sin(rnd(0,Math.PI*2))*CFG.BALL_SPEED,
     alive:true,shield:false,r:CFG.BALL_R,level:1,hitCool:0,weaponFlash:0,weaponRecoil:0,
     specialUntil:0,specialKind:null,frozenUntil:0,sniperShots:0,shotgunShots:0,
     sniperPellets:1,shotgunPellets:2,fuse:0,sniperUntil:0,shotgunUntil:0,swordUntil:0,
     weaponAngle:0,priorityUntil:0,priorityMode:'',priorityBaseLevel:1,priorityBaseScale:1};
   G.balls.push(b);
+  if(mode==='member')currentChatUsers.set(uk,b);
   return b;
 }
-function findOrSpawnPriorityFlag(user,code){
-  if(!G||!code)return null;
-  const cc=String(code).toUpperCase();
-  /* CRITICAL: priority rewards ALWAYS create a NEW flag for the triggering user.
-     Never upgrade/reuse an existing country flag, even when the same country is
-     already in the Arena. The existing flag must remain completely untouched. */
-  return addPriorityBall(user,cc);
+function findOrSpawnPriorityFlag(user,code,mode){
+  return addPriorityBall(user,code,mode);
+}
+function consumePendingPriority(user,code){
+  const uk=userKey(user), r=pendingPriorityRewards[uk];
+  if(!r||r.count<=0)return null;
+  r.count--;
+  const member=r.member;
+  if(r.count<=0)delete pendingPriorityRewards[uk];
+  return member;
+}
+function queuePendingPriority(user,member,isSticker){
+  const uk=userKey(user), r=pendingPriorityRewards[uk] || {count:0,member:false};
+  r.count++;
+  r.member = r.member || !!member;
+  pendingPriorityRewards[uk]=r;
+  showBanner((isSticker?'SUPER STICKER':'SUPERCHAT')+' · COUNTRY REQUIRED','#ffd34d');
+  COMMENTARY.say(isSticker
+    ? 'Super Sticker received. '+String(user||'viewer')+' can type a country to spawn the Alpha flag.'
+    : 'Super Chat received. '+String(user||'viewer')+' can type a country to spawn the Alpha flag.');
 }
 function triggerPriorityEvent(ev,parsed){
   if(!G||G.phase==='WINNER'||G.phase==='PODIUM'||G.phase==='LEADERBOARD')return false;
   const paid=ev.isSuperChat||ev.isSuperSticker;
   const member=ev.isMember;
   if(!paid&&!member)return false;
-  const code=resolvePriorityCountry(ev.username,parsed);
-  if(!code){
-    showBanner(paid?'SUPERCHAT · ADD COUNTRY TO COMMENT':'MEMBER · ADD COUNTRY TO CHAT','#ffd34d');
+
+  /* Paid events have their own reward queue.  Sticker text normally has no
+     country, so never invent a random country. */
+  if(paid){
+    if(!parsed.country){
+      queuePendingPriority(ev.username,member,ev.isSuperSticker);
+      return true;
+    }
+    const mode=member?'superchat-member':'superchat';
+    const b=findOrSpawnPriorityFlag(ev.username,parsed.country,mode);
+    if(!b)return true;
+    setPriorityAlpha(b,mode);armPriorityWeapons(b,mode);applyPriorityProtection(b);
+    showBanner((mode==='superchat-member'?'SUPERCHAT/STICKER · MEMBER':'SUPERCHAT/STICKER')+' · ALPHA FLAG · '+b.c.name,mode==='superchat-member'?'#ffd34d':'#d98cff');
+    COMMENTARY.say(mode==='superchat-member'
+      ? b.c.name+' gets an Alpha flag with powered shotgun, sniper and shield.'
+      : b.c.name+' gets an Alpha flag with powered shotgun and shield.');
     return true;
   }
-  const mode=paid?(member?'superchat-member':'superchat'):'member';
-  const b=findOrSpawnPriorityFlag(ev.username,code);
+
+  /* Existing member normal-chat flag: do NOT create another flag. Returning
+     false lets the normal equipment/ability parser handle this message. */
+  if(!parsed.country)return false;
+  if(hasAnyLiveUserFlag(ev.username))return false;
+  const b=findOrSpawnPriorityFlag(ev.username,parsed.country,'member');
   if(!b)return true;
-  setPriorityAlpha(b,mode);
-  armPriorityWeapons(b,mode);
-  if(paid)applyPriorityProtection(b);
-  const label=mode==='superchat-member'?'SUPERCHAT/STICKER · MEMBER':mode==='superchat'?'SUPERCHAT/STICKER':'MEMBER';
-  showBanner(label+' · ALPHA FLAG · '+b.c.name,mode==='superchat-member'?'#ffd34d':'#d98cff');
-  COMMENTARY.say(mode==='superchat-member'
-    ? b.c.name+' gets an Alpha flag with powered shotgun, sniper and shield.'
-    : mode==='superchat'
-      ? b.c.name+' gets an Alpha flag with powered shotgun and shield.'
-      : b.c.name+' gets an Alpha flag with a shotgun.');
-  return true;
+  setPriorityAlpha(b,'member');
+  armPriorityWeapons(b,'member');
+  showBanner('MEMBER · ALPHA FLAG · '+b.c.name,'#d98cff');
+  COMMENTARY.say(b.c.name+' gets an Alpha flag with a shotgun.');
+  return false;
 }
 function handleChat(eventOrUser,text){
   const ev=normalizeChatEvent(eventOrUser,text), user=ev.username, p=parseChat(ev.text), uk=userKey(user);
   if(!p.country && !p.items.length && !ev.isMember && !ev.isSuperChat && !ev.isSuperSticker)return;
 
-  /* Priority routing happens before ordinary equipment/country admission. */
   if((ev.isSuperChat||ev.isSuperSticker||ev.isMember) && G && (G.phase==='CLOSED'||G.phase==='OPEN')){
+    /* A paid reward with no country is queued; an existing member flag is not
+       duplicated and falls through so normal equipment/abilities still work. */
     if(triggerPriorityEvent(ev,p))return;
+  }
+
+  /* A pending Super Sticker/Super Chat is consumed by the SAME USER'S next
+     country message.  No random country is ever selected. */
+  if(p.country && !ev.isSuperChat && !ev.isSuperSticker && G && (G.phase==='CLOSED'||G.phase==='OPEN')){
+    const pendingMember=consumePendingPriority(user,p.country);
+    if(pendingMember!==null){
+      const mode=pendingMember?'superchat-member':'superchat';
+      const b=findOrSpawnPriorityFlag(user,p.country,mode);
+      if(b){
+        setPriorityAlpha(b,mode);armPriorityWeapons(b,mode);applyPriorityProtection(b);
+        showBanner((pendingMember?'SUPERCHAT/STICKER · MEMBER':'SUPERCHAT/STICKER')+' · ALPHA FLAG · '+b.c.name,mode==='superchat-member'?'#ffd34d':'#d98cff');
+        COMMENTARY.say(mode==='superchat-member'
+          ? b.c.name+' gets an Alpha flag with powered shotgun, sniper and shield.'
+          : b.c.name+' gets an Alpha flag with powered shotgun and shield.');
+        /* A queued paid reward is consumed even if arena capacity is currently
+           full; in that case it is not silently converted into a random flag. */
+        return;
+      }else{
+        const r=pendingPriorityRewards[userKey(user)] || {count:0,member:false};
+        r.count++; r.member = r.member || !!pendingMember; pendingPriorityRewards[userKey(user)]=r;
+        showBanner('ALPHA REWARD QUEUED · ARENA FULL','#ffd34d');
+        return;
+      }
+    }
   }
 
   // Chat-driven equipment, Shield and Revival remain normal-user mechanics.
@@ -2444,15 +2510,18 @@ function handleChat(eventOrUser,text){
     }
   }
   if(!p.country||!G||G.phase==='WINNER')return;
-  const active=G.balls.filter(b=>b.alive).length;
   if(['WINNER','PODIUM','LEADERBOARD'].includes(G.phase))return;
-  /* Normal chat is deliberately never allowed to create the old giant-flag upgrade. */
-  if(currentChatUsers.has(uk))return;
+
+  /* Normal chat — including members whose member-priority flag is already
+     alive — may never create a second live flag for the same user. */
+  clearStaleNormalUserSlot(user);
+  if(hasAnyLiveUserFlag(user))return;
+  const active=G.balls.filter(b=>b.alive).length;
   const customCount=G.balls.filter(b=>b.custom).length;
   const totalChatSlots=32;
   if(G.stage==='qualifying' && (G.phase==='CLOSED'||G.phase==='OPEN') && active<MAX_FLAGS && customCount < totalChatSlots && (waitingJoined + freshJoined) < totalChatSlots){
     const queued=waitingList.shift();
-    if(queued && !currentChatUsers.has(userKey(queued.user)) && !G.balls.some(b=>b.alive&&userKey(b.user)===userKey(queued.user))){
+    if(queued && !hasAnyLiveUserFlag(queued.user)){
       if(addChatBall(queued.user,queued.code,true)) return;
       waitingList.unshift(queued);
     }
@@ -2462,7 +2531,7 @@ function handleChat(eventOrUser,text){
 }
 function spawnAlpha(code,user){
   if(!G)return;
-  const b=findOrSpawnPriorityFlag(user,code);
+  const b=findOrSpawnPriorityFlag(user,code,'legacy-alpha');
   if(!b)return;
   setPriorityAlpha(b,'legacy-alpha');
   applyPriorityProtection(b);
@@ -2567,6 +2636,7 @@ function kill(b,cause){
   }
   const was=G.balls.filter(x=>x.alive).length;
   b.alive=false;G.dead.push({c:b.c,user:b.user,bracketEntry:b.bracketEntry||null});
+  if(b.normalOwned && currentChatUsers.get(userKey(b.user))===b) currentChatUsers.delete(userKey(b.user));
   /* A completed ten-message Revival charge may be waiting for this flag. */
   const revivalKey=abilityKey(b.user,b.c.code,'revive');
   if((pendingRevivalTokens[revivalKey]||0)>0 && revivalUses<MAX_CHAT_REVIVALS){
