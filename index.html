@@ -2382,14 +2382,11 @@ function addPriorityBall(user,code){
 }
 function findOrSpawnPriorityFlag(user,code){
   if(!G||!code)return null;
-  const uk=userKey(user),cc=String(code).toUpperCase();
-  /* First reuse the exact user's existing flag, then an existing custom flag,
-     then the normal country flag. This prevents duplicate same-country balls. */
-  let b=G.balls.find(x=>x.alive&&userKey(x.user)===uk&&x.c.code===cc);
-  if(!b)b=G.balls.find(x=>x.alive&&x.c.code===cc&&x.custom);
-  if(!b)b=G.balls.find(x=>x.alive&&x.c.code===cc);
-  if(!b)b=addPriorityBall(user,cc);
-  return b||null;
+  const cc=String(code).toUpperCase();
+  /* CRITICAL: priority rewards ALWAYS create a NEW flag for the triggering user.
+     Never upgrade/reuse an existing country flag, even when the same country is
+     already in the Arena. The existing flag must remain completely untouched. */
+  return addPriorityBall(user,cc);
 }
 function triggerPriorityEvent(ev,parsed){
   if(!G||G.phase==='WINNER'||G.phase==='PODIUM'||G.phase==='LEADERBOARD')return false;
