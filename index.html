@@ -2351,20 +2351,44 @@ function armPriorityWeapons(b,mode){
 function applyPriorityProtection(b){
   if(!b||!G)return;
   const now=G.t/1000;
+  /* Super Chat/Super Sticker gets one guaranteed elimination save for up to 10s. */
   b.shield=true;
-  b.shieldUntil=Math.min(now+PRIORITY_FLAG_DURATION,b.priorityUntil||now+PRIORITY_FLAG_DURATION);
+  b.shieldUntil=Math.max(now+PRIORITY_FLAG_DURATION,b.shieldUntil||0);
+  if(b.priorityUntil>0)b.shieldUntil=Math.min(b.shieldUntil,b.priorityUntil);
+}
+function addPriorityBall(user,code){
+  /* Paid priority spawns are NOT ordinary chat slots. They must still respect
+     the real arena capacity, but the 32 normal chat-entry cap must never block
+     a Super Chat/Super Sticker reward. */
+  if(!G||!code)return null;
+  if(G.balls.filter(x=>x.alive).length>=MAX_FLAGS)return null;
+  const uk=userKey(user),c=COUNTRIES.find(x=>x.code===String(code).toUpperCase());
+  if(!c)return null;
+  let x,y,tries=0;
+  const rMax=CFG.ARENA_R-CFG.BALL_R-12;
+  do{
+    const a=rnd(0,Math.PI*2),r=Math.sqrt(rnd(.05,1))*rMax;
+    x=Math.cos(a)*r;y=Math.sin(a)*r;tries++;
+  }while(tries<300 && G.balls.some(b=>b.alive&&Math.hypot(b.x-x,b.y-y)<CFG.BALL_R*2+3));
+  const b={c,user:String(user||'viewer'),custom:true,prioritySpawn:true,x,y,
+    vx:Math.cos(rnd(0,Math.PI*2))*CFG.BALL_SPEED,
+    vy:Math.sin(rnd(0,Math.PI*2))*CFG.BALL_SPEED,
+    alive:true,shield:false,r:CFG.BALL_R,level:1,hitCool:0,weaponFlash:0,weaponRecoil:0,
+    specialUntil:0,specialKind:null,frozenUntil:0,sniperShots:0,shotgunShots:0,
+    sniperPellets:1,shotgunPellets:2,fuse:0,sniperUntil:0,shotgunUntil:0,swordUntil:0,
+    weaponAngle:0,priorityUntil:0,priorityMode:'',priorityBaseLevel:1,priorityBaseScale:1};
+  G.balls.push(b);
+  return b;
 }
 function findOrSpawnPriorityFlag(user,code){
   if(!G||!code)return null;
   const uk=userKey(user),cc=String(code).toUpperCase();
+  /* First reuse the exact user's existing flag, then an existing custom flag,
+     then the normal country flag. This prevents duplicate same-country balls. */
   let b=G.balls.find(x=>x.alive&&userKey(x.user)===uk&&x.c.code===cc);
   if(!b)b=G.balls.find(x=>x.alive&&x.c.code===cc&&x.custom);
   if(!b)b=G.balls.find(x=>x.alive&&x.c.code===cc);
-  if(!b){
-    if(G.balls.filter(x=>x.alive).length>=MAX_FLAGS)return null;
-    if(!addChatBall(user,cc,false))return null;
-    b=G.balls[G.balls.length-1];
-  }
+  if(!b)b=addPriorityBall(user,cc);
   return b||null;
 }
 function triggerPriorityEvent(ev,parsed){
@@ -2535,11 +2559,14 @@ function startEnhancedRound(){
 const oldKill=kill, oldStep=step;
 function kill(b,cause){
   if(!b||!b.alive)return;
-  /* Equipment effects are independent eliminators. The gate/opening is only one cause.
-     Therefore only a gate/rim kill contributes to the current opening's kill quota. */
+  /* A shield is a one-hit elimination save, regardless of whether the lethal
+     cause is the hole, an equipment effect, or another kill path. */
   const gateCause = !cause || cause==='rim' || cause==='hole';
-  if(b.shield && gateCause){
-    b.shield=false;b.shieldUntil=0;showBanner('SHIELD HELD · '+b.c.name,PAL.shield);SFX.shield();return;
+  if(b.shield && b.shieldUntil>(G.t/1000)){
+    b.shield=false;b.shieldUntil=0;showBanner('SHIELD HELD · '+b.c.name,PAL.shield);SFX.shield();
+    floaters.push({x:b.x,y:b.y-26,t:.7,text:'SHIELD SAVED',c:'#57e6ff'});
+    if(gateCause && G.phase==='OPEN')beginClosing();
+    return;
   }
   const was=G.balls.filter(x=>x.alive).length;
   b.alive=false;G.dead.push({c:b.c,user:b.user,bracketEntry:b.bracketEntry||null});
