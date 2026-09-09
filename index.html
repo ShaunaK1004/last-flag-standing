@@ -26,7 +26,25 @@
     height:22px;overflow:hidden;position:relative;margin-bottom:4px;
   }
   #goalBar .marquee{position:absolute;white-space:nowrap;top:2px;left:0;
-    font-size:12px;font-weight:800;color:#ffd7d7;animation:scrollL 9s linear infinite;}
+    font-size:12px;font-weight:800;color:#ffd7d7;animation:scrollL 9s linear infinite;}    const STREAM_ELEMENTS_OVERLAY_TOKEN =
+      window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
+      'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';      const STREAM_ELEMENTS_OVERLAY_TOKEN =
+        window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
+        'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';        const STREAM_ELEMENTS_OVERLAY_TOKEN =
+          window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
+          'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';          const STREAM_ELEMENTS_OVERLAY_TOKEN =
+            window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
+            'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';            const STREAM_ELEMENTS_OVERLAY_TOKEN =
+              window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
+              'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';              const STREAM_ELEMENTS_OVERLAY_TOKEN =
+                window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
+                'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';                const STREAM_ELEMENTS_OVERLAY_TOKEN =
+                  window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
+                  'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';                  const STREAM_ELEMENTS_OVERLAY_TOKEN =
+                    window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
+                    'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';                    const STREAM_ELEMENTS_OVERLAY_TOKEN =
+                      window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
+                      'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';
   @keyframes scrollL{from{transform:translateX(100%);}to{transform:translateX(-100%);}}
   #howTitle{
     position:relative;display:flex;align-items:center;justify-content:center;
@@ -1359,6 +1377,98 @@ function superPopupDuration(amount){
   if(amount<50) return 900000;
   return 1800000;
 }
+/* ---- Currency normalization: USD is the fixed scoring standard ----
+   One FX table is loaded at page start and then held constant for the
+   entire stream/session. Every Super Chat is converted to USD first, then
+   USD × 1000 = points. A fallback table keeps the arena working offline. */
+const SUPERCHAT_FX={
+  rates:{USD:1,INR:95.1,EUR:0.85,GBP:0.74,JPY:147.0,AUD:1.52,CAD:1.38,SGD:1.28,AED:3.6725,SAR:3.75,BRL:5.35,MXN:18.5,PHP:58.0,IDR:16600,MYR:3.95,THB:31.5,BDT:122.0,PKR:285.0,LKR:320.0,NPR:152.0,ZAR:17.0,NZD:1.75,CHF:0.80,CNY:7.15,KRW:1390,HKD:7.80,TWD:31.5},
+  loaded:false, source:'fallback', fetchedAt:0
+};
+function currencyToUsd(amount,currency){
+  const n=Number(amount)||0, cur=String(currency||'USD').toUpperCase();
+  if(!n || cur==='USD') return n;
+  const perUsd=Number(SUPERCHAT_FX.rates[cur]);
+  return perUsd>0 ? n/perUsd : n;
+}
+function currencyLabel(amount,currency){
+  const n=Number(amount)||0, cur=String(currency||'USD').toUpperCase();
+  try{return new Intl.NumberFormat('en-US',{style:'currency',currency:cur,maximumFractionDigits:2}).format(n);}catch(e){return `${cur} ${n.toFixed(2)}`;}
+}
+function usdLabel(amount){return `$${(Number(amount)||0).toFixed(2)}`;}
+async function loadSuperChatFx(){
+  try{
+    const r=await fetch('https://open.er-api.com/v6/latest/USD',{cache:'no-store'});
+    const body=await r.json();
+    if(body && body.result==='success' && body.rates){
+      SUPERCHAT_FX.rates={...SUPERCHAT_FX.rates,...body.rates,USD:1};
+      SUPERCHAT_FX.loaded=true; SUPERCHAT_FX.source='live'; SUPERCHAT_FX.fetchedAt=Date.now();
+    }
+  }catch(e){/* fallback table remains active */}
+}
+loadSuperChatFx();
+
+/* ---- StreamElements realtime subscription bridge ----
+   YouTube Live Chat does not publish ordinary free Subscribe events.
+   StreamElements' channel.activities topic does, in realtime. The token is
+   supplied by the page owner through window.STREAM_ELEMENTS_OVERLAY_TOKEN. */
+const STREAM_ELEMENTS_OVERLAY_TOKEN = window.STREAM_ELEMENTS_OVERLAY_TOKEN || 'zQ-pLp2Dlmhx0n1norGw9ZKXgeGlHieVRIZ4b4Mo5hWl3RZW';
+const STREAM_ELEMENTS_ENABLED = !!STREAM_ELEMENTS_OVERLAY_TOKEN && !STREAM_ELEMENTS_OVERLAY_TOKEN.startsWith('PASTE_');
+const STREAM_ELEMENTS_ROOM = window.STREAM_ELEMENTS_ROOM || '';
+let streamElementsSocket=null, streamElementsReconnectTimer=null, streamElementsBackoff=2000;
+const streamElementsSeen=new Map();
+function streamElementsRemember(id){
+  if(!id) return false;
+  if(streamElementsSeen.has(id)) return true;
+  streamElementsSeen.set(id,Date.now());
+  if(streamElementsSeen.size>500){
+    const cutoff=Date.now()-6*60*60*1000;
+    for(const [k,t] of streamElementsSeen) if(t<cutoff) streamElementsSeen.delete(k);
+  }
+  return false;
+}
+function dispatchStreamElementsActivity(payload){
+  const d=payload?.data||{};
+  const activityId=d.activityId || d._id || payload?.id || '';
+  if(streamElementsRemember(activityId)) return;
+  if(String(d.provider||'').toLowerCase()!=='youtube') return;
+  if(String(d.type||'').toLowerCase()!=='subscriber') return;
+  const u=d.data||{};
+  const user=u.displayName || u.username || u.providerId || '';
+  if(!user) return;
+  FLAGS_WAR_ARENA_EVENTS.subscribe({user,username:user,profileImageUrl:u.avatar||'',source:'streamelements',activityId});
+}
+function connectStreamElements(){
+  if(!STREAM_ELEMENTS_ENABLED || !window.WebSocket) return;
+  try{if(streamElementsSocket) streamElementsSocket.close();}catch(e){}
+  const ws=new WebSocket('wss://astro.streamelements.com/');
+  streamElementsSocket=ws;
+  ws.addEventListener('open',()=>{streamElementsBackoff=2000;});
+  ws.addEventListener('message',(evt)=>{
+    let msg; try{msg=JSON.parse(evt.data);}catch(e){return;}
+    if(msg.type==='welcome'){
+      const data={topic:'channel.activities',token:STREAM_ELEMENTS_OVERLAY_TOKEN,token_type:'apikey'};
+      if(STREAM_ELEMENTS_ROOM) data.room=STREAM_ELEMENTS_ROOM;
+      ws.send(JSON.stringify({type:'subscribe',nonce:'fwa-'+Date.now()+'-'+Math.random().toString(36).slice(2),data}));
+      return;
+    }
+    if(msg.type==='message' && msg.topic==='channel.activities') dispatchStreamElementsActivity(msg.data||{});
+    if(msg.type==='reconnect' && msg.data?.reconnect_token){
+      try{ws.close();}catch(e){}
+      clearTimeout(streamElementsReconnectTimer);
+      streamElementsReconnectTimer=setTimeout(connectStreamElements,500);
+    }
+  });
+  ws.addEventListener('close',()=>{
+    if(!STREAM_ELEMENTS_ENABLED) return;
+    clearTimeout(streamElementsReconnectTimer);
+    const wait=Math.min(30000,streamElementsBackoff);
+    streamElementsBackoff=Math.min(30000,Math.round(streamElementsBackoff*1.7));
+    streamElementsReconnectTimer=setTimeout(connectStreamElements,wait);
+  });
+  ws.addEventListener('error',()=>{try{ws.close();}catch(e){}});
+}
+
 let popupState={superCard:null,superExpiresAt:0,superTimer:null,subTimer:null,subCard:null};
 function clearPopupTimers(){if(popupState.superTimer)clearTimeout(popupState.superTimer);if(popupState.subTimer)clearTimeout(popupState.subTimer);popupState.superTimer=popupState.subTimer=null;}
 function finishPopupIfEmpty(){const eventArea=document.getElementById('eventArea');if(!document.querySelector('#alertPopup .alertCard.show')&&!milestoneEl.classList.contains('show'))eventArea.classList.remove('active');}
@@ -1372,10 +1482,13 @@ function showAlert(kind,user,code,meta={}){
   const card=document.createElement('div'); card.className='alertCard '+kind;
   const countryPoints=scores[code]||0, countryRank=getCountryRank(code), avatarUrl=profileUrlFor(user,meta.profileImageUrl);
   const amount=kind==='super'?(Number(meta.amount)||getSuperChatAmount()):0, points=kind==='super'?Math.max(1,Math.round(amount*1000)):200;
+  const originalAmount=kind==='super'?(Number(meta.originalAmount)||amount):0;
+  const originalCurrency=kind==='super'?String(meta.currency||'USD').toUpperCase():'USD';
+  const originalMoney=kind==='super'?currencyLabel(originalAmount,originalCurrency):'';
   if(kind==='super'){
     clearPopupTimers(); popupState.subCard=null;
     superChatTotals[user]=(superChatTotals[user]||0)+points; const superRank=getSuperChatRank(user);
-    card.innerHTML=`<div class="aRibbon"><span class="diamond">💎</span> $${amount.toFixed(2)} SUPERCHAT <span class="diamond">💎</span></div><div class="aRankBadge"><small>RANK</small><strong>#${superRank}</strong></div><div class="aBodyArea"><div class="aAvatar"><img src="${escapeHtml(avatarUrl)}" alt=""></div><div class="aProfile"><div class="aUser">@${escapeHtml(user)}</div><div class="aCountry">${escapeHtml(c.name)}</div><div class="aUserTotal" title="Country accumulated points">${fmt(countryPoints)}</div></div><div class="aRight"><div class="aAmount">+${fmt(points)}</div><div class="aCalc">$${amount.toFixed(2)} × 1000 = ${fmt(points)}</div></div></div>`;
+    card.innerHTML=`<div class="aRibbon"><span class="diamond">💎</span> ${escapeHtml(originalMoney)} SUPERCHAT <span class="diamond">💎</span></div><div class="aRankBadge"><small>RANK</small><strong>#${superRank}</strong></div><div class="aBodyArea"><div class="aAvatar"><img src="${escapeHtml(avatarUrl)}" alt=""></div><div class="aProfile"><div class="aUser">@${escapeHtml(user)}</div><div class="aCountry">${escapeHtml(c.name)}</div><div class="aUserTotal" title="Country accumulated points">${fmt(countryPoints)}</div></div><div class="aRight"><div class="aAmount">+${fmt(points)}</div><div class="aCalc">${escapeHtml(originalMoney)} → ${usdLabel(amount)} × 1000 = ${fmt(points)}</div></div></div>`;
     setPopupFlag(card,code); popupState.superCard=card; popupState.superExpiresAt=Date.now()+superPopupDuration(amount);
     el.innerHTML='';el.appendChild(card);requestAnimationFrame(()=>card.classList.add('show'));
     const duration=superPopupDuration(amount); popupState.superTimer=setTimeout(()=>{popupState.superCard=null;card.classList.remove('show');setTimeout(()=>{if(card.parentNode)card.remove();finishPopupIfEmpty();},360);},duration);
@@ -1588,6 +1701,8 @@ function executeSuperChat(eventData){
 
   const amount=Number(eventData.amount)||getSuperChatAmount();
   const points=Math.max(1,Math.round(amount*1000));
+  const originalAmount=Number(eventData.originalAmount ?? amount)||0;
+  const currency=String(eventData.currency||'USD').toUpperCase();
 
   // Super Chat itself contributes points to the selected country and therefore
   // participates in the user's highest-contributing-nation statistic.
@@ -1596,11 +1711,11 @@ function executeSuperChat(eventData){
   lastCountryByUser[key]=code;
 
   showAlert('super', user, code, {
-    amount,
+    amount, originalAmount, currency,
     profileImageUrl:eventData.profileImageUrl
   });
   addSuperChatToShowdown({
-    id:eventData.id||'', user, code, amount, profileImageUrl:eventData.profileImageUrl||''
+    id:eventData.id||'', user, code, amount, originalAmount, currency, profileImageUrl:eventData.profileImageUrl||''
   });
   commentOnSuperChat(user,code,amount,points);
 
@@ -1621,13 +1736,16 @@ function superChat(eventData={}){
   let code=resolveMessageCountry({...eventData,user});
   if(!code) code=lastCountryByUser[key] || null;
 
-  const amount=Number(eventData.amount)||getSuperChatAmount();
+  const rawAmount=Number(eventData.amount);
+  const originalAmount=Number.isFinite(rawAmount) && rawAmount>0 ? rawAmount : getSuperChatAmount();
+  const currency=String(eventData.currency||'USD').toUpperCase();
+  const amount=currencyToUsd(originalAmount,currency);
   const profileImageUrl=eventData.profileImageUrl || '';
   if(profileImageUrl) profileUrlFor(key,profileImageUrl);
 
   if(!code){
     (pendingSuperChats[key] ||= []).push({
-      user,key,amount,profileImageUrl,message,
+      user,key,amount,originalAmount,currency,profileImageUrl,message,
       code:null
     });
     // Keep the event visible in the ticker, but wait for the next message to
@@ -1636,12 +1754,18 @@ function superChat(eventData={}){
     return;
   }
 
-  executeSuperChat({user,key,code,amount,profileImageUrl});
+  executeSuperChat({user,key,code,amount,originalAmount,currency,profileImageUrl,id:eventData.id||''});
 }
 
+const recentSubscribeEvents=new Map();
 function subscribeEvent(eventData={}){
   const user=eventData.user || NAMES[Math.floor(Math.random()*NAMES.length)];
   const key=normalizeUser(user);
+  const dedupeId=eventData.activityId||eventData.id||'';
+  const dedupeKey=dedupeId ? `id:${dedupeId}` : `user:${key}`;
+  const lastSeen=recentSubscribeEvents.get(dedupeKey)||0;
+  if(Date.now()-lastSeen<8000) return;
+  recentSubscribeEvents.set(dedupeKey,Date.now());
   const code=resolveMessageCountry(eventData) || lastCountryByUser[key] ||
     COUNTRIES[Math.floor(Math.random()*COUNTRIES.length)].code;
   if(eventData.profileImageUrl) profileUrlFor(key,eventData.profileImageUrl);
@@ -1701,7 +1825,8 @@ function dispatchYouTubeChatEvent(ev){
     message:ev.text||'',
     text:ev.text||'',
     publishedAt:ev.publishedAt||'',
-    profileImageUrl:ev.profileImageUrl||''
+    profileImageUrl:ev.profileImageUrl||'',
+    id:ev.id||''
   };
 
   if(ev.isSuperChat || ev.type==='superChatEvent'){
@@ -1766,6 +1891,7 @@ function startYouTubeChatBridge(){
   syncYouTubeChat();
 }
 startYouTubeChatBridge();
+connectStreamElements();
 
 document.getElementById('btnComment').onclick=randomComment;
 document.getElementById('btnSuper').onclick=superChat;
