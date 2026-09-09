@@ -26,25 +26,7 @@
     height:22px;overflow:hidden;position:relative;margin-bottom:4px;
   }
   #goalBar .marquee{position:absolute;white-space:nowrap;top:2px;left:0;
-    font-size:12px;font-weight:800;color:#ffd7d7;animation:scrollL 9s linear infinite;}    const STREAM_ELEMENTS_OVERLAY_TOKEN =
-      window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
-      'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';      const STREAM_ELEMENTS_OVERLAY_TOKEN =
-        window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
-        'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';        const STREAM_ELEMENTS_OVERLAY_TOKEN =
-          window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
-          'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';          const STREAM_ELEMENTS_OVERLAY_TOKEN =
-            window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
-            'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';            const STREAM_ELEMENTS_OVERLAY_TOKEN =
-              window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
-              'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';              const STREAM_ELEMENTS_OVERLAY_TOKEN =
-                window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
-                'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';                const STREAM_ELEMENTS_OVERLAY_TOKEN =
-                  window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
-                  'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';                  const STREAM_ELEMENTS_OVERLAY_TOKEN =
-                    window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
-                    'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';                    const STREAM_ELEMENTS_OVERLAY_TOKEN =
-                      window.STREAM_ELEMENTS_OVERLAY_TOKEN ||
-                      'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';
+    font-size:12px;font-weight:800;color:#ffd7d7;animation:scrollL 9s linear infinite;}
   @keyframes scrollL{from{transform:translateX(100%);}to{transform:translateX(-100%);}}
   #howTitle{
     position:relative;display:flex;align-items:center;justify-content:center;
@@ -526,6 +508,14 @@
 .azureVoicePanel{display:none;grid-column:1/-1;background:rgba(7,12,24,.96);border:1px solid rgba(0,220,255,.35);border-radius:12px;padding:10px;box-shadow:0 0 24px rgba(0,180,255,.12)}
 .azureVoicePanel.open{display:block}.azureVoiceHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:#dff8ff}.azureVoiceHead span{font-size:11px;color:#8feaff}.azureConfigRow{display:flex;gap:7px;flex-wrap:wrap}.azureConfigRow input{background:#080d18;color:#fff;border:1px solid #29405a;border-radius:7px;padding:7px 9px;min-width:180px}.azureConfigRow input:first-child{flex:1}.azureConfigRow button{padding:7px 11px}.azureNote{font-size:10px;color:#8d9aaa;margin:7px 0}.voiceGroups{display:grid;grid-template-columns:1fr 1fr;gap:10px}.voiceGroupTitle{font-size:10px;letter-spacing:1px;color:#8feaff;margin:4px 0}.voiceButtons{display:flex;flex-wrap:wrap;gap:6px}.voiceChoice{font-size:11px!important;padding:6px 9px!important;border:1px solid #26384c!important;background:#101827!important;color:#c9d6e4!important;border-radius:8px!important}.voiceChoice.selected{border-color:#00d9ff!important;background:linear-gradient(135deg,#07364a,#12243b)!important;color:#fff!important;box-shadow:0 0 12px rgba(0,217,255,.22)}
 @media(max-width:700px){#howTitle{font-size:12px;padding-left:6px;padding-right:6px}.voiceGroups{grid-template-columns:1fr}.azureConfigRow input{min-width:130px}}
+
+/* Temporary OBS-only connection diagnostics. Hidden unless ?debug=1 is added. */
+#arenaDebugPanel{display:none;position:fixed;left:12px;bottom:12px;z-index:99999;width:310px;padding:12px 14px;border:1px solid rgba(80,220,255,.55);border-radius:12px;background:rgba(5,10,18,.92);box-shadow:0 0 18px rgba(0,210,255,.18);font:600 12px/1.45 Arial,sans-serif;color:#eafcff;pointer-events:none}
+#arenaDebugPanel.on{display:block}
+#arenaDebugPanel .dbgTitle{font-size:13px;letter-spacing:.8px;margin-bottom:7px}
+#arenaDebugPanel .dbgRow{display:flex;justify-content:space-between;gap:12px;margin:2px 0}
+#arenaDebugPanel .dbgValue{font-weight:700;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#arenaDebugPanel .good{color:#66ff9a}.warn{color:#ffd166}.bad{color:#ff7070}
 </style>
 <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
 </head>
@@ -1412,9 +1402,39 @@ loadSuperChatFx();
    YouTube Live Chat does not publish ordinary free Subscribe events.
    StreamElements' channel.activities topic does, in realtime. The token is
    supplied by the page owner through window.STREAM_ELEMENTS_OVERLAY_TOKEN. */
-const STREAM_ELEMENTS_OVERLAY_TOKEN = window.STREAM_ELEMENTS_OVERLAY_TOKEN || 'zQ-pLp2Dlmhx0n1norGw9ZKXgeGlHieVRIZ4b4Mo5hWl3RZW';
+const STREAM_ELEMENTS_OVERLAY_TOKEN = window.STREAM_ELEMENTS_OVERLAY_TOKEN || 'PASTE_STREAM_ELEMENTS_OVERLAY_TOKEN_HERE';
 const STREAM_ELEMENTS_ENABLED = !!STREAM_ELEMENTS_OVERLAY_TOKEN && !STREAM_ELEMENTS_OVERLAY_TOKEN.startsWith('PASTE_');
 const STREAM_ELEMENTS_ROOM = window.STREAM_ELEMENTS_ROOM || '';
+
+/* OBS diagnostic panel: ?debug=1 enables it on the SAME arena instance. */
+const FWA_DEBUG_MODE = new URLSearchParams(location.search).get('debug') === '1';
+const arenaDebug = {
+  el:null, status:'STARTING', feed:'WAITING', activity:'Waiting for activity...', subscriber:'—'
+};
+function initArenaDebug(){
+  if(!FWA_DEBUG_MODE) return;
+  const el=document.createElement('div'); el.id='arenaDebugPanel'; el.className='on';
+  el.innerHTML='<div class="dbgTitle">⚡ ARENA CONNECTION STATUS</div><div class="dbgRow"><span>Live Connection</span><span id="dbgConn" class="dbgValue warn">STARTING</span></div><div class="dbgRow"><span>Event Feed</span><span id="dbgFeed" class="dbgValue warn">STARTING</span></div><div class="dbgRow"><span>Latest Activity</span><span id="dbgActivity" class="dbgValue">Waiting...</span></div><div class="dbgRow"><span>Supporter</span><span id="dbgUser" class="dbgValue">—</span></div>';
+  document.body.appendChild(el); arenaDebug.el=el;
+}
+function arenaDebugSet(field,value,cls){
+  if(!FWA_DEBUG_MODE) return;
+  arenaDebug[field]=value; const map={status:'dbgConn',feed:'dbgFeed',activity:'dbgActivity',subscriber:'dbgUser'};
+  const node=document.getElementById(map[field]); if(node){node.textContent=String(value);node.className='dbgValue '+(cls||'');}
+}
+function arenaDebugActivity(msg){
+  if(!FWA_DEBUG_MODE) return;
+  const d=msg?.data||{}; const inner=d?.data||{};
+  const provider=String(d.provider||'').toLowerCase()||'unknown';
+  const type=String(d.type||'').toLowerCase()||'unknown';
+  arenaDebugSet('activity',provider+' / '+type,'');
+  if(provider==='youtube' && type==='subscriber'){
+    const u=inner.displayName||inner.username||inner.providerId||'Unknown';
+    arenaDebugSet('subscriber','@'+u,'good');
+    arenaDebugSet('activity','🟢 NEW SUBSCRIBER','good');
+  }
+}
+if(FWA_DEBUG_MODE) window.addEventListener('DOMContentLoaded',initArenaDebug);
 let streamElementsSocket=null, streamElementsReconnectTimer=null, streamElementsBackoff=2000;
 const streamElementsSeen=new Map();
 function streamElementsRemember(id){
@@ -1443,16 +1463,25 @@ function connectStreamElements(){
   try{if(streamElementsSocket) streamElementsSocket.close();}catch(e){}
   const ws=new WebSocket('wss://astro.streamelements.com/');
   streamElementsSocket=ws;
-  ws.addEventListener('open',()=>{streamElementsBackoff=2000;});
+  ws.addEventListener('open',()=>{streamElementsBackoff=2000;arenaDebugSet('status','ONLINE','good');});
   ws.addEventListener('message',(evt)=>{
     let msg; try{msg=JSON.parse(evt.data);}catch(e){return;}
     if(msg.type==='welcome'){
+      arenaDebugSet('feed','CONNECTING','warn');
       const data={topic:'channel.activities',token:STREAM_ELEMENTS_OVERLAY_TOKEN,token_type:'apikey'};
       if(STREAM_ELEMENTS_ROOM) data.room=STREAM_ELEMENTS_ROOM;
       ws.send(JSON.stringify({type:'subscribe',nonce:'fwa-'+Date.now()+'-'+Math.random().toString(36).slice(2),data}));
       return;
     }
-    if(msg.type==='message' && msg.topic==='channel.activities') dispatchStreamElementsActivity(msg.data||{});
+    if(msg.type==='response'){
+      const ok=String(msg.data?.message||'').toLowerCase().includes('successfully subscribed');
+      if(ok) arenaDebugSet('feed','ACTIVE','good');
+      else if(msg.data?.error) arenaDebugSet('feed','ERROR','bad');
+    }
+    if(msg.type==='message' && msg.topic==='channel.activities'){
+      arenaDebugActivity(msg);
+      dispatchStreamElementsActivity(msg.data||{});
+    }
     if(msg.type==='reconnect' && msg.data?.reconnect_token){
       try{ws.close();}catch(e){}
       clearTimeout(streamElementsReconnectTimer);
@@ -1460,13 +1489,20 @@ function connectStreamElements(){
     }
   });
   ws.addEventListener('close',()=>{
+    arenaDebugSet('status','RECONNECTING','warn');
     if(!STREAM_ELEMENTS_ENABLED) return;
     clearTimeout(streamElementsReconnectTimer);
     const wait=Math.min(30000,streamElementsBackoff);
     streamElementsBackoff=Math.min(30000,Math.round(streamElementsBackoff*1.7));
     streamElementsReconnectTimer=setTimeout(connectStreamElements,wait);
   });
-  ws.addEventListener('error',()=>{try{ws.close();}catch(e){}});
+  ws.addEventListener('error',()=>{arenaDebugSet('status','CONNECTION ERROR','bad');try{ws.close();}catch(e){}});
+}
+
+if(FWA_DEBUG_MODE){
+  setTimeout(()=>{
+    if(!STREAM_ELEMENTS_ENABLED){arenaDebugSet('status','NOT CONFIGURED','bad');arenaDebugSet('feed','INACTIVE','bad');arenaDebugSet('activity','Overlay token missing','bad');}
+  },500);
 }
 
 let popupState={superCard:null,superExpiresAt:0,superTimer:null,subTimer:null,subCard:null};
