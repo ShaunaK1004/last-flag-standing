@@ -190,6 +190,8 @@ async function appendEvents(items, state) {
       seq,
       id: it.id,
       username: author.displayName || author.channelId || 'viewer',
+      channelId: author.channelId || '',
+      profileImageUrl: author.profileImageUrl || '',
       text: sn.displayMessage || (sn.textMessageDetails && sn.textMessageDetails.messageText) || '',
       publishedAt: sn.publishedAt || new Date().toISOString(),
       type,
