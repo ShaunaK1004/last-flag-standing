@@ -181,32 +181,12 @@ async function appendEvents(items, state) {
     seq = Number(await redis('INCR', K.seq));
     const sn = it.snippet || {};
     const author = it.authorDetails || {};
-    const type = sn.type || '';
-    const superChat = sn.superChatDetails || null;
-    const superSticker = sn.superStickerDetails || null;
-    const newSponsor = sn.newSponsorDetails || null;
-    const milestone = sn.memberMilestoneChatDetails || null;
     const event = {
       seq,
       id: it.id,
       username: author.displayName || author.channelId || 'viewer',
       text: sn.displayMessage || (sn.textMessageDetails && sn.textMessageDetails.messageText) || '',
-      publishedAt: sn.publishedAt || new Date().toISOString(),
-      type,
-      isMember: !!author.isChatSponsor,
-      isModerator: !!author.isChatModerator,
-      isOwner: !!author.isChatOwner,
-      isVerified: !!author.isVerified,
-      isSuperChat: type === 'superChatEvent',
-      isSuperSticker: type === 'superStickerEvent',
-      isMembershipEvent: type === 'newSponsorEvent' || type === 'memberMilestoneChatEvent' || type === 'membershipGiftingEvent' || type === 'giftMembershipReceivedEvent' || type === 'giftEvent',
-      superChatAmountMicros: superChat?.amountMicros ?? null,
-      superChatAmountDisplay: superChat?.amountDisplayString ?? null,
-      superChatCurrency: superChat?.currency ?? null,
-      superStickerId: superSticker?.stickerId ?? null,
-      superStickerAltText: superSticker?.altText ?? null,
-      memberLevelName: newSponsor?.memberLevelName || milestone?.memberLevelName || null,
-      memberMonths: milestone?.memberMonth ?? null
+      publishedAt: sn.publishedAt || new Date().toISOString()
     };
     // LPUSH means newest event is at index 0.
     await redis('LPUSH', K.events, JSON.stringify(event));
