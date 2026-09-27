@@ -20,7 +20,8 @@
   to. Everything an operator needs (expressions, skin, background) lives in a panel
   that is laid out as a flex SIBLING of the canvas, starting at x=1080 CSS px. Point
   an OBS Browser Source at this file with Width=1080, Height=1920 and its own
-  render viewport is exactly the arena - the panel sits past the right edge of that
+  render viewport is exactly the arena (or Width=1500 + Transform crop-right 420 to
+  keep the panel reachable through OBS 'Interact') - the panel sits past the right edge of that
   viewport and is never composited into the source, no matter its open/closed
   state. Opening this same file in a normal, wider browser tab (to configure a
   stream before going live) shows the full-width panel normally, immediately right
@@ -53,7 +54,17 @@
   #gearBtn{background:#1c2350;color:#dfe6ff;border:1px solid #3a468f;border-radius:8px;
     padding:6px 10px;cursor:pointer;font-size:16px;line-height:1}
   #gearBtn:hover{background:#26307a}
-  #panelBody{padding:14px 16px 40px}
+  #panelBody{padding:14px 16px 16px;flex:1 1 auto;overflow-y:auto}
+  #panel{position:sticky;top:0;height:calc(100vh / 1.25);display:flex;flex-direction:column;zoom:1.25}   /* 336px drawn at 420px: bigger targets in OBS Interact */
+  #panelTabs{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:10px 10px 0;background:#0e1330;border-bottom:2px solid #2a3364;flex:none}
+  #panelTabs button{display:flex;flex-direction:column;align-items:center;gap:2px;background:#161c40;color:#aab6e8;border:1px solid #333e80;border-bottom:none;
+    border-radius:9px 9px 0 0;padding:8px 2px 7px;font-size:17px;cursor:pointer;line-height:1}
+  #panelTabs button span{font-size:11px;font-weight:700;letter-spacing:.04em}
+  #panelTabs button.on{background:#f5c23b;color:#221a06;border-color:#f5c23b}
+  #panelPager{display:flex;gap:6px;padding:10px 16px 14px;border-top:1px solid #232c5c;flex:none;background:#0a0e20}
+  #panelPager button{flex:1;background:#1c2350;color:#dfe6ff;border:1px solid #3a468f;border-radius:8px;padding:9px;cursor:pointer;font-size:13px}
+  #panelPager span{flex:1.2;align-self:center;text-align:center;font-size:12px;color:#8792bd}
+  #panel.collapsed #panelTabs,#panel.collapsed #panelPager{display:none}
   #panelBody.collapsed{display:none}
   .pgroup{margin-bottom:20px;border:1px solid #232c5c;border-radius:12px;padding:12px;background:#0e1330}
   .pgroup h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#8ea0e6;margin:0 0 10px}
@@ -78,9 +89,12 @@
 <div id="wrap"><canvas id="c" width="1080" height="1920"></canvas></div>
 <div id="panel">
   <div id="panelHead"><h1>⚙ OPERATOR PANEL</h1><button id="gearBtn" title="Collapse/expand">▾</button></div>
-  <div id="panelBody">
+<div id="panelTabs">
+    <button data-tab="arena">🏟️<span>Arena</span></button><button data-tab="hud">🖥️<span>HUD</span></button><button data-tab="text">✏️<span>Text</span></button><button data-tab="balls">🙂<span>Balls</span></button><button data-tab="voice">🎙️<span>Voice</span></button>
+  </div>
+    <div id="panelBody">
 
-    <div class="pgroup">
+    <div class="pgroup" data-page="arena">
       <h2>Arena Theme</h2>
       <div class="seg" id="segTheme" style="flex-wrap:wrap">
         <button data-v="grass">Grass</button>
@@ -92,20 +106,20 @@
       <div class="hint">Swaps the ring border and the field inside it together — grass, cracked ice, molten lava, wind-blown desert, or a spiral-galaxy cosmic pitch. Purely cosmetic; the physics and hole size never change.</div>
     </div>
 
-    <div class="pgroup">
+    <div class="pgroup" data-page="hud">
       <h2>HUD Style <span style="color:#8792bd;font-weight:400">(mix &amp; match)</span></h2>
       <div class="hrow"><span>ALL</span><div class="seg" data-hud="all"><button data-v="royal">Royal</button><button data-v="neon">Neon</button><button data-v="tv">TV</button><button data-v="arcade">Arcade</button><button data-v="glass">Glass</button></div></div><div class="hrow"><span>Header</span><div class="seg" data-hud="header"><button data-v="royal">Royal</button><button data-v="neon">Neon</button><button data-v="tv">TV</button><button data-v="arcade">Arcade</button><button data-v="glass">Glass</button></div></div><div class="hrow"><span>Prompt</span><div class="seg" data-hud="prompt"><button data-v="royal">Royal</button><button data-v="neon">Neon</button><button data-v="tv">TV</button><button data-v="arcade">Arcade</button><button data-v="glass">Glass</button></div></div><div class="hrow"><span>Eliminated</span><div class="seg" data-hud="elim"><button data-v="royal">Royal</button><button data-v="neon">Neon</button><button data-v="tv">TV</button><button data-v="arcade">Arcade</button><button data-v="glass">Glass</button></div></div><div class="hrow"><span>Subscribe</span><div class="seg" data-hud="cta"><button data-v="royal">Royal</button><button data-v="neon">Neon</button><button data-v="tv">TV</button><button data-v="arcade">Arcade</button><button data-v="glass">Glass</button></div></div><div class="hrow"><span>Knockout</span><div class="seg" data-hud="ko"><button data-v="royal">Royal</button><button data-v="neon">Neon</button><button data-v="tv">TV</button><button data-v="arcade">Arcade</button><button data-v="glass">Glass</button></div></div>
       <div class="hint">Each part of the overlay picks its own design. ALL sets every part at once; then change single parts to build a unique combination per channel.</div>
     </div>
 
-    <div class="pgroup">
+    <div class="pgroup" data-page="text">
       <h2>Branding Text</h2>
       <label class="blab">Title — top line<input class="tin" data-brand="t1" maxlength="40"></label><label class="blab">Title — main line<input class="tin" data-brand="t2" maxlength="40"></label><label class="blab">Tagline<input class="tin" data-brand="tag" maxlength="40"></label><label class="blab">Question — line 1<input class="tin" data-brand="q1" maxlength="40"></label><label class="blab">Question — line 2<input class="tin" data-brand="q2" maxlength="40"></label><label class="blab">Eliminated box label<input class="tin" data-brand="elim" maxlength="40"></label><label class="blab">Knockout sticker label<input class="tin" data-brand="ko" maxlength="40"></label><label class="blab">Subscribe bar — main<input class="tin" data-brand="cta" maxlength="40"></label><label class="blab">Subscribe bar — sub line<input class="tin" data-brand="ctaSub" maxlength="40"></label>
       <button class="wide" id="brandReset">Reset text to defaults</button>
       <div class="hint">Changes show live on the stream and are saved in this browser.</div>
     </div>
 
-    <div class="pgroup">
+    <div class="pgroup" data-page="balls">
       <h2>Expressions</h2>
       <div class="seg" id="segFace">
         <button data-v="off">Off</button>
@@ -115,7 +129,7 @@
       <div class="hint">Eyes only = blinking, glancing eyes and eyebrows, no mouth. Full adds the mouth and every reaction: alert near an open hole, terrified in the final seconds, proud with a shield, dizzy on tumble boost, crowned on a win.</div>
     </div>
 
-    <div class="pgroup">
+    <div class="pgroup" data-page="balls">
       <h2>Skin</h2>
       <div class="seg" id="segOutfit">
         <button data-v="off">Off</button>
@@ -125,7 +139,7 @@
       <div class="hint">Classic = one hat per country. Cultural = a fuller look (headwear, drapes, jewellery, props) for countries with one defined, falling back to a classic hat otherwise.</div>
     </div>
 
-    <div class="pgroup">
+    <div class="pgroup" data-page="balls">
       <h2>Motion</h2>
       <div class="seg" id="segMotion">
         <button data-v="still">Still</button>
@@ -134,7 +148,7 @@
       <div class="hint">Lively adds blinking, glancing, breathing squash-and-stretch and floating event icons on top of whatever expression/skin is on.</div>
     </div>
 
-    <div class="pgroup">
+    <div class="pgroup" data-page="arena">
       <h2>Background <span style="color:#8792bd;font-weight:400">(outside the ring)</span></h2>
       <div class="hrow"><div class="seg" id="segBgTop"><button data-v="auto">Auto — match arena</button><button data-v="custom">Custom</button></div></div>
       <div class="hrow"><div class="seg" id="segBg"><button data-v="grass">Grass</button><button data-v="ice">Ice</button><button data-v="lava">Lava</button><button data-v="desert">Desert</button><button data-v="cosmic">Cosmic</button></div></div>
@@ -144,7 +158,7 @@
       <div class="hint">Auto shows each arena's own background. Pick another to cross-match, or upload one (kept in this browser and selected as "Custom"). The five images ship as <code>bg-grass.jpg</code>, <code>bg-ice.jpg</code>, <code>bg-lava.jpg</code>, <code>bg-desert.jpg</code>, <code>bg-cosmic.jpg</code> next to this file; replace any of them on disk to change it permanently.</div>
     </div>
 
-    <div class="pgroup">
+    <div class="pgroup" data-page="voice">
       <h2>Commentary Voice</h2>
       <div class="hint" style="margin-top:0">Works out of the box with your browser's free built-in voice. Optionally connect an Azure Speech key for higher-quality neural voices, then pick one below.</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
@@ -164,6 +178,7 @@
     </div>
 
   </div>
+  <div id="panelPager"><button id="pgPrev">◀ Prev</button><span id="pgLabel"></span><button id="pgNext">Next ▶</button></div>
 </div>
 <!-- Optional: Azure neural voices for commentary. Loaded only for the voice
      picker in the operator panel; the game runs fine (falls back to the
@@ -2967,7 +2982,7 @@ setArenaTheme(ARENA_THEME);
 
 const gearBtn = document.getElementById('gearBtn'), panelBody = document.getElementById('panelBody');
 gearBtn.addEventListener('click', ()=>{
-  panelBody.classList.toggle('collapsed');
+  panelBody.classList.toggle('collapsed'); document.getElementById('panel').classList.toggle('collapsed', panelBody.classList.contains('collapsed'));
   gearBtn.textContent = panelBody.classList.contains('collapsed') ? '▸' : '▾';
 });
 
@@ -3847,6 +3862,26 @@ requestAnimationFrame(frame);
 // --autoplay-policy=no-user-gesture-required, or click once.
 addEventListener('pointerdown',()=>{ ac(); COMMENTARY.start(); });
 addEventListener('keydown',()=>{ ac(); COMMENTARY.start(); });
+
+
+/* ---- operator panel pages: one page visible at a time, so nothing needs scrolling
+   (OBS's Interact window can't scroll the panel). Last page is remembered. ---- */
+(function(){
+  if (typeof document==='undefined' || !document.getElementById('panelTabs')) return;
+  const order=['arena','hud','text','balls','voice'], names={arena:'Arena & Background',hud:'HUD Style',text:'Branding Text',balls:'Balls: Faces & Skins',voice:'Commentary Voice'};
+  let cur='arena'; try{ const s=localStorage.getItem('flagsrumble-panel-page'); if (order.includes(s)) cur=s; }catch(e){}
+  function show(p){
+    cur=p; try{ localStorage.setItem('flagsrumble-panel-page',p); }catch(e){}
+    document.querySelectorAll('#panelBody .pgroup').forEach(g=>{ g.style.display = g.dataset.page===p ? '' : 'none'; });
+    document.querySelectorAll('#panelTabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===p));
+    const i=order.indexOf(p); document.getElementById('pgLabel').textContent=(i+1)+' / '+order.length+' · '+names[p];
+    document.getElementById('panelBody').scrollTop=0;
+  }
+  document.getElementById('panelTabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if (b) show(b.dataset.tab); });
+  document.getElementById('pgPrev').addEventListener('click',()=>show(order[(order.indexOf(cur)+order.length-1)%order.length]));
+  document.getElementById('pgNext').addEventListener('click',()=>show(order[(order.indexOf(cur)+1)%order.length]));
+  show(cur);
+})();
 
 /* Expose for the headless verification harness (verify_sim.js). */
 window.__CBR__ = { get G(){return G;}, CFG, step, tick, newDraw, alive, spokeSegs, COUNTRIES };
