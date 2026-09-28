@@ -159,6 +159,15 @@
     </div>
 
     <div class="pgroup" data-page="voice">
+      <h2>Commentary Pack</h2>
+      <div class="hrow"><div class="seg" id="segPackTop"><button data-v="auto">Auto — match arena</button><button data-v="classic">Classic</button></div></div>
+      <div class="hrow"><div class="seg" id="segPack"><button data-v="hype">Hype</button><button data-v="analyst">Analyst</button><button data-v="arcade">Arcade</button><button data-v="pundit">Pundit</button><button data-v="chill">Chill</button></div></div>
+      <div class="hint" id="packDesc" style="margin-top:4px"></div>
+      <div class="hrow" style="margin-top:10px"><span>Voice</span><div class="seg" id="segVoiceMode"><button data-v="pack">Pack's own voice</button><button data-v="manual">My pick below</button></div></div>
+      <div class="hint">Each pack has its own script, pacing and voice. Auto: Grass → Pundit, Ice → Analyst, Lava → Hype, Desert → Chill, Cosmic → Arcade. Tapping a voice below switches to "My pick".</div>
+    </div>
+
+    <div class="pgroup" data-page="voice">
       <h2>Commentary Voice</h2>
       <div class="hint" style="margin-top:0">Works out of the box with your browser's free built-in voice. Optionally connect an Azure Speech key for higher-quality neural voices, then pick one below.</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
@@ -787,6 +796,7 @@ function setArenaTheme(id){
   try{ localStorage.setItem('flagsrumble-arena-theme', id); }catch(e){}
   document.querySelectorAll('#segTheme button').forEach(b=>b.classList.toggle('on', b.dataset.v===id));
   if (typeof paintBg==='function') try{ paintBg(); }catch(e){}
+  if (typeof paintPack==='function') try{ paintPack(); }catch(e){}
 }
 
 /* screen-wide atmosphere, drawn behind the arena (the opaque floor hides it inside the ring) */
@@ -1240,28 +1250,153 @@ const WINNER_FOLLOWUP = [
   'Wild round, right? Comment if you saw that coming!',
 ];
 
+/* ==========================================================================
+   COMMENTARY PACKS — five presenters, each with its own script AND its own
+   pacing, so two channels never share a sentence or a rhythm. The original
+   pools above survive as the "classic" pack.
+     beat      delay range (ms) between a knockout and its call
+     skip      [aliveAbove, callShare]: while more than aliveAbove remain, only
+               callShare of knockouts get a line (calm presenters let some pass)
+     tenseAt   alive count at which knockout lines switch to the tense pool
+     ms        which alive counts get a milestone call
+     aud       chat-prompt chance per knockout [field>10, field<=10]
+     audDelay / audCool   prompt delay and cooldown ranges (ms)
+     filler    ms of silence before a colour line (0 = never)
+     hole      chance to call the hole opening
+     follow    winner follow-up delay range (ms);  gap: breath between lines (ms)
+     rate/pitch            browser-voice delivery;  ssml: Azure prosody
+     azure/style           default Azure voice + speaking style
+     prefs                 browser-voice name preferences, best first
+   ========================================================================== */
+const PACKS = {
+  hype: { label:'Hype', desc:'Fast and loud. Calls every knockout instantly, prompts chat often, fills every quiet moment.',
+    beat:[0,120], skip:null, tenseAt:20, ms:[48,32,20,10,5,3,2], aud:[0.12,0.2], audDelay:[500,1200], audCool:[16000,24000],
+    filler:7000, hole:0.5, follow:[700,1100], gap:90, rate:1.12, pitch:1.1, ssml:{rate:'+12%',pitch:'+6%'},
+    azure:'en-US-GuyNeural', style:'excited', prefs:[/Microsoft.*(Guy|Davis|Tony|Eric|Mark|David)/i,/(Guy|Mark|David|Alex|Fred)/i,/Google US English/i],
+    elimC:['OH! {name} is GONE!','{name} just got DELETED!','Bye bye, {name}!','Straight down the hole goes {name}!','{name}, eliminated! Next!','No mercy for {name}!','And {name} is outta here!'],
+    elimT:['WHAT A MOMENT! {name} falls!','{name} goes down and the crowd ERUPTS!','Unreal! {name} is knocked out!','{name} gone! The pressure is INSANE!','Can you believe it? {name} is out!','{name} crashes out at the worst time!','HUGE elimination, {name}!'],
+    ms_:['Only {n} nations left, let\u2019s GO!','We are down to {n}! Hands up if you\u2019re still in!','{n} remain and it is getting WILD!','{n} left standing! Turn it UP!'],
+    final2:['THE FINAL TWO! This is what we live for!','Two flags, one crown! HERE WE GO!','It\u2019s a showdown! Final two!'],
+    audience:['Spam your country in chat RIGHT NOW!','Smash that like if your flag is alive!','Chat, who\u2019s taking the crown? Tell me!','Drop a like to power up your nation!','Where you watching from? Let me see those flags!','Hype it up in the comments!','If you\u2019re new, subscribe and pick a country!','Let\u2019s hit that like goal, chat!'],
+    shield:['{name} POWERS UP with a shield!','Shield activated for {name}!','{name} is untouchable right now!','Bubble up! {name} is protected!'],
+    comeback:['{name} IS BACK! NO WAY!','RESURRECTION! {name} returns!','{name} rises from the dead!','The comeback of the century, {name}!'],
+    double:['DOUBLE DRAW! Two go down!','Double trouble, baby!','Two for the price of one!'],
+    tumble:['TUMBLE BOOST! Chaos mode!','Everything is flying!','Boost activated, hold on tight!'],
+    rapid:['RAPID FIRE! Blink and you\u2019ll miss it!','Here come the rapid eliminations!','Speed round! Let\u2019s go!'],
+    holeOpen:['The hole is OPEN!','Watch out, it\u2019s open!','Hole\u2019s open, who\u2019s falling?','Danger zone is live!'],
+    fillerL:['This is intense, chat!','Every ball is fighting for its life!','Who\u2019s your pick? Lock it in!','The energy in here is crazy!','Stay locked in, anything can happen!','Don\u2019t blink, chat!'],
+    winner:['{name} TAKES THE CROWN!','CHAMPION! {name}!','{name} WINS IT ALL!','{name} is the last flag standing! UNREAL!'],
+    followL:['GG chat! Did your country win? Tell me!','What a round! Like if you enjoyed it!','New round coming up, pick your nation now!','Congrats {name} fans! Drop it in chat!'] },
+
+  analyst: { label:'Analyst', desc:'Calm and measured. Lets early knockouts pass, tracks the field in halves, rare prompts, occasional tactical notes.',
+    beat:[300,700], skip:[24,0.55], tenseAt:12, ms:[48,32,16,8,4,2], aud:[0.06,0.1], audDelay:[1500,3000], audCool:[35000,50000],
+    filler:15000, hole:0.12, follow:[1500,2200], gap:350, rate:0.93, pitch:0.97, ssml:{rate:'-6%',pitch:'-2%'},
+    azure:'en-US-JennyNeural', style:'newscast', prefs:[/Microsoft.*(Jenny|Zira|Aria|Sonia|Libby)/i,/(Samantha|Serena|Kate|Susan)/i,/Google UK English Female/i],
+    elimC:['{name} exits the competition.','A quiet departure for {name}.','{name} drifted too close to the centre.','That positioning cost {name}.','{name} leaves the field.','Noted: {name} is out.','{name} could not hold its line.'],
+    elimT:['A significant loss. {name} is out.','{name} falls, and the field tightens.','That changes the picture: {name} eliminated.','{name} goes out at a critical stage.','With {name} gone, the margins get thinner.','An important exit for {name}.','{name}\u2019s campaign concludes here.'],
+    ms_:['{n} nations remain.','The field is now down to {n}.','We have {n} competitors left.','{n} still in contention.'],
+    final2:['Two nations remain. One more draw decides it.','We are down to the final pair.','It comes down to two.'],
+    audience:['Which nation do you expect to win? Share it below.','If you are enjoying the match, a like is appreciated.','Tell us where you are watching from.','Subscribe to follow every round.','Is your country still in contention? Let us know.','Share your prediction in the comments.','Thank you for watching. Tell us your nation.','Consider subscribing for the next tournament.'],
+    shield:['{name} receives a shield.','{name} is protected for now.','A shield for {name}, a real advantage.','{name} gains temporary safety.'],
+    comeback:['{name} returns to the arena.','A rare reprieve. {name} is back.','{name} has been reinstated.','Unexpected: {name} rejoins the field.'],
+    double:['This opening will take two.','A double draw is in effect.','Two nations will leave on this cycle.'],
+    tumble:['A tumble boost increases the speed.','The arena accelerates.','Movement intensifies with the boost.'],
+    rapid:['Rapid fire: shorter intervals ahead.','The cycles will now come quickly.','Expect eliminations in quick succession.'],
+    holeOpen:['The centre opens.','The hole is now open.','Positioning matters now.'],
+    fillerL:['The outer lane has been the safest so far.','Balls near the centre carry the most risk.','Momentum is shifting around the ring.','Patience tends to reward survivors here.','The spokes are redirecting traffic nicely.','A tight, well balanced field this round.'],
+    winner:['{name} is the champion.','{name} wins the tournament.','The final survivor is {name}.','{name} completes the victory.'],
+    followL:['A composed performance. Did you predict it?','That concludes this round. Your thoughts below.','Congratulations to {name}. The next round begins shortly.','Thank you for watching. Let us know your pick for next time.'] },
+
+  arcade: { label:'Arcade', desc:'Retro announcer. Short punchy calls the instant a ball drops, bracket-style counts, loves calling the hole.',
+    beat:[0,80], skip:null, tenseAt:16, ms:[32,16,8,4,2], aud:[0.1,0.14], audDelay:[600,1400], audCool:[20000,28000],
+    filler:9000, hole:0.7, follow:[600,900], gap:60, rate:1.05, pitch:0.82, ssml:{rate:'+6%',pitch:'-10%'},
+    azure:'en-US-DavisNeural', style:'excited', prefs:[/Microsoft.*(Davis|Guy|Mark|David)/i,/(Fred|Daniel|Alex|Mark)/i,/Google US English/i],
+    elimC:['{name}: K.O.!','{name}, game over!','Player {name} eliminated!','{name} loses a life!','{name} drops! Ding!','{name}, no continues left!','{name} has left the stage!'],
+    elimT:['Critical hit! {name} is out!','Fatality! {name} eliminated!','{name}, K.O.! Round getting hot!','Boss level pressure! {name} falls!','{name} out of lives!','Combo breaker! {name} gone!','{name}, defeated!'],
+    ms_:['{n} players remaining!','Stage clear! {n} left!','Level up! {n} survivors!','{n} contenders, next stage!'],
+    final2:['Final round! Fight!','Two players left. Ready? Fight!','Final stage! One life each!'],
+    audience:['Insert a like to continue!','Player chat: enter your country!','Press subscribe for the next level!','High score challenge: comment your nation!','Co-op mode: tell me your team in chat!','Like button equals extra life!','Choose your fighter in the comments!','New challengers welcome. Subscribe!'],
+    shield:['Power up! {name} gets a shield!','{name}, shield equipped!','Invincibility for {name}!','{name} picked up armor!'],
+    comeback:['Continue! {name} is back!','Extra life! {name} returns!','{name} respawns!','One up for {name}!'],
+    double:['Double K.O. incoming!','Two player elimination!','Double draw, bonus stage!'],
+    tumble:['Turbo mode!','Speed boost engaged!','Warp speed!'],
+    rapid:['Rapid mode! Button mash!','Combo round!','Frenzy mode activated!'],
+    holeOpen:['Hole open!','Danger!','Pit is open!','Watch your step!'],
+    fillerL:['Stay in the safe zone!','Dodge! Dodge!','Bonus points for survival!','Keep moving, players!','The crowd goes eight bit!','Level in progress!'],
+    winner:['{name} wins! Flawless!','Winner: {name}!','{name}, high score!','Champion unlocked: {name}!'],
+    followL:['Game over! Insert like to play again!','Enter your initials in chat!','Next game loading!','Congrats {name}! New round in a moment!'] },
+
+  pundit: { label:'Pundit', desc:'British and dry. Measured timing, lets the odd early knockout pass, few milestones, wry asides when it goes quiet.',
+    beat:[150,450], skip:[30,0.75], tenseAt:10, ms:[32,10,5,2], aud:[0.08,0.12], audDelay:[1200,2500], audCool:[28000,40000],
+    filler:11000, hole:0.25, follow:[1100,1700], gap:200, rate:0.98, pitch:0.95, ssml:{rate:'-2%',pitch:'-3%'},
+    azure:'en-GB-RyanNeural', style:'chat', prefs:[/Microsoft.*(Ryan|George|Thomas)/i,/Google UK English Male/i,/(Daniel|Oliver|Arthur)/i,/en[-_]GB/i],
+    elimC:['Oh dear. {name} is out.','{name}, I\u2019m afraid, is off.','And that\u2019s {name} gone, rather tidily.','Bad luck, {name}.','{name} heads for the early train home.','Not {name}\u2019s afternoon.','{name} won\u2019t be troubling us further.'],
+    elimT:['Oh, that\u2019s cruel on {name}.','{name} goes, and you can hear a pin drop.','Dreadful timing for {name}.','{name} out. They\u2019ll be kicking themselves.','Heartbreak for {name} supporters.','That\u2019s a proper blow. {name} eliminated.','{name} undone, almost at the death.'],
+    ms_:['{n} left, and it\u2019s all to play for.','Down to {n}. Nerves are starting to show.','{n} nations remain. Tidy.','{n} still in it. Lovely stuff.'],
+    final2:['Two left. Tea can wait.','The final two. Nerves of steel required.','It\u2019s come down to a pair. Marvellous.'],
+    audience:['Do pop your country in the comments.','If you\u2019re enjoying this, a like would be rather splendid.','Where are we watching from today? Do tell.','Subscribe, and you\u2019ll never miss a round.','Who\u2019s your money on? Comments, please.','A like costs nothing and cheers us up enormously.','Still backing your nation? Good for you. Tell us.','Newcomers, welcome. Pick a flag and settle in.'],
+    shield:['{name} has found a shield. Cheeky.','A spot of protection for {name}.','{name} is safe, for the moment.','Lucky old {name}, shielded.'],
+    comeback:['Well I never. {name} is back!','{name} returns. Remarkable.','Cometh the hour, cometh {name}.','{name}, back from the dead. Extraordinary.'],
+    double:['Two to go this time. Gulp.','A double draw. Brace yourselves.','Twice the heartache coming up.'],
+    tumble:['Tumble boost. It\u2019s gone rather lively.','Everything\u2019s sped up. Hold onto your hats.','Chaos, in the best way.'],
+    rapid:['Rapid fire. No time for a cuppa.','These will come thick and fast.','Quick succession now.'],
+    holeOpen:['And the trapdoor opens.','Here we go, the hole\u2019s open.','Mind the gap.'],
+    fillerL:['Lovely movement around the outside.','Somebody\u2019s playing it very safe in there.','You could cut the tension with a knife.','Proper end to end stuff, this.','I fancy one of the underdogs, personally.','Good, honest, chaotic fun.'],
+    winner:['{name} wins it! Take a bow.','And {name} are champions. Splendid.','{name}, the last one standing. Deserved.','Victory to {name}. Absolutely marvellous.'],
+    followL:['What a contest. Did you call that?','Jolly good round. Next one shortly.','Congratulations to {name}. Tell us your verdict below.','Rather exciting, wasn\u2019t it? A like if you agree.'] },
+
+  chill: { label:'Chill', desc:'Relaxed streamer. Unhurried, lets plenty of early knockouts slide, chats with viewers, gentle colour when quiet.',
+    beat:[250,600], skip:[20,0.65], tenseAt:8, ms:[32,10,3,2], aud:[0.1,0.16], audDelay:[1800,3200], audCool:[24000,36000],
+    filler:13000, hole:0.2, follow:[1300,2000], gap:280, rate:0.9, pitch:1.04, ssml:{rate:'-8%',pitch:'+2%'},
+    azure:'en-US-AriaNeural', style:'friendly', prefs:[/Microsoft.*(Aria|Ava|Emma|Michelle|Natasha)/i,/(Karen|Samantha|Moira|Tessa|Victoria)/i,/(Female|Woman)/i],
+    elimC:['Aw, {name}\u2019s out.','R.I.P. {name}.','{name} fell in, no worries.','Welp, bye {name}.','{name} is taking a break now.','Unlucky, {name}.','And {name} is off to the lobby.'],
+    elimT:['Oof, {name}. That one hurt.','No way, {name} went out.','{name} was so close, too.','Oh man, {name} is gone.','{name}... yeah, that\u2019s rough.','Big loss, {name} out.','Aww, {name} didn\u2019t make it.'],
+    ms_:['{n} left, getting spicy.','Okay, {n} nations still in.','{n} to go, vibes are good.','We\u2019re at {n} now, chill.'],
+    final2:['Last two, okay, okay.','Final two, I\u2019m kinda nervous.','Just two left. Who you got?'],
+    audience:['Hey chat, where you tuning in from?','Drop your country if you\u2019re still here.','A like helps a lot, thanks friends.','Subscribe if you\u2019re vibing with this.','Who are we rooting for, chat?','Just chilling? Tell me your flag.','New friends, welcome in. Pick a country.','Comments are open, say hi.'],
+    shield:['Oh nice, {name} got a shield.','{name} is safe for a sec.','Shield for {name}, lucky.','{name} gets a little bubble.'],
+    comeback:['Wait, {name} is back? Love that.','{name} came back, nice.','Oh hey, {name} returns.','{name} said not today.'],
+    double:['Oh, two at once this time.','Double draw, here we go.','Two are leaving, yikes.'],
+    tumble:['Whoa, things got fast.','Speedy mode, okay.','Boost time, hang on.'],
+    rapid:['Quick rounds now.','Rapid fire, oh boy.','Things are moving quick.'],
+    holeOpen:['Hole\u2019s open.','Here comes the drop.','Okay, it\u2019s open.'],
+    fillerL:['This is kinda relaxing, honestly.','Love the little faces on these.','Chat, how\u2019s your day going?','I\u2019ve got a good feeling about someone.','Just vibing with the flags.','Take a sip of water, friends.'],
+    winner:['{name} wins, congrats!','And {name} takes it, nice.','{name} is the winner, love it.','G G, {name} won.'],
+    followL:['Good round, chat. Who called it?','That was fun. Next one soon.','Congrats {name} fans, see you next round.','Thanks for hanging out, drop a like.'] },
+
+  classic: { label:'Classic', desc:'The original commentary from the previous build, unchanged.',
+    beat:[60,280], skip:null, tenseAt:15, ms:[32,10,5,2], aud:[0.09,0.15], audDelay:[700,2200], audCool:[22000,34000],
+    filler:0, hole:0, follow:[900,1500], gap:150, rate:1.01, pitch:1.08, ssml:null, azure:null, style:null, prefs:null,
+    elimC:ELIM_CASUAL, elimT:ELIM_TENSE, msByN:MILESTONE_LINES, audience:AUDIENCE_LINES, shield:SHIELD_LINES, comeback:COMEBACK_LINES,
+    double:DOUBLE_LINES, tumble:TUMBLE_LINES, rapid:RAPID_LINES, holeOpen:[], fillerL:[], winner:WINNER_LINES, followL:WINNER_FOLLOWUP },
+};
+const PACK_AUTO={ grass:'pundit', ice:'analyst', lava:'hype', desert:'chill', cosmic:'arcade' };
+let PACK_SEL='auto', VOICE_MODE='pack';
+try{ PACK_SEL=localStorage.getItem('flagsrumble-pack')||'auto'; VOICE_MODE=localStorage.getItem('flagsrumble-voice-mode')||'pack'; }catch(e){}
+if (PACK_SEL!=='auto' && !PACKS[PACK_SEL]) PACK_SEL='auto';
+function activePackId(){ return PACK_SEL==='auto' ? (PACK_AUTO[ARENA_THEME]||'pundit') : PACK_SEL; }
+function activePack(){ return PACKS[activePackId()]; }
+function rr(a){ return a[0]+Math.random()*(a[1]-a[0]); }
+
 const COMMENTARY = {
   enabled: true,
   speaking: false,
   queue: [],
-  _elimTimer: null,       // handle for the coalesced "X is out" delay, see elimination()
+  _elimTimer: null,       // handle for the coalesced knockout call, see elimination()
   lastAudience: -999999,
-  audienceCooldown: 28000,             // re-randomised each time, see audience()
-  lastMilestone: 64,
+  audienceCooldown: 28000,
+  lastMilestone: 999,
+  lastSpoke: 0,
   voice: null,
-  _last: {},                            // last-picked index per trigger, so pick() never repeats itself back-to-back
-  // Slightly slower and warmer than the original robotic cadence.
-  rate: 1.01,
-  pitch: 1.08,
+  _pv: {},                // browser voice chosen per pack
+  _last: {},              // last-picked index per pack+trigger, so pick() never repeats itself back-to-back
   volume: 0.92,
   pickVoice(){
     if (!('speechSynthesis' in window)) return;
     const vs = speechSynthesis.getVoices();
     if (!vs.length) return;
-
-    // Prefer clearly female English voices first. Browser voice names differ by OS,
-    // so use several common Windows/Chrome/macOS names before falling back to a
-    // general English voice.
+    this._pv={};
+    // default (manual mode / classic): prefer clearly female English voices, as before
     const female = [
       /Microsoft.*(Zira|Jenny|Aria|Sonia|Ava|Emma|Sara|Michelle|Ana)/i,
       /Google US English/i,
@@ -1269,11 +1404,15 @@ const COMMENTARY = {
       /(Female|Woman)/i
     ];
     const english = vs.filter(v=>/^en[-_]/i.test(v.lang));
-    for (const rx of female){
-      const hit=english.find(v=>rx.test(v.name));
-      if (hit){ this.voice=hit; return; }
-    }
+    for (const rx of female){ const hit=english.find(v=>rx.test(v.name)); if (hit){ this.voice=hit; return; } }
     this.voice = english.find(v=>/US|GB|AU|CA|IN/i.test(v.lang)) || english[0] || vs[0];
+  },
+  browserVoice(P,id){
+    if (VOICE_MODE!=='pack' || !P.prefs || !('speechSynthesis' in window)) return this.voice;
+    if (this._pv[id]!==undefined) return this._pv[id] || this.voice;
+    const english=speechSynthesis.getVoices().filter(v=>/^en[-_]/i.test(v.lang));
+    let hit=null; for (const rx of P.prefs){ hit=english.find(v=>rx.test(v.name)||rx.test(v.lang)); if (hit) break; }
+    this._pv[id]=hit||null; return hit||this.voice;
   },
   start(){
     if (!('speechSynthesis' in window)) return;
@@ -1284,27 +1423,23 @@ const COMMENTARY = {
   },
   say(text, priority=false, kind=null){
     if (!this.enabled || !text) return;
-    // Elimination lines are transient status, not news worth queueing up: a
-    // fresh one replaces whichever older one is still waiting, and any
-    // higher-priority line (milestone/event/comeback/winner) drops a stale
-    // one outright rather than letting it play late after something bigger.
-    if (kind==='elim' || priority) this.queue = this.queue.filter(item=>item.kind!=='elim');
+    // Knockout calls (and hole calls) are transient status: a fresh one replaces an
+    // older one still waiting, and any priority line drops stale ones outright.
+    if (kind==='elim') this.queue = this.queue.filter(item=>item.kind!=='elim');
+    if (priority) this.queue = this.queue.filter(item=>item.kind!=='elim' && item.kind!=='hole');
     const entry={text, kind};
     if (priority) this.queue.unshift(entry); else this.queue.push(entry);
-    // Trim from the BACK (the furthest-off, least urgent backlog) when the queue
-    // overflows. The original build trimmed from the front, which meant a burst
-    // of lines could silently delete the very next thing about to be spoken.
     if (this.queue.length>10) this.queue.length = 10;
     this.flush();
   },
   flush(){
     if (this.speaking || !this.queue.length || !this.enabled) return;
-    const text=this.queue.shift().text;
-    this.speaking=true;
+    const text=this.queue.shift().text, P=activePack();
+    this.speaking=true; this.lastSpoke=performance.now();
     if (typeof AZURE!=='undefined' && AZURE.ready){
       azureSpeak(text, (ok)=>{
-        this.speaking=false;
-        if (ok) { setTimeout(()=>this.flush(),150); return; }
+        this.speaking=false; this.lastSpoke=performance.now();
+        if (ok) { setTimeout(()=>this.flush(),P.gap); return; }
         this.speakBrowser(text);   // Azure failed mid-line: fall back for this one
       });
       return;
@@ -1313,24 +1448,21 @@ const COMMENTARY = {
   },
   speakBrowser(text){
     if (!('speechSynthesis' in window)){ this.speaking=false; return; }
-    const u=new SpeechSynthesisUtterance(text);
-    u.voice=this.voice || undefined;
-    u.rate=this.rate;
-    u.pitch=this.pitch;
-    u.volume=this.volume;
-    // Keep the delivery clean: short breaths/pauses are created naturally by
-    // punctuation instead of chopping every line into separate robotic phrases.
+    const id=activePackId(), P=PACKS[id], u=new SpeechSynthesisUtterance(text);
+    u.voice=this.browserVoice(P,id) || undefined;
+    u.rate=P.rate; u.pitch=P.pitch; u.volume=this.volume;
     this.speaking=true;
-    u.onend=()=>{ this.speaking=false; setTimeout(()=>this.flush(),150); };
-    u.onerror=()=>{ this.speaking=false; setTimeout(()=>this.flush(),180); };
+    u.onend=()=>{ this.speaking=false; this.lastSpoke=performance.now(); setTimeout(()=>this.flush(),P.gap); };
+    u.onerror=()=>{ this.speaking=false; setTimeout(()=>this.flush(),P.gap+30); };
     speechSynthesis.speak(u);
   },
   reset(){
     this.queue.length=0;
     this.speaking=false;
     this.lastAudience=-999999;
-    this.lastMilestone=64;
+    this.lastMilestone=999;
     this._last={};
+    this.lastSpoke=performance.now();
     clearTimeout(this._elimTimer);
     if ('speechSynthesis' in window) speechSynthesis.cancel();
     if (typeof AZURE!=='undefined'){
@@ -1339,68 +1471,69 @@ const COMMENTARY = {
       AZURE.currentSynth=null; AZURE.currentAudio=null;
     }
   },
-  // pick(): random choice from a pool that never repeats the same entry twice
-  // in a row for the same trigger key.
   pick(key, pool){
+    if (!pool || !pool.length) return null;
+    key=activePackId()+':'+key;
     if (pool.length===1) return pool[0];
     let i=Math.floor(Math.random()*pool.length);
     if (this._last[key]===i) i=(i+1+Math.floor(Math.random()*(pool.length-1)))%pool.length;
     this._last[key]=i;
     return pool[i];
   },
-  fill(line,name){ return name ? line.replace('{name}', name) : line; },
-  audience(n){
-    const now=performance.now();
+  fill(line,name,n){ if (!line) return line; if (name) line=line.replace('{name}',name); if (n!==undefined) line=line.replace('{n}',String(n)); return line; },
+  audience(){
+    const P=activePack(), now=performance.now();
     if (now-this.lastAudience<this.audienceCooldown) return;
     this.lastAudience=now;
-    this.audienceCooldown = 22000 + Math.random()*12000;   // 22-34s, randomised each time (was a fixed 28s)
-    this.say(this.pick('audience', AUDIENCE_LINES));
+    this.audienceCooldown = rr(P.audCool);
+    this.say(this.pick('audience', P.audience));
   },
   milestone(n){
-    const hit = (n===32||n===10||n===5||n===2) ? n : null;
-    if (hit && this.lastMilestone>hit){
-      this.lastMilestone=hit;
-      this.say(this.pick('m'+hit, MILESTONE_LINES[hit]), true);
-    }
+    const P=activePack();
+    if (!P.ms.includes(n) || this.lastMilestone<=n) return;
+    this.lastMilestone=n;
+    const pool = P.msByN ? P.msByN[n] : (n===2 ? P.final2 : P.ms_);
+    this.say(this.fill(this.pick('m'+(n===2?2:''), pool), null, n), true);
   },
   elimination(c){
-    const n=alive().length;
+    const P=activePack(), n=alive().length;
     this.milestone(n);   // exact-count check, every kill, never delayed or coalesced
-    // Only ever one elimination line in flight: a fresh kill cancels whatever
-    // older "X is out" line hasn't been spoken yet, rather than queueing behind it.
+    if (P.skip && n>P.skip[0] && Math.random()>P.skip[1]) return;   // calm presenters let some early knockouts pass
     clearTimeout(this._elimTimer);
-    const tense = n<=15;
-    const text = this.fill(this.pick(tense?'elimT':'elimC', tense?ELIM_TENSE:ELIM_CASUAL), c.name);
-    // small randomised beat before speaking, so the line doesn't land in the
-    // exact same instant as the flash/shake/SFX every single time.
-    const beat = 60+Math.random()*220;
+    const tense = n<=P.tenseAt;
+    const text = this.fill(this.pick(tense?'elimT':'elimC', tense?P.elimT:P.elimC), c.name);
     this._elimTimer = setTimeout(()=>{
       this.say(text, false, 'elim');
-      const chance = n>10 ? 0.09 : 0.15;
-      if (Math.random()<chance){
-        const delay = 700 + Math.random()*1500;    // 0.7-2.2s, was a fixed 0.85-1.8s
-        setTimeout(()=>this.audience(n), delay);
-      }
-    }, beat);
+      if (Math.random() < (n>10 ? P.aud[0] : P.aud[1])) setTimeout(()=>this.audience(), rr(P.audDelay));
+    }, rr(P.beat));
   },
-  shield(c){
-    this.say(this.fill(this.pick('shield', SHIELD_LINES), c.name));
+  holeOpen(){
+    const P=activePack();
+    if (!P.hole || Math.random()>=P.hole || this.speaking || this.queue.length) return;
+    this.say(this.pick('hole', P.holeOpen), false, 'hole');
   },
-  comeback(c){
-    this.say(this.fill(this.pick('comeback', COMEBACK_LINES), c.name), true);
+  filler(){
+    const P=activePack();
+    if (!P.filler || !this.enabled || this.speaking || this.queue.length || typeof G==='undefined' || !G || G.phase==='WINNER' || G.phase==='INTRO') return;
+    if (performance.now()-this.lastSpoke < P.filler) return;
+    this.say(this.pick('filler', P.fillerL), false, 'hole');
   },
+  shield(c){ const P=activePack(); this.say(this.fill(this.pick('shield', P.shield), c.name)); },
+  comeback(c){ const P=activePack(); this.say(this.fill(this.pick('comeback', P.comeback), c.name), true); },
   event(type){
-    if (type==='DOUBLE') this.say(this.pick('evDOUBLE', DOUBLE_LINES), true);
-    if (type==='TUMBLE') this.say(this.pick('evTUMBLE', TUMBLE_LINES), true);
-    if (type==='RAPID')  this.say(this.pick('evRAPID', RAPID_LINES), true);
+    const P=activePack();
+    if (type==='DOUBLE') this.say(this.pick('evDOUBLE', P.double), true);
+    if (type==='TUMBLE') this.say(this.pick('evTUMBLE', P.tumble), true);
+    if (type==='RAPID')  this.say(this.pick('evRAPID', P.rapid), true);
   },
   winner(c){
-    this.say(this.fill(this.pick('winA', WINNER_LINES), c.name), true);
-    const delay = 900 + Math.random()*600;          // 0.9-1.5s, was a fixed 1.1s
-    setTimeout(()=>this.say(this.pick('winB', WINNER_FOLLOWUP)), delay);
+    const P=activePack();
+    this.say(this.fill(this.pick('winA', P.winner), c.name), true);
+    setTimeout(()=>this.say(this.fill(this.pick('winB', P.followL), c.name)), rr(P.follow));
   }
 };
 if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged=()=>COMMENTARY.pickVoice();
+setInterval(()=>{ try{ COMMENTARY.filler(); }catch(e){} }, 1000);
 
 /* ---- Azure neural-voice commentary (optional upgrade over the free browser
    voice above). Ported from the reference build's Azure voice-picker system:
@@ -1433,13 +1566,13 @@ function renderVoiceButtons(){
   AZURE_VOICES.forEach(([id,label])=>{
     const b=document.createElement('button');
     b.textContent=label; b.title=id;
-    b.className = id===AZURE.voice ? 'on' : '';
+    b.className = id===(typeof activeAzureVoice==='function' && typeof VOICE_MODE!=='undefined' ? activeAzureVoice() : AZURE.voice) ? 'on' : '';
     b.onclick=()=>selectVoice(id);
     (label.startsWith('♀') ? female : male).appendChild(b);
   });
 }
 function selectVoice(id){
-  AZURE.voice=id;
+  AZURE.voice=id; setVoiceMode('manual');
   localStorage.setItem('flagsRumbleAzureVoice', id);
   renderVoiceButtons();
   const st=document.getElementById('azureState');
@@ -1459,7 +1592,7 @@ function connectAzure(){
   const st=document.getElementById('azureState');
   try{
     AZURE.cfg=azureConfig(); AZURE.ready=true;
-    if (st) st.textContent='Connected — using ' + AZURE.voice + ' for commentary.';
+    if (st) st.textContent='Connected — using ' + activeAzureVoice() + ' for commentary.';
     return true;
   } catch(e){
     AZURE.ready=false;
@@ -1474,11 +1607,22 @@ function cleanVoiceText(s){ return String(s||'').replace(/[@_]/g,' ').replace(/\
 // azureSpeak(text, done): synthesizes via Azure and plays through one
 // HTMLAudioElement, calling done(true) on successful playback or done(false)
 // on any failure - COMMENTARY.flush() falls back to the browser voice on false.
+function activeAzureVoice(){ const P=activePack(); return (VOICE_MODE==='pack' && P.azure) ? P.azure : AZURE.voice; }
+function xmlEsc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
+// styles only on voices known to support them; anything else gets plain prosody
+const AZURE_STYLED=/^en-US-(Guy|Jenny|Aria|Davis|Tony|Sara|Jane|Jason|Nancy)Neural$|^en-GB-(Ryan|Sonia)Neural$/;
+function packSsml(text){
+  const P=activePack(), v=activeAzureVoice(), pr=P.ssml;
+  let body=xmlEsc(cleanVoiceText(text));
+  if (pr) body='<prosody rate="'+pr.rate+'" pitch="'+pr.pitch+'">'+body+'</prosody>';
+  if (VOICE_MODE==='pack' && P.style && AZURE_STYLED.test(v)) body='<mstts:express-as style="'+P.style+'">'+body+'</mstts:express-as>';
+  return '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US"><voice name="'+v+'">'+body+'</voice></speak>';
+}
 function azureSpeak(text, done){
   if (!AZURE.ready || !window.SpeechSDK){ done?.(false); return; }
   let synth=null, audio=null, settled=false;
   try{
-    AZURE.cfg.speechSynthesisVoiceName=AZURE.voice;
+    AZURE.cfg.speechSynthesisVoiceName=activeAzureVoice();
     synth=new SpeechSDK.SpeechSynthesizer(AZURE.cfg, null);
     AZURE.currentSynth=synth;
     const finish=(ok)=>{
@@ -1489,11 +1633,12 @@ function azureSpeak(text, done){
       releaseAzureAudioUrl();
       done?.(ok);
     };
-    synth.speakTextAsync(
-      cleanVoiceText(text),
-      result=>{
+    let usedSsml=false;
+    const onResult=result=>{
         if (settled) return;
-        if (!result || result.reason!==SpeechSDK.ResultReason.SynthesizingAudioCompleted || !result.audioData){ finish(false); return; }
+        if (!result || result.reason!==SpeechSDK.ResultReason.SynthesizingAudioCompleted || !result.audioData){
+          if (usedSsml){ usedSsml=false; synth.speakTextAsync(cleanVoiceText(text), onResult, ()=>finish(false)); return; }   // SSML refused: retry plain
+          finish(false); return; }
         try{
           const objectUrl=URL.createObjectURL(new Blob([result.audioData], {type:'audio/mpeg'}));
           audio=new Audio(); audio.preload='auto'; audio.src=objectUrl;
@@ -1503,9 +1648,10 @@ function azureSpeak(text, done){
           const p=audio.play();
           if (p && typeof p.catch==='function') p.catch(()=>finish(false));
         } catch(e){ finish(false); }
-      },
-      ()=>finish(false)
-    );
+    };
+    const P=activePack();
+    if (P.ssml || (VOICE_MODE==='pack' && P.azure)){ usedSsml=true; synth.speakSsmlAsync(packSsml(text), onResult, ()=>{ if (settled) return; usedSsml=false; synth.speakTextAsync(cleanVoiceText(text), onResult, ()=>finish(false)); }); }
+    else synth.speakTextAsync(cleanVoiceText(text), onResult, ()=>finish(false));
   } catch(e){
     try{ synth?.close(); }catch(_e){}
     if (AZURE.currentSynth===synth) AZURE.currentSynth=null;
@@ -1517,13 +1663,34 @@ document.getElementById('btnAzureConnect')?.addEventListener('click', connectAzu
 document.getElementById('btnAzureTest')?.addEventListener('click', ()=>{
   const st=document.getElementById('azureState');
   if (!AZURE.ready && !connectAzure()) return;
-  if (st) st.textContent='Playing test line with ' + AZURE.voice + '...';
-  azureSpeak('This is a test of the Flags Rumble commentary voice.', (ok)=>{
+  if (st) st.textContent='Playing test line with ' + activeAzureVoice() + '...';
+  const P=activePack(), sample=(P.winner[0]||'Test').replace('{name}','Brazil');
+  azureSpeak(sample, (ok)=>{
     if (st) st.textContent = ok
-      ? ('Connected — using ' + AZURE.voice + ' for commentary.')
+      ? ('Connected — using ' + activeAzureVoice() + ' for commentary.')
       : ('Test failed — check your key and region (falling back to the free browser voice).');
   });
 });
+
+function setVoiceMode(m){ VOICE_MODE=m; try{ localStorage.setItem('flagsrumble-voice-mode',m); }catch(e){} COMMENTARY._pv={}; paintPack(); }
+function setPack(id){ PACK_SEL=id; try{ localStorage.setItem('flagsrumble-pack',id); }catch(e){} COMMENTARY.lastMilestone=Math.min(COMMENTARY.lastMilestone, typeof G!=='undefined'&&G? alive().length+1 : 999); paintPack(); }
+function paintPack(){
+  if (typeof document==='undefined' || !document.getElementById('segPack')) return;
+  document.querySelectorAll('#segPackTop button,#segPack button').forEach(b=>b.classList.toggle('on', b.dataset.v===PACK_SEL));
+  document.querySelectorAll('#segVoiceMode button').forEach(b=>b.classList.toggle('on', b.dataset.v===VOICE_MODE));
+  const id=activePackId(), P=PACKS[id];
+  const why = PACK_SEL==='auto' ? ' (auto: '+ARENA_THEMES[ARENA_THEME].label+' arena)' : '';
+  const bv = ('speechSynthesis' in window) ? COMMENTARY.browserVoice(P,id) : null;
+  const voice = VOICE_MODE==='pack' ? ((P.azure? P.azure+' on Azure, ' : '')+'browser: '+(bv? bv.name : 'default')) : ('your pick: '+AZURE.voice);
+  try{ renderVoiceButtons(); }catch(e){}
+  document.getElementById('packDesc').innerHTML='<b>'+P.label+'</b>'+why+' — '+P.desc+'<br><span style="opacity:.8">Voice: '+voice+'</span>';
+}
+if (typeof document!=='undefined' && document.getElementById('segPack')){
+  for (const sid of ['segPackTop','segPack']) document.getElementById(sid).addEventListener('click',e=>{ const b=e.target.closest('button'); if (b) setPack(b.dataset.v); });
+  document.getElementById('segVoiceMode').addEventListener('click',e=>{ const b=e.target.closest('button'); if (b) setVoiceMode(b.dataset.v); });
+  if ('speechSynthesis' in window) speechSynthesis.addEventListener?.('voiceschanged',()=>paintPack());
+  paintPack();
+}
 
 /* ==========================================================================
    4. STATE
@@ -1955,6 +2122,7 @@ function openHub(){
       G.comebackFx=1; showBanner('COMEBACK · '+c.name,'#5ef2c8'); SFX.comeback(); COMMENTARY.comeback(c);
     } else G.spawnSkips++;                  // no room, or no such ball: reported, not forced
   }
+  COMMENTARY.holeOpen();
 }
 
 function tick(dtms){
