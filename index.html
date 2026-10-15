@@ -56,7 +56,7 @@
   #gearBtn:hover{background:#26307a}
   #panelBody{padding:14px 16px 16px;flex:1 1 auto;overflow-y:auto}
   #panel{position:sticky;top:0;height:calc(100vh / 1.25);display:flex;flex-direction:column;zoom:1.25}   /* 336px drawn at 420px: bigger targets in OBS Interact */
-  #panelTabs{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:10px 10px 0;background:#0e1330;border-bottom:2px solid #2a3364;flex:none}
+  #panelTabs{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:10px 10px 0;background:#0e1330;border-bottom:2px solid #2a3364;flex:none}
   #panelTabs button{display:flex;flex-direction:column;align-items:center;gap:2px;background:#161c40;color:#aab6e8;border:1px solid #333e80;border-bottom:none;
     border-radius:9px 9px 0 0;padding:8px 2px 7px;font-size:17px;cursor:pointer;line-height:1}
   #panelTabs button span{font-size:11px;font-weight:700;letter-spacing:.04em}
@@ -83,6 +83,7 @@
   .blab{display:block;font-size:11.5px;color:#aab6e8;margin-bottom:7px}
   .tin{width:100%;margin-top:3px;background:#0c1030;border:1px solid #333e80;border-radius:7px;padding:7px 9px;color:#dfe6ff;font-size:12.5px}
   .hrow .seg[data-hud]{flex-wrap:wrap}.hrow .seg[data-hud] button{flex:1 1 30%;min-width:30%}
+  #liveCorner button{flex:1 1 45%!important;min-width:45%!important}
   #segTheme button,#segBg button{flex:1 1 30%!important;min-width:30%!important}
   .wide:disabled{opacity:.4;cursor:default}
   #segPreset button,#segPackTop button{white-space:normal!important;line-height:1.3}
@@ -95,10 +96,74 @@
 <div id="panel">
   <div id="panelHead"><h1>⚙ OPERATOR PANEL</h1><button id="gearBtn" title="Collapse/expand">▾</button></div>
 <div id="panelTabs">
-    <button data-tab="channel">📺<span>Channel</span></button><button data-tab="arena">🏟️<span>Arena</span></button><button data-tab="hud">🖥️<span>HUD</span></button><button data-tab="text">✏️<span>Text</span></button><button data-tab="balls">🙂<span>Balls</span></button><button data-tab="voice">🎙️<span>Voice</span></button>
+    <button data-tab="channel">📺<span>Channel</span></button><button data-tab="arena">🏟️<span>Arena</span></button><button data-tab="hud">🖥️<span>HUD</span></button><button data-tab="text">✏️<span>Text</span></button><button data-tab="balls">🙂<span>Balls</span></button><button data-tab="voice">🎙️<span>Voice</span></button><button data-tab="live">💬<span>Live</span></button><button data-tab="test">🧪<span>Test</span></button><button data-tab="log">📊<span>Quota</span></button><button data-tab="yt">▶️<span>YouTube</span></button>
   </div>
     <div id="panelBody">
 
+    <div class="pgroup" data-page="live">
+      <h2>Interactive mode (chat shield &amp; revival)</h2>
+      <div class="seg" id="liveOn"><button data-v="false">Off (normal game)</button><button data-v="true">On</button></div>
+      <div class="hint">30 different chat messages = shield, 60 after elimination = revival (once each per country per round, members count double). Super chats with a keyword + subscribers: max 3 per round.</div>
+    </div>
+    <div class="pgroup" data-page="live">
+      <h2>Options</h2>
+      <div class="hrow"><span>On-screen chat panels</span><div class="seg" id="liveStrip"><button data-v="true">Show</button><button data-v="false">Hide</button></div></div>
+      <div class="hrow"><span>Panel corner (next to the ring)</span><div class="seg" id="liveCorner"><button data-v="tl">↖ Top-left</button><button data-v="tr">↗ Top-right</button><button data-v="bl">↙ Bottom-left</button><button data-v="br">↘ Bottom-right</button></div></div>
+      <div class="hrow"><span>Support per person</span><div class="seg" id="liveCap"><button data-v="false">Open (no cap)</button><button data-v="true">Controlled (10 each)</button></div></div>
+    </div>
+    <div class="pgroup" data-page="live">
+      <h2>Status</h2>
+      <div class="hint" id="liveStatus" style="margin-top:0;color:#c9d3ff"></div>
+      <div class="hint" id="liveFallback" style="color:#ffcf3d;font-weight:700"></div>
+      <div class="hint">Connect to your live chat on the YouTube page. Test chat works any time.</div>
+    </div>
+    <div class="pgroup" data-page="log">
+      <h2>Quota</h2>
+      <div style="height:8px;background:#1c2350;border-radius:4px;overflow:hidden"><div id="ytBar" style="height:100%;width:0"></div></div>
+      <div class="hint" id="ytQuota" style="color:#c9d3ff"></div>
+      <div style="display:flex;gap:6px;margin-top:8px"><label class="blab" style="flex:1;margin:0">Stream length (h)<input class="tin" id="ytHours" type="number" min="1" max="24"></label><label class="blab" style="flex:1;margin:0">Daily quota<input class="tin" id="ytLimit" type="number" min="100" step="100"></label></div>
+      <div class="hrow" style="margin-top:8px"><span>After the quota resets</span><div class="seg" id="ytAuto"><button data-v="false">Stay in normal mode</button><button data-v="true">Auto-resume interactive</button></div></div>
+    </div>
+
+    <div class="pgroup" data-page="log">
+      <h2>Event log</h2>
+      <pre id="liveLog" style="margin:0;font-size:10.5px;line-height:1.5;color:#a9b6ea;white-space:pre-wrap;max-height:160px;overflow:hidden"></pre>
+    </div>
+    <div class="pgroup" data-page="log">
+      <h2>Quota fallback</h2>
+      <div class="hint" style="margin-top:0">When the YouTube quota runs out, the next round starts as normal Flags War Arena with interactive mode off. Test it here.</div>
+      <div style="display:flex;gap:6px"><button class="wide" id="liveQuota">Simulate quota used up</button><button class="wide" id="liveQuotaCancel">Cancel</button></div>
+    </div>
+    <div class="pgroup" data-page="test">
+      <h2>Quick tests</h2>
+      <div style="display:flex;gap:6px;align-items:center"><select id="tCountry" class="tin" style="margin:0;flex:1"></select><button class="wide" id="tRefresh" style="width:auto;margin:0;padding:7px 10px">↻</button></div>
+      <div class="seg" style="margin-top:8px"><button id="tPlus10">+10 support</button><button id="tMember">+5 member msgs</button></div>
+      <div class="seg" style="margin-top:6px"><button id="tShield">Fill to shield (30)</button><button id="tRevive">Fill to revival (60)</button></div>
+      <div class="seg" style="margin-top:6px"><button id="tScRevive">Super chat: revive</button><button id="tScShield">Super chat: shield</button></div>
+      <div class="seg" style="margin-top:6px"><button id="tScNoCountry">Super chat, no country</button><button id="tSub">New subscriber</button></div>
+      <div class="hint" id="tMsg" style="color:#c9d3ff">● alive · ✖ eliminated. Buttons use the selected country (revival tests pick an eliminated one).</div>
+    </div>
+    <div class="pgroup" data-page="test">
+      <h2>Type your own message</h2>
+      <div class="seg" id="tKind"><button data-v="chat" class="on">Chat</button><button data-v="superchat">Super chat</button><button data-v="subscribe">Subscribe</button></div>
+      <div style="display:flex;gap:6px;margin-top:8px"><input class="tin" id="tHandle" placeholder="@handle" style="margin:0;flex:1"><label class="blab" style="margin:0;align-self:center;white-space:nowrap"><input type="checkbox" id="tIsMember"> Member</label></div>
+      <input class="tin" id="tText" placeholder="e.g. revive brazil 🇧🇷" style="margin-top:6px">
+      <button class="wide" id="tSend">Send</button>
+    </div>
+
+    <div class="pgroup" data-page="yt">
+      <h2>YouTube live chat</h2>
+      <label class="blab">API key <a href="#" id="ytKeyShow" style="color:#8ea0e6;font-size:11px">show/hide</a><input class="tin" id="ytKey" type="password" autocomplete="off" placeholder="AIza…"></label>
+      <label class="blab">Live video link or ID<input class="tin" id="ytVideo" placeholder="https://youtube.com/live/… or 11-character ID"></label>
+      <div style="display:flex;gap:6px"><button class="wide" id="ytConnect">Connect</button><button class="wide" id="ytDisconnect">Disconnect</button></div>
+      <div class="hint" id="ytStatus" style="color:#c9d3ff"></div>
+    </div>
+    <div class="pgroup" data-page="yt">
+      <h2>Poll speed</h2>
+      <div class="seg" id="ytMode"><button data-v="smart">Smart (saves quota)</button><button data-v="fixed">Fixed</button></div>
+      <label class="blab" style="margin-top:8px">Poll every <b id="ytSpeedVal">12 s</b><input type="range" id="ytSpeed" min="5" max="30" step="1" style="width:100%"></label>
+      <div class="hint" style="margin-top:0">Smart polls at this speed while something is close (a country near 30/60, a waiting super chat, busy chat), otherwise slows just enough to last your stream.</div>
+    </div>
     <div class="pgroup" data-page="channel">
       <h2>Channel preset</h2>
       <div class="seg" id="segPreset" style="flex-direction:column"><button data-p="war" style="padding:12px">📺 Flags War Arena<br><small style="font-weight:400">Original arena, HUD, plain balls, original commentary, Messi/Ronaldo background</small></button><button data-p="rumble" style="padding:12px">📺 Flags Rumble<br><small style="font-weight:400">Grass arena, Royal HUD, faces, Auto commentary packs</small></button></div>
@@ -1961,6 +2026,7 @@ function newDraw(){
   COMMENTARY.reset();
   FACE.reset();
   for (const b of balls) FACE.override(b, 'excited', 1.4, 0.18);
+  if (typeof CHAT!=='undefined') CHAT.onRound();
 }
 
 /* Positional-only relaxation of the opening layout: separate every overlapping pair, then
@@ -2221,7 +2287,7 @@ function step(dt){
     for (const b of A){
       if (Math.hypot(b.x,b.y) < rr){
         if (b.shield){                       // shielded: ejected, shield breaks
-          b.shield=false; G.shielded=null;
+          b.shield=false; b.shieldCol=null; if (G.shielded===b) G.shielded=null;
           const d=Math.hypot(b.x,b.y)||1;
           const ux=b.x/d, uy=b.y/d;
           b.x=ux*(CFG.HOLE_R+CFG.BALL_R+20); b.y=uy*(CFG.HOLE_R+CFG.BALL_R+20);
@@ -2247,6 +2313,7 @@ function kill(b){
   const bx=b.x, by=b.y;
   b.alive=false; G.openKills++;
   G.dead.push({c:b.c});
+  if (typeof CHAT!=='undefined') CHAT.onKill(b);
   G.flash=1; G.shake=Math.max(G.shake,12);
   for (const v of alive()) if (Math.hypot(v.x-bx,v.y-by)<150) FACE.override(v,'surprised',0.9);
   setTimeout(()=>{ if(G) G.pendingKills.push(b.c); }, CFG.HUD_DELAY_MS);
@@ -2322,6 +2389,7 @@ function tick(dtms){
   const dt=dtms/1000;
   G.faceOut = FACE.update(dt);
   G.t+=dtms; G.tPhase+=dtms;
+  if (typeof CHAT!=='undefined') CHAT.update(dtms);
   if (G.bannerT>0) G.bannerT-=dtms;
   if (G.tumbleT>0) G.tumbleT-=dtms;
   if (G.flash>0) G.flash=Math.max(0,G.flash-dtms/CFG.FLASH_MS);
@@ -3291,7 +3359,7 @@ function hatFor(hc){ return HAT_OF[hc] || HAT_FALLBACK; }
    flag sprite, shield ring, cultural front layer, face, hat/cultural head, icon. */
 function drawBallFull(b, x, y, R){
   if (LOOK.balls==='original'){          // the original channel's plain glossy flag disc, exactly as before
-    if (b.shield){ ctx.save(); ctx.strokeStyle=PAL.shield; ctx.lineWidth=5; ctx.shadowColor=PAL.shield; ctx.shadowBlur=20;
+    if (b.shield){ ctx.save(); ctx.strokeStyle=b.shieldCol||PAL.shield; ctx.lineWidth=5; ctx.shadowColor=b.shieldCol||PAL.shield; ctx.shadowBlur=20;
       ctx.beginPath(); ctx.arc(x,y,R+9,0,7); ctx.stroke(); ctx.restore(); }
     ctx.drawImage(sprites.get(b.c.code), x-R, y-R, R*2, R*2);
     return;
@@ -3307,8 +3375,8 @@ function drawBallFull(b, x, y, R){
 
   const sp = sprites.get(code), d = R*2;
   if (b.shield){
-    ctx.save(); ctx.strokeStyle=PAL.shield; ctx.lineWidth=5;
-    ctx.shadowColor=PAL.shield; ctx.shadowBlur=20;
+    ctx.save(); ctx.strokeStyle=b.shieldCol||PAL.shield; ctx.lineWidth=5;
+    ctx.shadowColor=b.shieldCol||PAL.shield; ctx.shadowBlur=20;
     ctx.beginPath(); ctx.arc(x,y,R+9,0,7); ctx.stroke(); ctx.restore();
   }
   ctx.drawImage(sp, x-R, y-R, d, d);
@@ -4266,7 +4334,8 @@ function drawBanner(){
   const a = p<0.1? p/0.1 : p>0.85? (1-p)/0.15 : 1;
   ctx.save(); ctx.globalAlpha=clamp(a,0,1);
   ctx.textAlign='center';
-  ctx.font='900 54px system-ui,sans-serif';
+  let fs=54; ctx.font='900 '+fs+'px system-ui,sans-serif';
+  while (fs>26 && ctx.measureText(G.banner.text).width+70>W-40){ fs-=2; ctx.font='900 '+fs+'px system-ui,sans-serif'; }
   ctx.fillStyle='rgba(8,6,20,0.8)';
   const tw=ctx.measureText(G.banner.text).width+70;
   roundRect(ctx,W/2-tw/2,556,tw,84,20); ctx.fill();
@@ -4372,7 +4441,7 @@ function render(){
     ctx.fillStyle='rgba(255,255,255,'+(G.flash*0.62)+')'; ctx.fillRect(0,0,W,H); ctx.restore();
   }
   ctx.restore();
-  drawHUD(); drawBanner(); drawKillCard(); drawLower();
+  drawHUD(); drawLivePanels(); drawBanner(); drawKillCard(); drawLower();
   if (G.phase==='WINNER') drawWinner();
   if (G.phase==='INTRO'){
     ctx.save(); const a=1-G.tPhase/CFG.INTRO_MS;
@@ -4385,6 +4454,612 @@ function render(){
     ctx.restore();
   }
 }
+
+/* ==========================================================================
+   7B. INTERACTIVE MODE - chat-driven shield & revival
+   Phase 1: rules engine, on-screen panels, operator controls and a test-chat
+   simulator. Phase 2 plugs the YouTube poller into CHAT.ingest().
+
+   RULES (as approved)
+   - Normal chat: a message naming a country (name, alias, Hindi name or flag emoji)
+     supports it. Only DISTINCT texts count (case, punctuation, emoji, repeated letters,
+     repeated words and word order are ignored). The same person may add many.
+   - Alive country: 30 distinct support points -> chat SHIELD (once per country per round).
+   - Eliminated country: counting starts at zero at the moment of elimination;
+     60 points -> chat REVIVAL (once per country per round).
+   - Channel members' messages are worth 2 points (so 15 / 30 member messages).
+   - "Controlled" switch: max 10 counted messages per person per country counter.
+   - Super chat: needs a keyword (shield / revive ...). Target = country named in it,
+     else the sender's most recent supported country (if in this round), else the sender's
+     next message that names a country. Revive on an alive country waits for its
+     elimination. Shield on an eliminated country is ignored.
+   - Subscription (phase 3): same targeting; shield if alive, revival if eliminated.
+   - Paid effects (super chat + subscription): max 3 applied per round.
+   - A country never holds two of the same effect at once; duplicates are dropped
+     (a second shield waits until the current one breaks).
+   - Every round starts clean. A message only counts in the round that was live when it
+     was SENT (YouTube's publish time), so a late poll can't leak into the next round.
+   - Quota fallback: when flagged, the NEXT round starts as plain Flags War Arena
+     with interactive mode off.
+   ========================================================================== */
+const LIVE_KEY = 'flagsrumble-live-v1';
+const LIVE = { on:false, strip:true, controlled:false, corner:'tl' };
+try { const s=JSON.parse(localStorage.getItem(LIVE_KEY)||'{}');
+  for (const k of ['on','strip','controlled']) if (typeof s[k]==='boolean') LIVE[k]=s[k];
+  if (['tl','tr','bl','br'].includes(s.corner)) LIVE.corner=s.corner; } catch(e){}
+function saveLive(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({on:LIVE.on,strip:LIVE.strip,controlled:LIVE.controlled,corner:LIVE.corner})); }catch(e){} }
+
+const CHAT_RULES = { SHIELD:30, REVIVE:60, MEMBER_W:2, PERSON_CAP:10, PAID_CAP:3 };
+
+/* ---- country recognition ------------------------------------------------- */
+const ALIAS_EXTRA = {
+  US:['usa','america','united states of america','amrika','amerika','अमेरिका','अमरीका'],
+  GB:['uk','britain','great britain','england','english','united kingdom','ब्रिटेन','इंग्लैंड'],
+  AE:['uae','emirates','dubai','यूएई'], SA:['ksa','saudi','सऊदी'],
+  IN:['bharat','hindustan','hindustaan','india','भारत','हिंदुस्तान','हिन्दुस्तान','इंडिया'],
+  PK:['pak','pakistan','पाकिस्तान'], BD:['bangla','bangladesh','बांग्लादेश'], NP:['nepal','नेपाल'],
+  LK:['srilanka','sri lanka','lanka','श्रीलंका'], CN:['china','चीन'], JP:['nippon','जापान'],
+  RU:['russia','rossiya','रूस'], DE:['deutschland','जर्मनी'], BR:['brasil','ब्राज़ील','ब्राजील'],
+  ES:['espana','स्पेन'], FR:['फ्रांस'], IT:['italia','इटली'], PT:['portugal','पुर्तगाल'],
+  AR:['argentina','अर्जेंटीना'], AF:['afghan','afghanistan','अफगानिस्तान'],
+  KR:['korea','south korea','कोरिया'], KP:['north korea','dprk'], NL:['holland','नीदरलैंड'],
+  CZ:['czech','czech republic'], TR:['turkiye','türkiye','तुर्की'], CI:['cote divoire','cote d ivoire'],
+  CD:['drc','congo kinshasa'], CG:['congo brazzaville'], MM:['burma'], SZ:['swaziland'],
+  MK:['macedonia'], BA:['bosnia and herzegovina','bosnia herzegovina'], VA:['vatican','holy see'],
+  PS:['palestine','फ़िलिस्तीन','फिलिस्तीन'], IR:['persia','ईरान'], PH:['pilipinas','pinoy'],
+  MX:['mexico','méxico','मेक्सिको'], EG:['misr','मिस्र'], ID:['indo','इंडोनेशिया'],
+  AU:['aussie','aus','ऑस्ट्रेलिया'], NZ:['kiwi','kiwis'], ZA:['rsa','mzansi'], CA:['कनाडा'],
+  BT:['bhutan','भूटान'], MV:['maldives','मालदीव'], TW:['taiwan'], CH:['swiss'],
+  TT:['trinidad','trinidad and tobago'], AG:['antigua'], KN:['st kitts','saint kitts'],
+  LC:['saint lucia'], VC:['saint vincent'], ST:['sao tome and principe'], TL:['east timor'],
+  GW:['guinea bissau'], CF:['central african republic','car'], VN:['viet nam'],
+};
+const reCombining = /[̀-ͯ]/g;
+function chatClean(s){
+  // flag emoji -> digit token (digits are never letter-collapsed, so GB and BB stay apart)
+  s = String(s||'').replace(/([\u{1F1E6}-\u{1F1FF}])([\u{1F1E6}-\u{1F1FF}])/gu, (m,a,b)=>
+        ' f'+(100+a.codePointAt(0)-0x1F1E6)+(100+b.codePointAt(0)-0x1F1E6)+' ');
+  s = s.normalize('NFKD').replace(reCombining,'').toLowerCase().replace(/&/g,' and ');
+  s = s.replace(/[^\p{L}\p{M}\p{N}\s]/gu,' ');
+  s = s.replace(/(\p{L})\1+/gu,'$1');                       // indiaaa -> india
+  return s.replace(/\s+/g,' ').trim();
+}
+function flagToken(code){ return 'f'+(100+code.charCodeAt(0)-65)+(100+code.charCodeAt(1)-65); }
+const ALIAS = new Map();                                     // code -> [cleaned alias]
+(function buildAliases(){
+  for (const c of ALL_COUNTRIES){
+    const set = new Set([chatClean(c.name), flagToken(c.code)]);
+    for (const a of (ALIAS_EXTRA[c.code]||[])) set.add(chatClean(a));
+    ALIAS.set(c.code, [...set].filter(a=>a.length>=3 || a.startsWith('f')));
+  }
+})();
+/* countries (in this round) named in a message, in the order they appear */
+function chatCountries(clean){
+  if (!G) return [];
+  const t=' '+clean+' ', found=[];
+  for (const b of G.balls){
+    let best=-1;
+    for (const a of ALIAS.get(b.c.code)||[]){ const i=t.indexOf(' '+a+' '); if (i>=0 && (best<0 || i<best)) best=i; }
+    if (best>=0) found.push([best, b.c.code]);
+  }
+  found.sort((x,y)=>x[0]-y[0]);
+  return found.map(f=>f[1]);
+}
+function chatIntent(clean){
+  const toks = clean.split(' ');
+  let rev=-1, sh=-1;
+  toks.forEach((w,i)=>{
+    if (rev<0 && (w.startsWith('reviv') || ['respawn','comeback','wapas','vapas','zinda','jinda','resurect','rebirth','वापस','जिंदा','ज़िंदा','ज़िन्दा','जिन्दा'].includes(w))) rev=i;
+    if (sh<0 && (w.startsWith('shield') || w.startsWith('protect') || ['sheild','save','defend','guard','bachao','bacha','kavach','raksha','बचाओ','कवच','रक्षा'].includes(w))) sh=i;
+  });
+  if (rev<0 && /\b(come back|bring back|bring .{1,20} back)\b/.test(clean)) rev=toks.length;
+  if (rev<0 && sh<0) return null;
+  if (rev<0) return 'shield'; if (sh<0) return 'revive';
+  return rev<sh ? 'revive' : 'shield';
+}
+function chatKey(clean){                                      // the "is this a different message?" key
+  const toks=[...new Set(clean.split(' ').filter(Boolean))].sort();
+  return toks.join(' ');
+}
+
+/* ---- the engine ------------------------------------------------------------ */
+const CHAT = {
+  st:new Map(),          // code -> per-country counters for this round
+  pend:[],               // queued effects {code,type,src,user}
+  await:new Map(),       // userId -> {type,src,user,t}  (paid event waiting for a country)
+  last:new Map(),        // userId -> code most recently supported (kept across rounds)
+  paid:0,                // paid effects applied this round
+  roundStart:0,
+  feed:[],               // on-screen feed [{txt,col,t}]
+  log:[],                // operator log
+  fallbackNext:false, resumeNext:false,
+  stats:{msgs:0,late:0,counted:0},
+
+  S(code){ let s=this.st.get(code); if(!s){ s={shP:0,shK:new Set(),shU:new Map(),shUsed:false,
+            rvP:0,rvK:new Set(),rvU:new Map(),rvUsed:false,deadAt:0}; this.st.set(code,s);} return s; },
+  ball(code){ return G ? G.balls.find(b=>b.c.code===code) : null; },
+  nameOf(code){ const c=BY_CODE.get(code); return c?c.name:code; },
+  note(txt, col, onScreen){
+    const d=new Date(); const ts=d.toTimeString().slice(0,8);
+    this.log.unshift(ts+'  '+txt); if (this.log.length>40) this.log.length=40;
+    if (onScreen){ this.feed.unshift({txt, col:col||'#fff', t:0}); if (this.feed.length>3) this.feed.length=3; }
+  },
+
+  onRound(){
+    if (this.resumeNext && typeof YT!=='undefined'){
+      this.resumeNext=false; LIVE.on=true; saveLive(); YT.exhausted=false; YT.wanted=true;
+      this.note('Quota reset: interactive mode back ON'); setTimeout(()=>YT.start(),0);
+      if (window.__livePaint) window.__livePaint();
+    }
+    if (this.fallbackNext){
+      this.fallbackNext=false; LIVE.on=false; saveLive();
+      try{ applyPreset(PRESET_BUILTIN.war, 'Flags War Arena (quota fallback)'); }catch(e){}
+      this.note('Quota used up: switched to normal Flags War Arena, interactive mode OFF');
+      if (window.__livePaint) window.__livePaint();
+    }
+    this.st.clear(); this.pend.length=0; this.await.clear(); this.paid=0; this.feed.length=0;
+    this.roundStart=Date.now(); this.stats={msgs:0,late:0,counted:0};
+    if (LIVE.on) this.note('Round '+(G?G.roundNo:'')+' started: all counts reset');
+  },
+  onKill(b){
+    const s=this.S(b.c.code); s.deadAt=Date.now(); s.rvP=0; s.rvK.clear(); s.rvU.clear();
+  },
+
+  /* one message from any source. m = {id,kind:'chat'|'superchat'|'subscribe',
+     user:{id,name,member}, text, t(ms epoch, when SENT), amount} */
+  ingest(m){
+    if (!LIVE.on || !G) return;
+    this.stats.msgs++;
+    const t = m.t || Date.now();
+    if (t < this.roundStart || G.phase==='WINNER'){ this.stats.late++; return; }   // belongs to another round
+    const uid = (m.user&&m.user.id) || (m.user&&m.user.name) || 'anon';
+    const uname = (m.user&&m.user.name) || 'viewer';
+    const clean = chatClean(m.text||'');
+    const codes = clean ? chatCountries(clean) : [];
+
+    // a paid event waiting for this person's next country message
+    if (codes.length && this.await.has(uid) && m.kind!=='subscribe'){
+      const w=this.await.get(uid); this.await.delete(uid);
+      this.request(codes[0], w.type, w.src, w.user);
+    }
+    if (m.kind==='superchat' || m.kind==='subscribe') this.paidEvent(m, uid, uname, clean, codes);
+    if (codes.length){
+      this.last.set(uid, codes[0]);
+      const key=chatKey(clean), w = m.user&&m.user.member ? CHAT_RULES.MEMBER_W : 1;
+      for (const code of codes.slice(0,3)) this.support(code, key, uid, w, t);
+    }
+  },
+  support(code, key, uid, w, t){
+    const b=this.ball(code); if (!b) return;
+    const s=this.S(code), cap=LIVE.controlled ? CHAT_RULES.PERSON_CAP : Infinity;
+    if (b.alive){
+      if (s.shUsed || s.shK.has(key) || (s.shU.get(uid)||0)>=cap) return;
+      s.shK.add(key); s.shU.set(uid,(s.shU.get(uid)||0)+1); s.shP+=w; this.stats.counted++;
+      if (s.shP>=CHAT_RULES.SHIELD){ s.shUsed=true; this.note('Chat reached '+CHAT_RULES.SHIELD+' for '+this.nameOf(code)+': shield'); this.request(code,'shield','chat',null); }
+    } else {
+      if (s.rvUsed || t < s.deadAt || s.rvK.has(key) || (s.rvU.get(uid)||0)>=cap) return;
+      s.rvK.add(key); s.rvU.set(uid,(s.rvU.get(uid)||0)+1); s.rvP+=w; this.stats.counted++;
+      if (s.rvP>=CHAT_RULES.REVIVE){ s.rvUsed=true; this.note('Chat reached '+CHAT_RULES.REVIVE+' for '+this.nameOf(code)+': revival'); this.request(code,'revive','chat',null); }
+    }
+  },
+  paidEvent(m, uid, uname, clean, codes){
+    const src = m.kind==='superchat' ? 'superchat' : 'sub';
+    let type;
+    if (src==='superchat'){
+      type = chatIntent(clean);
+      if (!type){ this.note('Super chat from '+uname+': no shield/revive keyword, no effect'); return; }
+    } else type='auto';
+    let code = codes[0];
+    if (!code){ const l=this.last.get(uid); if (l && this.ball(l)) code=l; }
+    if (!code){
+      this.await.set(uid,{type,src,user:uname,t:Date.now()});
+      this.note((src==='sub'?'New subscriber ':'Super chat from ')+uname+': waiting for their next country message'); this.feed.unshift({txt:'★ '+uname+': name your country!', col:'#ffd34d', t:0}); if (this.feed.length>3) this.feed.length=3;
+      return;
+    }
+    this.request(code, type, src, uname);
+  },
+  request(code, type, src, user){
+    const b=this.ball(code); if (!b) return;
+    if (type==='auto') type = b.alive ? 'shield' : 'revive';
+    const who = src==='chat' ? 'chat' : (src==='sub'?'subscriber ':'super chat ')+user;
+    if (type==='shield' && !b.alive){ this.note('Shield for '+this.nameOf(code)+' ('+who+') ignored: already eliminated'); return; }
+    if (this.pend.some(p=>p.code===code && p.type===type)){ this.note('Duplicate '+type+' for '+this.nameOf(code)+' ('+who+') dropped'); return; }
+    if (src!=='chat' && this.paid + this.pend.filter(p=>p.src!=='chat').length >= CHAT_RULES.PAID_CAP){
+      this.note('Paid limit ('+CHAT_RULES.PAID_CAP+'/round) reached: '+who+' request for '+this.nameOf(code)+' dropped'); return; }
+    this.pend.push({code,type,src,user});
+    if (type==='revive' && b.alive){ this.note(this.nameOf(code)+' revival ('+who+') waits for its elimination'); this.feed.unshift({txt:'⏳ '+this.nameOf(code)+' revive ready', col:'#ffd34d', t:0}); if (this.feed.length>3) this.feed.length=3; }
+    else if (type==='shield' && b.shield) this.note(this.nameOf(code)+' already shielded: '+who+' shield waits', '#ffd34d');
+  },
+
+  update(dtms){
+    for (const f of this.feed) f.t+=dtms;
+    while (this.feed.length && this.feed[this.feed.length-1].t>14000) this.feed.pop();
+    if (!G || G.phase==='WINNER' || G.phase==='INTRO' || !this.pend.length) return;
+    for (let i=0;i<this.pend.length;i++){
+      const p=this.pend[i], b=this.ball(p.code);
+      if (!b){ this.pend.splice(i--,1); continue; }
+      const who = p.src==='chat' ? 'CHAT' : p.src==='sub' ? 'SUBSCRIBER' : 'SUPER CHAT';
+      if (p.type==='shield'){
+        if (!b.alive){ this.pend.splice(i--,1); this.note(this.nameOf(p.code)+' was eliminated before its shield landed'); continue; }
+        if (b.shield) continue;
+        b.shield=true; b.shieldCol = p.src==='chat' ? PAL.shield : '#ffcf3d';
+        FACE.override(b,'proud',2.0,0.14);
+        showBanner(who+' SHIELD · '+b.c.name, b.shieldCol); SFX.shield(); COMMENTARY.shield(b.c);
+        this.note('🛡 '+b.c.name+' · '+(p.src==='chat'?'chat':p.user), b.shieldCol, true);
+      } else {
+        if (b.alive) continue;                     // waits for elimination
+        if (alive().length<2) continue;            // never revive into a finished round
+        const spot=freeSpot(b); if (!spot) continue;   // arena too full this frame: retry
+        const i2=G.dead.findIndex(d=>d.c.code===p.code); if (i2>=0) G.dead.splice(i2,1);
+        b.alive=true; b.shield=false; b.shieldCol=null; b.x=spot.x; b.y=spot.y;
+        const a2=rnd(0,Math.PI*2), sp=curSpeed(); b.vx=Math.cos(a2)*sp; b.vy=Math.sin(a2)*sp;
+        FACE.override(b,'excited',1.6,0.22); G.comebackFx=1;
+        showBanner(who+' REVIVAL · '+b.c.name, '#5ef2c8'); SFX.comeback(); COMMENTARY.comeback(b.c);
+        this.note('♻ '+b.c.name+' · '+(p.src==='chat'?'chat':p.user), '#5ef2c8', true);
+      }
+      if (p.src!=='chat') this.paid++;
+      this.pend.splice(i--,1);
+    }
+  },
+
+  /* top countries by progress toward their next chat effect */
+  leaders(){
+    const out=[];
+    for (const [code,s] of this.st){
+      const b=this.ball(code); if (!b) continue;
+      if (b.alive && !s.shUsed && s.shP>0) out.push({code,alive:true,n:s.shP,need:CHAT_RULES.SHIELD});
+      if (!b.alive && !s.rvUsed && s.rvP>0) out.push({code,alive:false,n:s.rvP,need:CHAT_RULES.REVIVE});
+    }
+    return out.sort((a,b)=>b.n/b.need-a.n/a.need).slice(0,3);
+  },
+};
+
+/* ---- on-screen panels (bottom corners, hugging the ring) ------------------- */
+function livePanelShape(x,y,w,h){                 // corner panel with the ring cut out of it
+  ctx.beginPath(); roundRect(ctx,x,y,w,h,16);
+  ctx.moveTo(CFG.CX+500, CFG.CY); ctx.arc(CFG.CX,CFG.CY,500,0,Math.PI*2,true);
+}
+/* Corner layout. The bottom corners and the top corners are mirror images around the
+   ring centre, so a top panel uses the same shape with its rows in reverse order:
+   wide rows go where the panel is far from the ring, narrow rows where the ring cuts in.
+   Top panels start at y=348, just under every header style's prompt. */
+const LIVE_CORNERS=['tl','tr','bl','br'];
+function drawLivePanels(){
+  if (!LIVE.on || !LIVE.strip || !G || G.phase==='INTRO' || G.phase==='WINNER') return;
+  const corner = LIVE_CORNERS.includes(LIVE.corner) ? LIVE.corner : 'tl';
+  const top = corner[0]==='t', left = corner[1]==='l';
+  const PW=292, PH=172, x0 = left ? 10 : W-10-PW, PY = top ? 348 : 1212;
+  const Y = top ? {tick:15, lab:38, ring:82, leg:128, title:152, e1:64, e2:90}
+                : {title:20, leg:44, ring:90, lab:132, tick:PH-15, e1:82, e2:108};
+  const xo = left ? x0+14 : x0+PW-14, al = left ? 'left' : 'right';
+  ctx.save();
+  ctx.save(); ctx.beginPath(); roundRect(ctx,x0,PY,PW,PH,16); ctx.clip();
+  livePanelShape(x0,PY,PW,PH); ctx.fillStyle='rgba(6,10,26,0.84)'; ctx.fill('evenodd'); ctx.restore();
+  ctx.save(); ctx.beginPath(); roundRect(ctx,x0,PY,PW,PH,16); ctx.clip(); livePanelShape(x0,PY,PW,PH); ctx.clip('evenodd');
+  ctx.strokeStyle='rgba(94,242,200,0.8)'; ctx.lineWidth=3; roundRect(ctx,x0,PY,PW,PH,16); ctx.stroke();
+  ctx.beginPath(); ctx.arc(CFG.CX,CFG.CY,500,0,7); ctx.stroke(); ctx.restore();
+  ctx.textAlign=al; ctx.textBaseline='middle';
+  ctx.font='700 22px "FR Oswald",system-ui,sans-serif'; ctx.fillStyle='#5ef2c8';
+  ctx.fillText('CHAT POWER', xo, PY+Y.title);
+  ctx.font='700 14px "FR Poppins",system-ui,sans-serif'; ctx.fillStyle='#e6ecff';
+  ctx.fillText('30 msgs = 🛡   60 = ♻', xo, PY+Y.leg);
+  const L=CHAT.leaders();
+  if (!L.length){
+    ctx.fillStyle='#ffffff'; ctx.font='800 18px "FR Poppins",system-ui,sans-serif';
+    ctx.fillText('Type your country', xo, PY+Y.e1); ctx.fillText('in chat to save it!', xo, PY+Y.e2);
+  }
+  L.forEach((r,i)=>{
+    const cx = left ? x0+46+i*92 : x0+PW-46-(L.length-1-i)*92;
+    const cy=PY+Y.ring, R=25, f=Math.min(1,r.n/r.need), col=r.alive?'#5ef2c8':'#ff6b8a';
+    ctx.lineWidth=6; ctx.strokeStyle='rgba(255,255,255,0.16)'; ctx.beginPath(); ctx.arc(cx,cy,R+6,0,7); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineCap='round'; ctx.beginPath(); ctx.arc(cx,cy,R+6,-Math.PI/2,-Math.PI/2+Math.max(0.02,f)*Math.PI*2); ctx.stroke();
+    const sp=sprites.get(r.code); if (sp){ if (!r.alive) ctx.globalAlpha=0.6; ctx.drawImage(sp,cx-R,cy-R,R*2,R*2); ctx.globalAlpha=1; }
+    ctx.textAlign='center'; ctx.fillStyle=col; ctx.font='800 16px "FR Poppins",system-ui,sans-serif';
+    ctx.fillText((r.alive?'🛡':'♻')+' '+r.n+'/'+r.need, cx, PY+Y.lab);
+  });
+  const ev=CHAT.feed[0], show=ev && ev.t<12000;
+  const txt=show ? ev.txt : 'Super chat "revive"/"shield" + country';
+  ctx.textAlign=al; ctx.font=(show?'800 16px':'700 14px')+' "FR Poppins",system-ui,sans-serif'; ctx.fillStyle=show?ev.col:'#ffcf3d';
+  let s2=txt, maxW=PW-24; if (ctx.measureText(s2).width>maxW){ while (s2.length>4 && ctx.measureText(s2+'…').width>maxW) s2=s2.slice(0,-1); s2+='…'; }
+  ctx.fillText(s2, xo, PY+Y.tick);
+  ctx.restore();
+}
+
+/* ---- operator panel: Live + Test pages ------------------------------------- */
+const TEST_WORDS=['go','come on','we love','up','forever','all the way','champion','king','strong','never give up',
+  'support','fans','win','power','pride','respect','legend','vamos','jai','zindabad','best','number one','lets go',
+  'team','army','nation','hero','fire','unstoppable','believe','rise','glory','warriors','boss','top','mighty'];
+function testUser(member){ const k=1+Math.floor(Math.random()*60); return {id:'test'+k+(member?'m':''), name:'@tester'+k, member:!!member}; }
+function testSupport(code, n, member, untilFlag){
+  const c=BY_CODE.get(code); if (!c) return 0; const name=c.name.toLowerCase(); let sent=0, tries=0;
+  while (sent<n && tries<n*12){
+    tries++;
+    const w1=TEST_WORDS[Math.floor(Math.random()*TEST_WORDS.length)], w2=TEST_WORDS[Math.floor(Math.random()*TEST_WORDS.length)];
+    const s=CHAT.S(code), before=s.shP+s.rvP;
+    CHAT.ingest({kind:'chat', user:testUser(member), text:w1+' '+name+' '+w2, t:Date.now()});
+    if (s.shP+s.rvP>before) sent++;
+    if (untilFlag && untilFlag()) break;
+  }
+  return sent;
+}
+(function(){
+  if (typeof document==='undefined' || !document.getElementById('liveOn')) return;
+  const $=id=>document.getElementById(id);
+  function seg(id, get, set){ const el=$(id);
+    const paint=()=>[...el.children].forEach(b=>b.classList.toggle('on', b.dataset.v===String(get())));
+    el.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; set(b.dataset.v); saveLive(); paint(); livePaint(); });
+    return paint; }
+  const p1=seg('liveOn', ()=>LIVE.on, v=>{ LIVE.on=(v==='true'); CHAT.note('Interactive mode '+(LIVE.on?'ON':'OFF'));
+    if (typeof YT!=='undefined'){ if (LIVE.on && YT.wanted) YT.start(); else if (!LIVE.on && YT.running) YT.stop('Paused: Interactive mode is OFF'); } });
+  const p2=seg('liveStrip', ()=>LIVE.strip, v=>{ LIVE.strip=(v==='true'); });
+  const p3=seg('liveCap', ()=>LIVE.controlled, v=>{ LIVE.controlled=(v==='true'); });
+  const p4=seg('liveCorner', ()=>LIVE.corner, v=>{ LIVE.corner=v; });
+  let kind='chat';
+  const kEl=$('tKind'); kEl.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; kind=b.dataset.v; [...kEl.children].forEach(x=>x.classList.toggle('on',x===b)); });
+  function fillCountries(){
+    const sel=$('tCountry'), cur=sel.value; if (!G) return;
+    const opts=G.balls.map(b=>({code:b.c.code,name:b.c.name,alive:b.alive})).sort((a,b)=>(b.alive-a.alive)||a.name.localeCompare(b.name));
+    sel.innerHTML=opts.map(o=>'<option value="'+o.code+'">'+(o.alive?'● ':'✖ ')+o.name+'</option>').join('');
+    if (opts.some(o=>o.code===cur)) sel.value=cur;
+  }
+  $('tCountry').addEventListener('focus', fillCountries);
+  $('tRefresh').addEventListener('click', fillCountries);
+  const pick=(wantDead)=>{ fillCountries(); let code=$('tCountry').value, b=CHAT.ball(code);
+    if (wantDead!==undefined && b && b.alive===wantDead){ const o=G.balls.find(x=>x.alive!==wantDead); if (o){ code=o.c.code; $('tCountry').value=code; } }
+    return code; };
+  const needOn=()=>{ if (!LIVE.on){ $('tMsg').textContent='Turn Interactive mode ON first (Live page).'; return false; } return true; };
+  const say=t=>{ $('tMsg').textContent=t; livePaint(); };
+  $('tPlus10').addEventListener('click',()=>{ if(!needOn())return; const c=pick(); say('+'+testSupport(c,10,false)+' distinct messages for '+CHAT.nameOf(c)); });
+  $('tMember').addEventListener('click',()=>{ if(!needOn())return; const c=pick(); say('+'+testSupport(c,5,true)+' member messages (worth 2 each) for '+CHAT.nameOf(c)); });
+  $('tShield').addEventListener('click',()=>{ if(!needOn())return; const c=pick(false); const s=CHAT.S(c);
+    say('Sent '+testSupport(c,40,false,()=>s.shUsed)+' messages for '+CHAT.nameOf(c)+(s.shUsed?' → chat shield':' (no shield: already used, eliminated or capped)')); });
+  $('tRevive').addEventListener('click',()=>{ if(!needOn())return; const c=pick(true); const s=CHAT.S(c), b=CHAT.ball(c);
+    if (b&&b.alive){ say('No eliminated country yet. Wait for an elimination.'); return; }
+    say('Sent '+testSupport(c,80,false,()=>s.rvUsed)+' messages for '+CHAT.nameOf(c)+(s.rvUsed?' → chat revival':' (no revival: already used or capped)')); });
+  const paid=(text, k)=>{ if(!needOn())return; const u={id:'paid'+(1+Math.floor(Math.random()*9)),name:'@fan'+(1+Math.floor(Math.random()*9)),member:false};
+    CHAT.ingest({kind:k||'superchat', user:u, text, t:Date.now(), amount:100}); say((k==='subscribe'?'Subscribe':'Super chat')+' from '+u.name+(text?': "'+text+'"':'')); return u; };
+  $('tScRevive').addEventListener('click',()=>{ const c=pick(); paid('revive '+CHAT.nameOf(c).toLowerCase()+' please!'); });
+  $('tScShield').addEventListener('click',()=>{ const c=pick(); paid('shield for '+CHAT.nameOf(c).toLowerCase()); });
+  $('tScNoCountry').addEventListener('click',()=>{ const u=paid('revive my team!'); if(!u) return;
+    setTimeout(()=>{ const c=pick(); CHAT.ingest({kind:'chat',user:u,text:'come on '+CHAT.nameOf(c).toLowerCase(),t:Date.now()}); say(u.name+' then wrote "come on '+CHAT.nameOf(c)+'"'); }, 1500); });
+  $('tSub').addEventListener('click',()=>{ const u=paid('', 'subscribe'); if(!u) return;
+    setTimeout(()=>{ const c=pick(); CHAT.ingest({kind:'chat',user:u,text:CHAT.nameOf(c).toLowerCase()+' forever',t:Date.now()}); say(u.name+' (new subscriber) then wrote "'+CHAT.nameOf(c)+' forever"'); }, 1500); });
+  $('tSend').addEventListener('click',()=>{ if(!needOn())return;
+    const h=($('tHandle').value||'@me').trim(), text=$('tText').value||'';
+    CHAT.ingest({kind, user:{id:'h:'+h.toLowerCase(), name:h, member:$('tIsMember').checked}, text, t:Date.now(), amount:kind==='superchat'?100:0});
+    const cl=chatClean(text), cs=chatCountries(cl), it=chatIntent(cl);
+    say('Sent. Recognised: '+(cs.length?cs.map(c=>CHAT.nameOf(c)).join(', '):'no country in this round')+(it?' · keyword: '+it:''));
+  });
+  $('liveQuota').addEventListener('click',()=>{ CHAT.fallbackNext=true; CHAT.note('Quota marked as used up: next round switches to normal mode'); livePaint(); });
+  $('liveQuotaCancel').addEventListener('click',()=>{ CHAT.fallbackNext=false; CHAT.note('Quota fallback cancelled'); livePaint(); });
+  function livePaint(){
+    p1(); p2(); p3(); p4();
+    const pend=CHAT.pend.map(p=>(p.type==='shield'?'🛡 ':'♻ ')+CHAT.nameOf(p.code)+' ('+(p.src==='chat'?'chat':p.user)+')');
+    const aw=[...CHAT.await.values()].map(a=>a.user+' → '+(a.type==='auto'?'effect':a.type)+' (waiting for a country)');
+    $('liveStatus').innerHTML = !LIVE.on ? 'Interactive mode is <b>OFF</b>. The game runs as normal Flags War Arena rules.' :
+      'Round '+(G?G.roundNo:'')+' · paid effects used <b>'+CHAT.paid+' / '+CHAT_RULES.PAID_CAP+'</b> · messages '+CHAT.stats.msgs+' (counted '+CHAT.stats.counted+', from other rounds '+CHAT.stats.late+')'+
+      '<br>Waiting: '+(pend.concat(aw).join(' · ')||'none');
+    $('liveFallback').textContent = CHAT.fallbackNext ? '⚠ Next round will switch to normal Flags War Arena (interactive OFF).' : '';
+    $('liveLog').textContent = CHAT.log.slice(0,10).join('\n') || 'No events yet.';
+  }
+  window.__livePaint=livePaint;
+  document.getElementById('panelTabs').addEventListener('click',()=>setTimeout(fillCountries,0));
+  setInterval(()=>{ livePaint(); if (document.activeElement!==$('tCountry')) fillCountries(); }, 1000); livePaint(); fillCountries();
+})();
+
+
+/* ==========================================================================
+   7C. YOUTUBE LIVE CHAT CONNECTION (phase 2)
+   - videos.list (1 unit) once to find the live chat id.
+   - liveChatMessages.list (5 units) on a timer. maxResults=2000 + pageToken, so a slower
+     poll never loses messages - it just collects more per call.
+   - Poll speed: Fixed (the slider, 5-30 s) or Smart (slider speed while something is
+     close to happening, otherwise slowed just enough to last the planned stream).
+   - Quota: counted per Pacific-time day (YouTube resets at midnight PT). At the safety
+     limit, or on a quotaExceeded error, polling stops and the NEXT round starts as normal
+     Flags War Arena with interactive mode off. Optional auto-resume after the reset.
+   ========================================================================== */
+const YT_KEY = 'flagsrumble-yt-v1', YTQ_KEY = 'flagsrumble-yt-quota-v1';
+const YT_COST = { list:5, video:1 };
+const YT = {
+  cfg:{ key:'', video:'', mode:'smart', interval:12, hours:12, limit:10000, autoResume:false },
+  wanted:false, running:false, chatId:'', pageToken:'', timer:null, busy:false,
+  connectedAt:0, lastPoll:0, lastCount:0, nextIn:0, curInterval:12, status:'Not connected',
+  exhausted:false, exhaustedDay:'', skew:0, total:0, err:'',
+  q:{ day:'', used:0 },
+
+  load(){
+    try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem(YT_KEY)||'{}')); }catch(e){}
+    try{ const q=JSON.parse(localStorage.getItem(YTQ_KEY)||'{}'); if (q.day) this.q=q; }catch(e){}
+    this.cfg.interval=Math.max(5,Math.min(30,+this.cfg.interval||12));
+    this.rollDay();
+  },
+  save(){ try{ localStorage.setItem(YT_KEY, JSON.stringify(this.cfg)); }catch(e){} },
+  saveQ(){ try{ localStorage.setItem(YTQ_KEY, JSON.stringify(this.q)); }catch(e){} },
+  ptDay(d){ return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles'}).format(d||new Date()); },
+  msToReset(){
+    const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(new Date());
+    const g=t=>+(p.find(x=>x.type===t)||{value:0}).value;
+    return (86400-((g('hour')%24)*3600+g('minute')*60+g('second')))*1000;
+  },
+  rollDay(){ const d=this.ptDay(); if (this.q.day!==d){ this.q={day:d,used:0}; this.saveQ(); } },
+  safeLimit(){ return Math.floor((+this.cfg.limit||10000)*0.97); },
+  spend(n){ this.rollDay(); this.q.used+=n; this.saveQ(); },
+  videoId(){
+    const v=(this.cfg.video||'').trim();
+    const m=v.match(/(?:v=|youtu\.be\/|\/live\/|\/shorts\/|\/embed\/)([\w-]{11})/); if (m) return m[1];
+    return /^[\w-]{11}$/.test(v) ? v : '';
+  },
+  async api(path, params, cost){
+    const u=new URL('https://www.googleapis.com/youtube/v3/'+path);
+    for (const k in params) u.searchParams.set(k, params[k]);
+    u.searchParams.set('key', this.cfg.key.trim());
+    const ctl=new AbortController(), to=setTimeout(()=>ctl.abort(), 12000);
+    let res, body;
+    try{ res=await fetch(u.toString(), {signal:ctl.signal}); body=await res.json().catch(()=>({})); }
+    finally{ clearTimeout(to); }
+    this.spend(cost);                       // a request that reached YouTube costs quota, even an error
+    if (!res.ok){
+      const reason=(body.error&&body.error.errors&&body.error.errors[0]&&body.error.errors[0].reason) || ('http'+res.status);
+      const e=new Error((body.error&&body.error.message)||reason); e.reason=reason; e.status=res.status; throw e;
+    }
+    return body;
+  },
+
+  async connect(){
+    this.wanted=true; this.exhausted=false; this.err='';
+    if (!this.cfg.key.trim()){ this.status='Enter your API key'; this.wanted=false; return; }
+    const vid=this.videoId(); if (!vid){ this.status='Enter the live video ID or link'; this.wanted=false; return; }
+    if (!LIVE.on){ this.status='Saved. Polling starts when Interactive mode is ON'; return; }
+    await this.start();
+  },
+  async start(){
+    if (this.running || !this.wanted || this.exhausted) return;
+    this.rollDay();
+    if (this.q.used >= this.safeLimit()){ this.quotaOut('safety limit reached'); return; }
+    try{
+      if (!this.chatId){
+        this.status='Finding the live chat…';
+        const r=await this.api('videos', {part:'liveStreamingDetails', id:this.videoId()}, YT_COST.video);
+        const it=r.items&&r.items[0], id=it&&it.liveStreamingDetails&&it.liveStreamingDetails.activeLiveChatId;
+        if (!id){ this.status=it?'This video has no active live chat (is the stream live?)':'Video not found'; this.wanted=false; return; }
+        this.chatId=id; this.pageToken=''; this.connectedAt=Date.now(); this.total=0;
+      }
+      this.running=true; this.status='Connected'; CHAT.note('YouTube chat connected');
+      this.poll();
+    }catch(e){ this.fail(e); }
+  },
+  stop(why){
+    this.running=false; clearTimeout(this.timer); this.timer=null; this.nextIn=0;
+    if (why) this.status=why;
+  },
+  disconnect(){ this.wanted=false; this.stop('Disconnected'); this.chatId=''; this.pageToken=''; },
+  quotaOut(why){
+    this.exhausted=true; this.exhaustedDay=this.ptDay(); this.stop('Quota used up ('+why+'). Normal mode from next round.');
+    if (!CHAT.fallbackNext){ CHAT.fallbackNext=true; CHAT.note('YouTube quota used up ('+why+'): next round switches to normal Flags War Arena'); }
+  },
+  fail(e){
+    const r=e.reason||'';
+    if (r==='quotaExceeded' || r==='dailyLimitExceeded'){ this.quotaOut(r); return; }
+    if (r==='rateLimitExceeded'){ this.err='YouTube asked us to slow down'; this.status='Retrying (rate limit)'; if (this.running) this.schedule(30000); return; }
+    if (r==='liveChatEnded' || r==='liveChatNotFound' || r==='liveChatDisabled'){ this.chatId=''; this.wanted=false; this.stop('Live chat ended or unavailable ('+r+')'); CHAT.note('YouTube: '+r); return; }
+    if (r==='keyInvalid' || r==='badRequest' || r==='forbidden' || e.status===400 || e.status===403){ this.wanted=false; this.stop('YouTube refused the request: '+(e.message||r)); CHAT.note('YouTube error: '+(e.message||r)); return; }
+    // network hiccup or 5xx: keep going, try again after the normal interval
+    this.err=(e.name==='AbortError'?'timeout':(e.message||'network error')); this.status='Retrying ('+this.err+')';
+    if (this.running) this.schedule();
+    else if (this.wanted) this.timer=setTimeout(()=>this.start(), 15000);
+  },
+
+  hot(){
+    if (CHAT.pend.length || CHAT.await.size) return true;
+    if (this.lastCount>=25) return true;
+    return CHAT.leaders().some(l=>l.n/l.need>=0.7);
+  },
+  /* slowest interval that still lasts until the plan ends or the quota resets, whichever is first */
+  budgetInterval(){
+    const left=Math.max(1, this.safeLimit()-this.q.used);
+    const planEnd=this.connectedAt + (+this.cfg.hours||12)*3600e3;
+    const secs=Math.max(60, (Math.min(planEnd, Date.now()+this.msToReset()) - Date.now())/1000);
+    return YT_COST.list*secs/left;
+  },
+  pickInterval(serverMs){
+    const s=this.cfg.interval;
+    let iv = this.cfg.mode==='fixed' ? s : (this.hot() ? s : Math.max(s, this.budgetInterval()));
+    iv=Math.max(5, Math.min(30, iv));
+    if (serverMs) iv=Math.max(iv, Math.min(30, serverMs/1000));
+    return iv;
+  },
+  schedule(serverMs){
+    clearTimeout(this.timer);
+    this.curInterval=this.pickInterval(serverMs);
+    this.nextIn=Date.now()+this.curInterval*1000;
+    this.timer=setTimeout(()=>this.poll(), this.curInterval*1000);
+  },
+  async poll(){
+    if (!this.running || this.busy) return;
+    if (!LIVE.on){ this.stop('Paused: Interactive mode is OFF'); return; }
+    this.rollDay();
+    if (this.q.used + YT_COST.list > this.safeLimit()){ this.quotaOut('safety limit '+this.safeLimit()); return; }
+    this.busy=true;
+    try{
+      const p={liveChatId:this.chatId, part:'snippet,authorDetails', maxResults:2000};
+      if (this.pageToken) p.pageToken=this.pageToken;
+      const r=await this.api('liveChat/messages', p, YT_COST.list);
+      this.pageToken=r.nextPageToken||this.pageToken; this.lastPoll=Date.now(); this.err='';
+      const items=(r.items||[]).slice().sort((a,b)=>Date.parse(a.snippet.publishedAt)-Date.parse(b.snippet.publishedAt));
+      let n=0; const now=Date.now();
+      for (const it of items){
+        const t0=Date.parse(it.snippet.publishedAt); if (!t0) continue;
+        if (now-t0 < -this.skew) this.skew=-(now-t0);          // our clock is behind YouTube's
+        const t=t0+this.skew;
+        if (t < this.connectedAt) continue;                     // backlog from before we connected
+        const m=ytToMsg(it, t); if (m){ CHAT.ingest(m); n++; }
+      }
+      this.lastCount=n; this.total+=n;
+      this.status='Connected · '+n+' new · '+this.total+' total';
+      this.busy=false;
+      if (r.offlineAt){ this.chatId=''; this.wanted=false; this.stop('Stream went offline'); return; }
+      this.schedule(r.pollingIntervalMillis);
+    }catch(e){ this.busy=false; this.fail(e); }
+  },
+  tickResume(){
+    this.rollDay();
+    if (this.exhausted && this.cfg.autoResume && this.ptDay()!==this.exhaustedDay && !CHAT.resumeNext){
+      CHAT.resumeNext=true; CHAT.note('Quota has reset: interactive mode resumes next round');
+    }
+  },
+};
+YT.load();
+
+function ytToMsg(it, t){
+  const s=it.snippet||{}, a=it.authorDetails||{};
+  const user={ id:a.channelId||s.authorChannelId||a.displayName, name:a.displayName||'viewer', member:!!a.isChatSponsor };
+  switch (s.type){
+    case 'textMessageEvent': return {id:it.id, kind:'chat', user, text:(s.textMessageDetails&&s.textMessageDetails.messageText)||s.displayMessage||'', t};
+    case 'superChatEvent': { const d=s.superChatDetails||{}; return {id:it.id, kind:'superchat', user, text:d.userComment||'', amount:d.amountDisplayString||'', t}; }
+    case 'superStickerEvent': { const d=s.superStickerDetails||{}; return {id:it.id, kind:'superchat', user, text:'', amount:d.amountDisplayString||'', t}; }
+    case 'memberMilestoneChatEvent': return {id:it.id, kind:'chat', user:Object.assign(user,{member:true}), text:(s.memberMilestoneChatDetails&&s.memberMilestoneChatDetails.userComment)||'', t};
+    default: return null;                    // new members, gifts, polls, deletions: not used by the rules
+  }
+}
+
+(function(){
+  if (typeof document==='undefined' || !document.getElementById('ytKey')) return;
+  const $=id=>document.getElementById(id);
+  $('ytKey').value=YT.cfg.key; $('ytVideo').value=YT.cfg.video; $('ytHours').value=YT.cfg.hours; $('ytLimit').value=YT.cfg.limit;
+  $('ytSpeed').value=YT.cfg.interval;
+  const segs={ytMode:'mode', ytAuto:'autoResume'};
+  for (const id in segs) $(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return;
+    const k=segs[id]; YT.cfg[k]= k==='autoResume' ? b.dataset.v==='true' : b.dataset.v; YT.save(); paint();
+    if (YT.running) YT.schedule(); });
+  $('ytSpeed').addEventListener('input',()=>{ YT.cfg.interval=+$('ytSpeed').value; YT.save(); paint(); if (YT.running) YT.schedule(); });
+  for (const [id,k] of [['ytKey','key'],['ytVideo','video'],['ytHours','hours'],['ytLimit','limit']])
+    $(id).addEventListener('change',()=>{ YT.cfg[k]= (k==='hours'||k==='limit') ? Math.max(1,+$(id).value||YT.cfg[k]) : $(id).value.trim(); YT.save(); paint(); });
+  $('ytConnect').addEventListener('click',()=>{ YT.cfg.key=$('ytKey').value.trim(); YT.cfg.video=$('ytVideo').value.trim(); YT.save(); YT.chatId=''; YT.stop(); YT.connect().then(paint); paint(); });
+  $('ytDisconnect').addEventListener('click',()=>{ YT.disconnect(); paint(); });
+  $('ytKeyShow').addEventListener('click',e=>{ e.preventDefault(); const k=$('ytKey'); k.type = k.type==='password' ? 'text' : 'password'; });
+  function fmtH(h){ return h>=1 ? h.toFixed(1)+' h' : Math.round(h*60)+' min'; }
+  function paint(){
+    [...$('ytMode').children].forEach(b=>b.classList.toggle('on', b.dataset.v===YT.cfg.mode));
+    [...$('ytAuto').children].forEach(b=>b.classList.toggle('on', b.dataset.v===String(YT.cfg.autoResume)));
+    $('ytSpeedVal').textContent=YT.cfg.interval+' s';
+    YT.rollDay();
+    const safe=YT.safeLimit(), used=YT.q.used, iv=YT.running?YT.curInterval:YT.pickInterval();
+    const perH=YT_COST.list*3600/iv, hoursLeft=Math.max(0,safe-used)/perH;
+    $('ytBar').style.width=Math.min(100,used/safe*100)+'%';
+    $('ytBar').style.background = used/safe>0.85 ? '#ff4d6d' : used/safe>0.6 ? '#ffcf3d' : '#5ef2c8';
+    const reset=new Date(Date.now()+YT.msToReset());
+    $('ytQuota').innerHTML='Quota today: <b>'+used+' / '+safe+'</b> units (safety limit = 97% of '+YT.cfg.limit+')<br>'+
+      'At '+Math.round(iv)+' s per poll: '+Math.round(perH)+' units/hour → lasts <b>'+fmtH(hoursLeft)+'</b>'+
+      (hoursLeft < (+YT.cfg.hours||12) ? ' <span style="color:#ff6b8a">(less than your '+YT.cfg.hours+' h plan)</span>' : '')+
+      '<br>Quota resets at '+reset.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+' your time (midnight Pacific).';
+    const nx = YT.running && YT.nextIn ? Math.max(0,Math.round((YT.nextIn-Date.now())/1000)) : null;
+    $('ytStatus').innerHTML='<b>'+YT.status+'</b>'+(YT.running? '<br>Poll every '+YT.curInterval.toFixed(0)+' s'+(YT.cfg.mode==='smart'?(YT.hot()?' (fast: something is close)':' (relaxed)'):'')+' · next in '+nx+' s'+(YT.lastPoll?' · last '+new Date(YT.lastPoll).toLocaleTimeString():''):'')+
+      (YT.exhausted?'<br><span style="color:#ffcf3d">Quota used up today'+(YT.cfg.autoResume?' · auto-resume after reset':'')+'</span>':'');
+  }
+  window.__ytPaint=paint;
+  setInterval(()=>{ YT.tickResume(); paint(); }, 1000); paint();
+})();
 
 /* ==========================================================================
    8. MAIN LOOP
@@ -4472,7 +5147,7 @@ try{ const q=new URLSearchParams(location.search).get('preset');
    (OBS's Interact window can't scroll the panel). Last page is remembered. ---- */
 (function(){
   if (typeof document==='undefined' || !document.getElementById('panelTabs')) return;
-  const order=['channel','arena','hud','text','balls','voice'], names={channel:'Channel Presets',arena:'Arena & Background',hud:'HUD Style',text:'Branding Text',balls:'Balls: Faces & Skins',voice:'Commentary Voice'};
+  const order=['channel','arena','hud','text','balls','voice','live','test','log','yt'], names={yt:'YouTube Connection',live:'Interactive Mode',test:'Test Chat',log:'Quota & Log',channel:'Channel Presets',arena:'Arena & Background',hud:'HUD Style',text:'Branding Text',balls:'Balls: Faces & Skins',voice:'Commentary Voice'};
   let cur='channel'; try{ const s=localStorage.getItem('flagsrumble-panel-page'); if (order.includes(s)) cur=s; }catch(e){}
   function show(p){
     cur=p; try{ localStorage.setItem('flagsrumble-panel-page',p); }catch(e){}
@@ -4488,7 +5163,7 @@ try{ const q=new URLSearchParams(location.search).get('preset');
 })();
 
 /* Expose for the headless verification harness (verify_sim.js). */
-window.__CBR__ = { get G(){return G;}, CFG, step, tick, newDraw, alive, spokeSegs, COUNTRIES, POOL, TIERS, tieredField, ALL_COUNTRIES };
+window.__CBR__ = { get G(){return G;}, CFG, step, tick, newDraw, alive, spokeSegs, COUNTRIES, CHAT, LIVE, YT, POOL, TIERS, tieredField, ALL_COUNTRIES };
 </script>
 </body>
 </html>
