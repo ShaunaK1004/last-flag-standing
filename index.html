@@ -83,6 +83,7 @@
   .blab{display:block;font-size:11.5px;color:#aab6e8;margin-bottom:7px}
   .tin{width:100%;margin-top:3px;background:#0c1030;border:1px solid #333e80;border-radius:7px;padding:7px 9px;color:#dfe6ff;font-size:12.5px}
   .hrow .seg[data-hud]{flex-wrap:wrap}.hrow .seg[data-hud] button{flex:1 1 30%;min-width:30%}
+  #liveCorner,#liveTargets{flex-wrap:wrap!important}
   #liveCorner button{flex:1 1 45%!important;min-width:45%!important}
   #liveCorner button[data-v=box]{flex:1 1 100%!important}
   #mBtns button{flex:1 1 45%;white-space:normal}
@@ -105,12 +106,16 @@
     <div class="pgroup" data-page="live">
       <h2>Interactive mode (chat shield &amp; revival)</h2>
       <div class="seg" id="liveOn"><button data-v="false">Off (normal game)</button><button data-v="true">On</button></div>
-      <div class="hint">30 different chat messages = shield, 60 after elimination = revival (once each per country per round, members count double). Super chats with a keyword + subscribers: max 3 per round.</div>
+      <div class="hint" id="liveRulesHint"></div>
     </div>
     <div class="pgroup" data-page="live">
       <h2>Options</h2>
       <div class="hrow"><span>On-screen chat panels</span><div class="seg" id="liveStrip"><button data-v="true">Show</button><button data-v="false">Hide</button></div></div>
       <div class="hrow"><span>Panel corner (next to the ring)</span><div class="seg" id="liveCorner"><button data-v="tl">↖ Top-left</button><button data-v="tr">↗ Top-right</button><button data-v="bl">↙ Bottom-left</button><button data-v="br">↘ Bottom-right</button><button data-v="box">▣ Boxes beside question</button></div><div class="hint" id="liveCornerNote" style="color:#ffcf3d;margin-top:4px"></div></div>
+      <div class="hrow"><span>Chat targets (different messages)</span>
+        <div style="display:flex;gap:6px"><label class="blab" style="flex:1;margin:0">🛡 Shield<input class="tin" id="liveShieldN" type="number" min="3" max="200" step="1"></label><label class="blab" style="flex:1;margin:0">♻ Revive<input class="tin" id="liveReviveN" type="number" min="3" max="300" step="1"></label></div>
+        <div class="seg" id="liveTargets" style="margin-top:6px"><button data-v="10,20">10 / 20</button><button data-v="15,30">15 / 30</button><button data-v="20,40">20 / 40</button><button data-v="30,60">30 / 60</button></div>
+      </div>
       <div class="hrow"><span>Support per person</span><div class="seg" id="liveCap"><button data-v="false">Open (no cap)</button><button data-v="true">Controlled (10 each)</button></div></div>
     </div>
     <div class="pgroup" data-page="live">
@@ -4530,13 +4535,18 @@ function render(){
      with interactive mode off.
    ========================================================================== */
 const LIVE_KEY = 'flagsrumble-live-v1';
-const LIVE = { on:false, strip:true, controlled:false, corner:'tl' };
+const LIVE = { on:false, strip:true, controlled:false, corner:'tl', shieldN:30, reviveN:60 };
 try { const s=JSON.parse(localStorage.getItem(LIVE_KEY)||'{}');
   for (const k of ['on','strip','controlled']) if (typeof s[k]==='boolean') LIVE[k]=s[k];
-  if (['tl','tr','bl','br'].includes(s.corner)) LIVE.corner=s.corner; } catch(e){}
-function saveLive(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({on:LIVE.on,strip:LIVE.strip,controlled:LIVE.controlled,corner:LIVE.corner})); }catch(e){} }
+  if (['tl','tr','bl','br','box'].includes(s.corner)) LIVE.corner=s.corner;
+  if (s.shieldN>=3 && s.shieldN<=200) LIVE.shieldN=Math.round(s.shieldN); if (s.reviveN>=3 && s.reviveN<=300) LIVE.reviveN=Math.round(s.reviveN); } catch(e){}
+function saveLive(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({on:LIVE.on,strip:LIVE.strip,controlled:LIVE.controlled,corner:LIVE.corner,shieldN:LIVE.shieldN,reviveN:LIVE.reviveN})); }catch(e){} }
 
 const CHAT_RULES = { SHIELD:30, REVIVE:60, MEMBER_W:2, PERSON_CAP:10, PAID_CAP:3, PAID_PER_COUNTRY:2 };
+CHAT_RULES.SHIELD=LIVE.shieldN; CHAT_RULES.REVIVE=LIVE.reviveN;
+/* numbers spoken as words, so the voice says the target you set */
+function numWords(n){ const o=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'], t=['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+  if (n<20) return o[n]; if (n<100) return t[Math.floor(n/10)]+(n%10?'-'+o[n%10]:''); const h=Math.floor(n/100), r=n%100; return o[h]+' hundred'+(r?' and '+numWords(r):''); }
 
 /* ---- country recognition ------------------------------------------------- */
 const ALIAS_EXTRA = {
@@ -4888,7 +4898,7 @@ function drawLiveCorner(){
   ctx.font='700 22px "FR Oswald",system-ui,sans-serif'; ctx.fillStyle='#5ef2c8';
   ctx.fillText('CHAT POWER', xo, PY+Y.title);
   ctx.font='700 14px "FR Poppins",system-ui,sans-serif'; ctx.fillStyle='#e6ecff';
-  ctx.fillText('30 msgs = 🛡   60 = ♻', xo, PY+Y.leg);
+  ctx.fillText(CHAT_RULES.SHIELD+' msgs = 🛡   '+CHAT_RULES.REVIVE+' = ♻', xo, PY+Y.leg);
   const L=CHAT.leaders();
   if (!L.length){
     ctx.fillStyle='#ffffff'; ctx.font='800 18px "FR Poppins",system-ui,sans-serif';
@@ -4921,14 +4931,14 @@ function drawLiveCorner(){
    other round in each half; Subscribe on the 3 rounds left. One special type per round.
    ========================================================================== */
 const LIVE_LINES = {
-  chat1:['Chat power is on! Thirty different messages for your country — shield!',
-         'Name, flag or short form — thirty different messages shields your country!',
-         'Back your country in chat! Thirty different messages unlocks a shield!',
-         'Protect your nation! Thirty different messages — shield on!'],
-  chat2:['Ten left! Is your country out? Sixty different messages brings it back!',
-         'Name, flag or short form — sixty messages revives your country!',
-         'Revive time! Sixty different messages for your fallen country!',
-         "Don't give up! Sixty different messages and your country returns!"],
+  chat1:['Chat power is on! {S} different messages for your country — shield!',
+         'Name, flag or short form — {s} different messages shields your country!',
+         'Back your country in chat! {S} different messages unlocks a shield!',
+         'Protect your nation! {S} different messages — shield on!'],
+  chat2:['Ten left! Is your country out? {R} different messages brings it back!',
+         'Name, flag or short form — {r} messages revives your country!',
+         'Revive time! {R} different messages for your fallen country!',
+         "Don't give up! {R} different messages and your country returns!"],
   sc:["Super Chat the word 'revive' with your country's name, and your knocked-out country jumps straight back into the arena!",
       "Super Chat the word 'shield' with your country's name, and it's protected from the next fall into the hole!",
       "Only three super powers each round! Super Chat 'shield' to protect your country, or 'revive' to bring it back!",
@@ -4950,7 +4960,8 @@ const LIVEVOX = {
   last:{},
   pick(k){ const a=LIVE_LINES[k]; if (!a||!a.length) return ''; let i=Math.floor(Math.random()*a.length);
     if (a.length>1 && this.last[k]===i) i=(i+1)%a.length; this.last[k]=i; return a[i]; },
-  say(k, c){ if (!LIVE.on) return false; const t=this.pick(k).replace('{c}', c||''); if (!t) return false; COMMENTARY.special(t); return true; },
+  say(k, c){ if (!LIVE.on) return false; const cap=s=>s.charAt(0).toUpperCase()+s.slice(1), sw=numWords(CHAT_RULES.SHIELD), rw=numWords(CHAT_RULES.REVIVE);
+    const t=this.pick(k).replace('{c}', c||'').replace('{S}',cap(sw)).replace('{s}',sw).replace('{R}',cap(rw)).replace('{r}',rw); if (!t) return false; COMMENTARY.special(t); return true; },
 };
 
 /* the round's special type and its triggers */
@@ -5077,9 +5088,10 @@ function drawLiveBoxes(){
       roundRect(ctx,lx+74,ry+27,128,7,3.5); ctx.fillStyle='rgba(255,255,255,0.14)'; ctx.fill();
       if (!r.done){ roundRect(ctx,lx+74,ry+27,Math.max(7,128*f),7,3.5); ctx.fillStyle=col; ctx.fill(); }
       else { ctx.fillStyle=col; ctx.font='800 10px "FR Poppins",system-ui,sans-serif'; ctx.fillText(r.alive?'🛡 SHIELD EARNED':'♻ REVIVE EARNED', lx+76, ry+31); }
-      ctx.textAlign='right'; ctx.fillStyle='#ffffff'; ctx.font='900 20px "FR Oswald",system-ui,sans-serif';
-      ctx.fillText(String(r.msgs), lx+BW-16, ry+16);
-      ctx.fillStyle='#8ea0e6'; ctx.font='700 10px "FR Poppins",system-ui,sans-serif'; ctx.fillText('💬 MSGS', lx+BW-16, ry+34);
+      ctx.textAlign='right'; ctx.fillStyle='#ffffff'; ctx.font='900 19px "FR Oswald",system-ui,sans-serif';
+      ctx.fillText(r.msgs+' 💬', lx+BW-16, ry+15);
+      ctx.fillStyle=col; ctx.font='800 13px "FR Poppins",system-ui,sans-serif';
+      ctx.fillText(r.done ? '✔' : (r.alive?'🛡 ':'♻ ')+Math.min(r.n,r.need)+'/'+r.need, lx+BW-16, ry+34);
     });
     ctx.restore();
     if (maxOff>0){ const sbH=viewH*3/B.length, sbY=top+(off/maxOff)*(viewH-sbH);       // tiny scroll indicator
@@ -5089,7 +5101,7 @@ function drawLiveBoxes(){
   // right: SAVE YOUR COUNTRY rules + live footer
   liveFrame(rx,BY,BW,BH,'#5ef2c8','#ffcf3d',0.55,'SAVE YOUR COUNTRY','#5ef2c8');
   ctx.save(); ctx.textAlign='left'; ctx.textBaseline='middle';
-  const rows=[['💬','30 chats','🛡 SHIELD','#5ef2c8'],['💬','60 if out','♻ REVIVE','#ff8da1'],['⭐','Super Chat','🛡 / ♻','#ffcf3d'],['🔔','Subscribe','FREE POWER','#b9a4ff']];
+  const rows=[['💬',CHAT_RULES.SHIELD+' chats','🛡 SHIELD','#5ef2c8'],['💬',CHAT_RULES.REVIVE+' if out','♻ REVIVE','#ff8da1'],['⭐','Super Chat','🛡 / ♻','#ffcf3d'],['🔔','Subscribe','FREE POWER','#b9a4ff']];
   rows.forEach((r,i)=>{ const y=BY+58+i*27;
     ctx.font='700 17px "FR Poppins",system-ui,sans-serif'; ctx.fillStyle='#ffffff'; ctx.fillText(r[0]+' '+r[1], rx+16, y);
     ctx.textAlign='right'; ctx.fillStyle=r[3]; ctx.font='800 17px "FR Poppins",system-ui,sans-serif'; ctx.fillText(r[2], rx+BW-16, y); ctx.textAlign='left'; });
@@ -5132,6 +5144,11 @@ function testSupport(code, n, member, untilFlag){
   const p2=seg('liveStrip', ()=>LIVE.strip, v=>{ LIVE.strip=(v==='true'); });
   const p3=seg('liveCap', ()=>LIVE.controlled, v=>{ LIVE.controlled=(v==='true'); });
   const p4=seg('liveCorner', ()=>LIVE.corner, v=>{ LIVE.corner=v; });
+  const setTargets=(s,r)=>{ s=Math.max(3,Math.min(200,Math.round(+s||30))); r=Math.max(3,Math.min(300,Math.round(+r||60)));
+    LIVE.shieldN=CHAT_RULES.SHIELD=s; LIVE.reviveN=CHAT_RULES.REVIVE=r; saveLive(); CHAT.note('Chat targets set: shield '+s+', revive '+r); livePaint(); };
+  $('liveShieldN').addEventListener('change',()=>setTargets($('liveShieldN').value, LIVE.reviveN));
+  $('liveReviveN').addEventListener('change',()=>setTargets(LIVE.shieldN, $('liveReviveN').value));
+  $('liveTargets').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; const [s,r]=b.dataset.v.split(','); setTargets(s,r); });
   let kind='chat';
   const kEl=$('tKind'); kEl.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; kind=b.dataset.v; [...kEl.children].forEach(x=>x.classList.toggle('on',x===b)); });
   function fillCountries(){
@@ -5172,6 +5189,10 @@ function testSupport(code, n, member, untilFlag){
   $('liveQuotaCancel').addEventListener('click',()=>{ CHAT.fallbackNext=false; CHAT.note('Quota fallback cancelled'); livePaint(); });
   function livePaint(){
     p1(); p2(); p3(); p4();
+    if (document.activeElement!==$('liveShieldN')) $('liveShieldN').value=LIVE.shieldN;
+    if (document.activeElement!==$('liveReviveN')) $('liveReviveN').value=LIVE.reviveN;
+    [...$('liveTargets').children].forEach(b=>b.classList.toggle('on', b.dataset.v===LIVE.shieldN+','+LIVE.reviveN));
+    $('liveRulesHint').textContent=CHAT_RULES.SHIELD+' different chat messages = shield, '+CHAT_RULES.REVIVE+' after elimination = revival (once each per country per round, members count double). Super Chats with a keyword + subscribers: max 3 per round, 2 per country.';
     $('liveCornerNote').textContent = LIVE.corner==='box' && !boxLayoutOn() ? 'Boxes need the Original header & question style (HUD tab). Showing the top-left corner panel instead.' : '';
     const pend=CHAT.pend.map(p=>(p.type==='shield'?'🛡 ':'♻ ')+CHAT.nameOf(p.code)+' ('+(p.src==='chat'?'chat':p.user)+')');
     const aw=[...new Set(CHAT.await.values())].map(a=>a.user+' → '+(a.type==='auto'?'effect':a.type)+' (waiting for a country)');
