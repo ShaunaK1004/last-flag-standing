@@ -112,7 +112,8 @@
       <h2>Options</h2>
       <div class="hrow"><span>On-screen chat panels</span><div class="seg" id="liveStrip"><button data-v="true">Show</button><button data-v="false">Hide</button></div></div>
       <div class="hrow"><span>Panel corner (next to the ring)</span><div class="seg" id="liveCorner"><button data-v="tl">↖ Top-left</button><button data-v="tr">↗ Top-right</button><button data-v="bl">↙ Bottom-left</button><button data-v="br">↘ Bottom-right</button><button data-v="box">▣ Boxes beside question</button></div><div class="hint" id="liveCornerNote" style="color:#ffcf3d;margin-top:4px"></div></div>
-      <div class="hrow"><span>Chat targets (different messages)</span>
+      <div class="hrow"><span>What counts</span><div class="seg" id="liveCount"><button data-v="true">Every message</button><button data-v="false">Different messages only</button></div></div>
+      <div class="hrow"><span>Chat targets (messages)</span>
         <div style="display:flex;gap:6px"><label class="blab" style="flex:1;margin:0">🛡 Shield<input class="tin" id="liveShieldN" type="number" min="3" max="200" step="1"></label><label class="blab" style="flex:1;margin:0">♻ Revive<input class="tin" id="liveReviveN" type="number" min="3" max="300" step="1"></label></div>
         <div class="seg" id="liveTargets" style="margin-top:6px"><button data-v="10,20">10 / 20</button><button data-v="15,30">15 / 30</button><button data-v="20,40">20 / 40</button><button data-v="30,60">30 / 60</button></div>
       </div>
@@ -4535,12 +4536,12 @@ function render(){
      with interactive mode off.
    ========================================================================== */
 const LIVE_KEY = 'flagsrumble-live-v1';
-const LIVE = { on:false, strip:true, controlled:false, corner:'tl', shieldN:30, reviveN:60 };
+const LIVE = { on:false, strip:true, controlled:false, corner:'tl', shieldN:30, reviveN:60, countAll:true };
 try { const s=JSON.parse(localStorage.getItem(LIVE_KEY)||'{}');
-  for (const k of ['on','strip','controlled']) if (typeof s[k]==='boolean') LIVE[k]=s[k];
+  for (const k of ['on','strip','controlled','countAll']) if (typeof s[k]==='boolean') LIVE[k]=s[k];
   if (['tl','tr','bl','br','box'].includes(s.corner)) LIVE.corner=s.corner;
   if (s.shieldN>=3 && s.shieldN<=200) LIVE.shieldN=Math.round(s.shieldN); if (s.reviveN>=3 && s.reviveN<=300) LIVE.reviveN=Math.round(s.reviveN); } catch(e){}
-function saveLive(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({on:LIVE.on,strip:LIVE.strip,controlled:LIVE.controlled,corner:LIVE.corner,shieldN:LIVE.shieldN,reviveN:LIVE.reviveN})); }catch(e){} }
+function saveLive(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({on:LIVE.on,strip:LIVE.strip,controlled:LIVE.controlled,corner:LIVE.corner,shieldN:LIVE.shieldN,reviveN:LIVE.reviveN,countAll:LIVE.countAll})); }catch(e){} }
 
 const CHAT_RULES = { SHIELD:30, REVIVE:60, MEMBER_W:2, PERSON_CAP:10, PAID_CAP:3, PAID_PER_COUNTRY:2 };
 CHAT_RULES.SHIELD=LIVE.shieldN; CHAT_RULES.REVIVE=LIVE.reviveN;
@@ -4632,7 +4633,7 @@ const CHAT = {
   roundStart:0,
   feed:[],               // on-screen feed [{txt,col,t}]
   log:[],                // operator log
-  fallbackNext:false, resumeNext:false, fellBack:false, paidBy:new Map(),
+  fallbackNext:false, resumeNext:false, fellBack:false, paidBy:new Map(), seq:0,
   seen:new Set(), names:new Map(), paidSeen:new Map(),
   stats:{msgs:0,late:0,counted:0},
 
@@ -4695,7 +4696,7 @@ const CHAT = {
     if (codes.length){
       for (const code of codes.slice(0,3)) this.S(code).msgs++;     // live support count shown on stream
       this.last.set(uid, codes[0]);
-      const key=chatKey(clean), w = m.user&&m.user.member ? CHAT_RULES.MEMBER_W : 1;
+      const key = LIVE.countAll ? 'm'+(++this.seq) : chatKey(clean), w = m.user&&m.user.member ? CHAT_RULES.MEMBER_W : 1;
       for (const code of codes.slice(0,3)) this.support(code, key, uid, w, t);
     }
   },
@@ -4961,7 +4962,8 @@ const LIVEVOX = {
   pick(k){ const a=LIVE_LINES[k]; if (!a||!a.length) return ''; let i=Math.floor(Math.random()*a.length);
     if (a.length>1 && this.last[k]===i) i=(i+1)%a.length; this.last[k]=i; return a[i]; },
   say(k, c){ if (!LIVE.on) return false; const cap=s=>s.charAt(0).toUpperCase()+s.slice(1), sw=numWords(CHAT_RULES.SHIELD), rw=numWords(CHAT_RULES.REVIVE);
-    const t=this.pick(k).replace('{c}', c||'').replace('{S}',cap(sw)).replace('{s}',sw).replace('{R}',cap(rw)).replace('{r}',rw); if (!t) return false; COMMENTARY.special(t); return true; },
+    let t0=this.pick(k); if (LIVE.countAll) t0=t0.replace(/ different messages/g,' messages');
+    const t=t0.replace('{c}', c||'').replace('{S}',cap(sw)).replace('{s}',sw).replace('{R}',cap(rw)).replace('{r}',rw); if (!t) return false; COMMENTARY.special(t); return true; },
 };
 
 /* the round's special type and its triggers */
@@ -5144,6 +5146,7 @@ function testSupport(code, n, member, untilFlag){
   const p2=seg('liveStrip', ()=>LIVE.strip, v=>{ LIVE.strip=(v==='true'); });
   const p3=seg('liveCap', ()=>LIVE.controlled, v=>{ LIVE.controlled=(v==='true'); });
   const p4=seg('liveCorner', ()=>LIVE.corner, v=>{ LIVE.corner=v; });
+  const p5=seg('liveCount', ()=>LIVE.countAll, v=>{ LIVE.countAll=(v==='true'); CHAT.note('Counting: '+(LIVE.countAll?'every message':'different messages only')); });
   const setTargets=(s,r)=>{ s=Math.max(3,Math.min(200,Math.round(+s||30))); r=Math.max(3,Math.min(300,Math.round(+r||60)));
     LIVE.shieldN=CHAT_RULES.SHIELD=s; LIVE.reviveN=CHAT_RULES.REVIVE=r; saveLive(); CHAT.note('Chat targets set: shield '+s+', revive '+r); livePaint(); };
   $('liveShieldN').addEventListener('change',()=>setTargets($('liveShieldN').value, LIVE.reviveN));
@@ -5188,11 +5191,11 @@ function testSupport(code, n, member, untilFlag){
   $('liveQuota').addEventListener('click',()=>{ CHAT.fallbackNext=true; CHAT.note('Quota marked as used up: next round switches to normal mode'); livePaint(); });
   $('liveQuotaCancel').addEventListener('click',()=>{ CHAT.fallbackNext=false; CHAT.note('Quota fallback cancelled'); livePaint(); });
   function livePaint(){
-    p1(); p2(); p3(); p4();
+    p1(); p2(); p3(); p4(); p5();
     if (document.activeElement!==$('liveShieldN')) $('liveShieldN').value=LIVE.shieldN;
     if (document.activeElement!==$('liveReviveN')) $('liveReviveN').value=LIVE.reviveN;
     [...$('liveTargets').children].forEach(b=>b.classList.toggle('on', b.dataset.v===LIVE.shieldN+','+LIVE.reviveN));
-    $('liveRulesHint').textContent=CHAT_RULES.SHIELD+' different chat messages = shield, '+CHAT_RULES.REVIVE+' after elimination = revival (once each per country per round, members count double). Super Chats with a keyword + subscribers: max 3 per round, 2 per country.';
+    $('liveRulesHint').textContent=CHAT_RULES.SHIELD+(LIVE.countAll?' chat messages':' different chat messages')+' = shield, '+CHAT_RULES.REVIVE+' after elimination = revival (once each per country per round, members count double). Super Chats with a keyword + subscribers: max 3 per round, 2 per country.';
     $('liveCornerNote').textContent = LIVE.corner==='box' && !boxLayoutOn() ? 'Boxes need the Original header & question style (HUD tab). Showing the top-left corner panel instead.' : '';
     const pend=CHAT.pend.map(p=>(p.type==='shield'?'🛡 ':'♻ ')+CHAT.nameOf(p.code)+' ('+(p.src==='chat'?'chat':p.user)+')');
     const aw=[...new Set(CHAT.await.values())].map(a=>a.user+' → '+(a.type==='auto'?'effect':a.type)+' (waiting for a country)');
