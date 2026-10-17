@@ -117,6 +117,9 @@
         <div style="display:flex;gap:6px"><label class="blab" style="flex:1;margin:0">🛡 Shield<input class="tin" id="liveShieldN" type="number" min="3" max="200" step="1"></label><label class="blab" style="flex:1;margin:0">♻ Revive<input class="tin" id="liveReviveN" type="number" min="3" max="300" step="1"></label></div>
         <div class="seg" id="liveTargets" style="margin-top:6px"><button data-v="10,20">10 / 20</button><button data-v="15,30">15 / 30</button><button data-v="20,40">20 / 40</button><button data-v="30,60">30 / 60</button></div>
       </div>
+      <div class="hrow"><span>Subscriber powers (Super Chats have no limit)</span>
+        <div style="display:flex;gap:6px"><label class="blab" style="flex:1;margin:0">🔔 Max per round<input class="tin" id="liveSubCap" type="number" min="1" max="200" step="1"></label><label class="blab" style="flex:1;margin:0">🔔 Max per country<input class="tin" id="liveSubPer" type="number" min="1" max="20" step="1"></label></div>
+      </div>
       <div class="hrow"><span>Support per person</span><div class="seg" id="liveCap"><button data-v="false">Open (no cap)</button><button data-v="true">Controlled (10 each)</button></div></div>
     </div>
     <div class="pgroup" data-page="live">
@@ -190,7 +193,13 @@
       <select id="mCountry" class="tin" style="margin:0"></select>
       <div style="display:flex;gap:6px;margin-top:6px"><input class="tin" id="mName" placeholder="Viewer name (optional)" style="margin:0;flex:1"><label class="blab" style="margin:0;align-self:center;white-space:nowrap"><input type="checkbox" id="mForce"> Ignore limits</label></div>
       <div class="seg" id="mBtns" style="margin-top:8px"><button data-k="chatShield">🛡 Chat shield</button><button data-k="chatRevive">♻ Chat revival</button><button data-k="scShield">⭐ Super Chat shield</button><button data-k="scRevive">⭐ Super Chat revive</button><button data-k="sub" style="flex-basis:100%">🔔 Subscriber power (shield if alive, revive if out)</button></div>
-      <div class="hint" id="mMsg" style="color:#c9d3ff">Works like the real event: popup card, effect and commentary. Paid ones follow 3 per round / 2 per country unless Ignore limits is ticked.</div>
+      <div class="hint" id="mMsg" style="color:#c9d3ff">Works like the real event: popup card, effect and commentary. Super Chat buttons: out → comes back with a shield; alive → shield. Super Chat buttons have no limit. Subscriber power follows the per-round / per-country limits (Live tab) unless Ignore limits is ticked.</div>
+    </div>
+    <div class="pgroup" data-page="manual">
+      <h2>Drop a country in (not in this round)</h2>
+      <select id="mPool" class="tin" style="margin:0"></select>
+      <div class="seg" id="mLand" style="margin-top:8px"><button data-k="land">🪂 Drop in</button><button data-k="landShield">🪂 Drop in + shield</button></div>
+      <div class="hint" id="mLandMsg" style="color:#c9d3ff">Same as a Super Chat for a country that isn't playing. Uses the viewer name and Ignore limits above.</div>
     </div>
     <div class="pgroup" data-page="manual">
       <h2>Play a promo line now</h2>
@@ -2073,6 +2082,7 @@ function newDraw(){
     shake:0,
     spawnSkips:0,                        // comebacks refused for want of a clear spot
   };
+  G.field = balls.length;
   G.settleResidual = settle(CFG.SETTLE);
   COMMENTARY.reset();
   FACE.reset();
@@ -2338,7 +2348,7 @@ function step(dt){
     for (const b of A){
       if (Math.hypot(b.x,b.y) < rr){
         if (b.shield){                       // shielded: ejected, shield breaks
-          b.shield=false; b.shieldCol=null; if (G.shielded===b) G.shielded=null;
+          if ((b.shieldHits||1)>1) b.shieldHits--; else { b.shield=false; b.shieldHits=0; b.shieldCol=null; if (G.shielded===b) G.shielded=null; }
           const d=Math.hypot(b.x,b.y)||1;
           const ux=b.x/d, uy=b.y/d;
           b.x=ux*(CFG.HOLE_R+CFG.BALL_R+20); b.y=uy*(CFG.HOLE_R+CFG.BALL_R+20);
@@ -3411,7 +3421,7 @@ function hatFor(hc){ return HAT_OF[hc] || HAT_FALLBACK; }
 function drawBallFull(b, x, y, R){
   if (LOOK.balls==='original'){          // the original channel's plain glossy flag disc, exactly as before
     if (b.shield){ ctx.save(); ctx.strokeStyle=b.shieldCol||PAL.shield; ctx.lineWidth=5; ctx.shadowColor=b.shieldCol||PAL.shield; ctx.shadowBlur=20;
-      ctx.beginPath(); ctx.arc(x,y,R+9,0,7); ctx.stroke(); ctx.restore(); }
+      ctx.beginPath(); ctx.arc(x,y,R+9,0,7); ctx.stroke(); if ((b.shieldHits||1)>1){ ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,R+16,0,7); ctx.stroke(); } ctx.restore(); }
     ctx.drawImage(sprites.get(b.c.code), x-R, y-R, R*2, R*2);
     return;
   }
@@ -3428,7 +3438,9 @@ function drawBallFull(b, x, y, R){
   if (b.shield){
     ctx.save(); ctx.strokeStyle=b.shieldCol||PAL.shield; ctx.lineWidth=5;
     ctx.shadowColor=b.shieldCol||PAL.shield; ctx.shadowBlur=20;
-    ctx.beginPath(); ctx.arc(x,y,R+9,0,7); ctx.stroke(); ctx.restore();
+    ctx.beginPath(); ctx.arc(x,y,R+9,0,7); ctx.stroke();
+    if ((b.shieldHits||1)>1){ ctx.lineWidth=3; ctx.beginPath(); ctx.arc(x,y,R+16,0,7); ctx.stroke(); }
+    ctx.restore();
   }
   ctx.drawImage(sp, x-R, y-R, d, d);
 
@@ -3770,7 +3782,8 @@ try{ if (document.fonts) ['700 20px "FR Orbitron"','900 20px "FR Orbitron"','500
 function fnt(w,s,st){ return w+' '+s+'px '+FF[st]; }
 function setF(text,maxW,size,w,st,stack){ let s=size; for (;s>10;s--){ ctx.font=w+' '+s+'px '+(stack||FF[st]); if (ctx.measureText(text).width<=maxW) break; } return s; }
 
-function hudCounts(){ const total=CFG.N_BALLS; return {total, alive:Math.max(1,total-G.dead.length), dead:G.dead.length}; }
+function fieldN(){ return (G && G.field) || CFG.N_BALLS; }
+function hudCounts(){ const total=fieldN(); return {total, alive:Math.max(1,total-G.dead.length), dead:G.dead.length}; }
 function hudStatus(){
   if (G.rapidLeft>0) return {t:'RAPID FIRE x'+G.rapidLeft, hot:true, big:'RAPID x'+G.rapidLeft};
   if (G.phase==='OPEN') return {t:'CYCLE '+G.roundNo+' \u2022 HOLE OPEN!', hot:true, big:'OPEN!'};
@@ -3812,8 +3825,8 @@ function drawDeadGrid(x,y,w,h,st){
 function hdrRoyal(){
   const L=LAY;
 
-  const shown = CFG.N_BALLS - G.dead.length;   // HUD lags the kill by HUD_DELAY_MS
-  infoChip(L.p1X, L.rowY, L.pW, L.rowH, 'globe', 'TOTAL NATIONS', String(CFG.N_BALLS), 'blue');
+  const shown = fieldN() - G.dead.length;   // HUD lags the kill by HUD_DELAY_MS
+  infoChip(L.p1X, L.rowY, L.pW, L.rowH, 'globe', 'TOTAL NATIONS', String(fieldN()), 'blue');
   infoChip(L.p2X, L.rowY, L.pW, L.rowH, 'crosshair', 'NATIONS ALIVE', String(Math.max(shown,1)), 'red');
 
   // ---- brand: crown + two-line FLAGS / RUMBLE lockup, centred between the chips
@@ -4020,7 +4033,7 @@ function elmRoyal(){
   ctx.restore();
   roundRect(ctx,bx,by,bw,bh,8); ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fill();
   ctx.strokeStyle=PAL.frame; ctx.lineWidth=1.6; ctx.stroke();
-  const f=G.dead.length/CFG.N_BALLS;
+  const f=G.dead.length/fieldN();
   const gr=ctx.createLinearGradient(bx,0,bx+bw,0);
   gr.addColorStop(0,PAL.chipRed1); gr.addColorStop(1,PAL.brandGold2);
   roundRect(ctx,bx,by,Math.max(8,bw*f),bh,8); ctx.fillStyle=gr; ctx.fill();
@@ -4028,7 +4041,7 @@ function elmRoyal(){
   ctx.font='800 26px system-ui,sans-serif'; ctx.fillStyle=PAL.chipRed1;
   ctx.fillText('ELIMINATED', W/2-90, by+52);
   ctx.fillStyle=PAL.ink; ctx.font='900 26px system-ui,sans-serif';
-  ctx.fillText(G.dead.length+' / '+CFG.N_BALLS, W/2+95, by+52);
+  ctx.fillText(G.dead.length+' / '+fieldN(), W/2+95, by+52);
 
 
 }
@@ -4252,8 +4265,8 @@ function hdrOriginal(){
   const w1=ctx.measureText(first).width;
   ctx.fillStyle=PAL.gold; ctx.fillText(b, L.brandX+w1, by);
   ctx.restore();
-  const shown=CFG.N_BALLS-G.dead.length;
-  origPanel(L.p1X, L.rowY, L.pW, L.rowH, 'COUNTRIES', String(CFG.N_BALLS));
+  const shown=fieldN()-G.dead.length;
+  origPanel(L.p1X, L.rowY, L.pW, L.rowH, 'COUNTRIES', String(fieldN()));
   origPanel(L.p2X, L.rowY, L.pW, L.rowH, 'REMAINING', String(Math.max(shown,1)), PAL.gold);
   ctx.textAlign='center';
   const gx=L.gx, gy=L.gy, gr=L.gr;
@@ -4308,12 +4321,12 @@ function elmOriginal(){
   }
   const bx=40, by=ORIG_BAR, bw=W-80, bh=14;
   roundRect(ctx,bx,by,bw,bh,7); ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.fill();
-  const f=G.dead.length/CFG.N_BALLS;
+  const f=G.dead.length/fieldN();
   const gr=ctx.createLinearGradient(bx,0,bx+bw,0);
   gr.addColorStop(0,'#31e1f7'); gr.addColorStop(0.6,'#ffd34d'); gr.addColorStop(1,'#ff4d6d');
   roundRect(ctx,bx,by,Math.max(6,bw*f),bh,7); ctx.fillStyle=gr; ctx.fill();
   ctx.fillStyle=PAL.dim; ctx.font='600 26px system-ui,sans-serif';
-  ctx.fillText(G.dead.length+' / '+CFG.N_BALLS+' ELIMINATED', W/2, by+52);
+  ctx.fillText(G.dead.length+' / '+fieldN()+' ELIMINATED', W/2, by+52);
 }
 function ctaOriginal(){
   const by=ORIG_BAR;
@@ -4536,15 +4549,16 @@ function render(){
      with interactive mode off.
    ========================================================================== */
 const LIVE_KEY = 'flagsrumble-live-v1';
-const LIVE = { on:false, strip:true, controlled:false, corner:'tl', shieldN:30, reviveN:60, countAll:true };
+const LIVE = { on:false, strip:true, controlled:false, corner:'tl', shieldN:30, reviveN:60, countAll:true, subCap:30, subPer:2 };
 try { const s=JSON.parse(localStorage.getItem(LIVE_KEY)||'{}');
   for (const k of ['on','strip','controlled','countAll']) if (typeof s[k]==='boolean') LIVE[k]=s[k];
   if (['tl','tr','bl','br','box'].includes(s.corner)) LIVE.corner=s.corner;
+  if (s.subCap>=1 && s.subCap<=200) LIVE.subCap=Math.round(s.subCap); if (s.subPer>=1 && s.subPer<=20) LIVE.subPer=Math.round(s.subPer);
   if (s.shieldN>=3 && s.shieldN<=200) LIVE.shieldN=Math.round(s.shieldN); if (s.reviveN>=3 && s.reviveN<=300) LIVE.reviveN=Math.round(s.reviveN); } catch(e){}
-function saveLive(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({on:LIVE.on,strip:LIVE.strip,controlled:LIVE.controlled,corner:LIVE.corner,shieldN:LIVE.shieldN,reviveN:LIVE.reviveN,countAll:LIVE.countAll})); }catch(e){} }
+function saveLive(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({on:LIVE.on,strip:LIVE.strip,controlled:LIVE.controlled,corner:LIVE.corner,shieldN:LIVE.shieldN,reviveN:LIVE.reviveN,countAll:LIVE.countAll,subCap:LIVE.subCap,subPer:LIVE.subPer})); }catch(e){} }
 
 const CHAT_RULES = { SHIELD:30, REVIVE:60, MEMBER_W:2, PERSON_CAP:10, PAID_CAP:3, PAID_PER_COUNTRY:2 };
-CHAT_RULES.SHIELD=LIVE.shieldN; CHAT_RULES.REVIVE=LIVE.reviveN;
+CHAT_RULES.SHIELD=LIVE.shieldN; CHAT_RULES.REVIVE=LIVE.reviveN; CHAT_RULES.PAID_CAP=LIVE.subCap; CHAT_RULES.PAID_PER_COUNTRY=LIVE.subPer;
 /* numbers spoken as words, so the voice says the target you set */
 function numWords(n){ const o=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'], t=['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
   if (n<20) return o[n]; if (n<100) return t[Math.floor(n/10)]+(n%10?'-'+o[n%10]:''); const h=Math.floor(n/100), r=n%100; return o[h]+' hundred'+(r?' and '+numWords(r):''); }
@@ -4605,6 +4619,13 @@ function chatCountries(clean){
   }
   found.sort((x,y)=>x[0]-y[0]);
   return found.map(f=>f[1]);
+}
+function chatCountriesAll(clean){
+  const t=' '+clean+' ', found=[];
+  for (const [code,arr] of ALIAS){ let best=-1;
+    for (const a of arr){ const i=t.indexOf(' '+a+' '); if (i>=0 && (best<0 || i<best)) best=i; }
+    if (best>=0) found.push([best, code]); }
+  found.sort((x,y)=>x[0]-y[0]); return found.map(f=>f[1]);
 }
 function chatIntent(clean){
   const toks = clean.split(' ');
@@ -4679,7 +4700,7 @@ const CHAT = {
     }
     this.stats.msgs++;
     const t = m.t || Date.now();
-    if (t < this.roundStart || G.phase==='WINNER'){ this.stats.late++; return; }   // belongs to another round
+    if (t < this.roundStart || G.phase==='WINNER'){ this.stats.late++; if (m.kind==='superchat') this.lateSuper(m); return; }   // belongs to another round
     const uid = (m.user&&m.user.id) || (m.user&&m.user.name) || 'anon';
     const uname = (m.user&&m.user.name) || 'viewer', lname=uname.toLowerCase().replace(/^@/,'');
     if (m.user&&m.user.id&&m.user.name) this.names.set(lname, m.user.id);
@@ -4713,6 +4734,19 @@ const CHAT = {
       if (s.rvP>=CHAT_RULES.REVIVE){ s.rvUsed=true; this.note('Chat reached '+CHAT_RULES.REVIVE+' for '+this.nameOf(code)+': revival'); this.request(code,'revive','chat',null); }
     }
   },
+  /* a Super Chat that arrives between rounds (winner screen, late delivery) is kept, never lost */
+  lateSuper(m){
+    const uid=(m.user&&m.user.id)||(m.user&&m.user.name)||'anon', uname=(m.user&&m.user.name)||'viewer';
+    const pk='superchat|'+uname.toLowerCase().replace(/^@/,''), prev=this.paidSeen.get(pk), now=Date.now();
+    if (prev && prev.via!==(m.via||'') && now-prev.t<90000) return;
+    this.paidSeen.set(pk,{t:now, via:m.via||''});
+    const clean=chatClean(m.text||'');
+    if (!chatIntent(clean)){ this.note('Super Chat from '+uname+' between rounds: no shield/revive keyword, no effect'); return; }
+    const code=chatCountriesAll(clean)[0] || this.last.get(uid);
+    if (!code){ this.note('Super Chat from '+uname+' between rounds: no country found'); return; }
+    SAVED.add({code, type:'shield', src:'superchat', user:uname});
+    this.note('Super Chat from '+uname+' between rounds: '+this.nameOf(code)+' gets its power at the start of the next round');
+  },
   paidEvent(m, uid, uname, clean, codes){
     const src = m.kind==='superchat' ? 'superchat' : 'sub';
     // the same super chat can arrive as a chat item AND as a StreamElements alert
@@ -4725,6 +4759,10 @@ const CHAT = {
       if (!type){ this.note('Super chat from '+uname+': no shield/revive keyword, no effect'); return; }
     } else type='auto';
     let code = codes[0];
+    if (!code && src==='superchat'){                        // named a country that isn't playing: drop it into the arena
+      const out=chatCountriesAll(clean).find(c=>!this.ball(c));
+      if (out){ this.request(out, type, src, uname, {land:true}); return; }
+    }
     if (!code){ const l=this.last.get(uid); if (l && this.ball(l)) code=l; }
     if (!code){
       const w={type,src,user:uname,t:Date.now()}; this.await.set(uid,w); this.await.set('n:'+uname.toLowerCase().replace(/^@/,''),w);
@@ -4735,14 +4773,37 @@ const CHAT = {
   },
   request(code, type, src, user, opt){
     opt=opt||{};
-    const b=this.ball(code); if (!b) return false;
+    const b=this.ball(code);
+    if (src==='superchat'){                               // Super Chat = spawn/revive WITH a shield, or shield if alive
+      if (!b){ opt.land=true; opt.landShield=true; }
+      else if (b.alive) type='shield';
+      else { type='revive'; opt.withShield=true; }
+    }
     const orig=type;
+    if (!b){
+      if (!(opt.land || opt.landShield!==undefined) || !BY_CODE.has(code)) return false;
+      const who=(src==='sub'?'subscriber ':'super chat ')+(user||'');
+      if (src!=='superchat' && this.pend.some(p=>p.code===code && p.type==='land')){ this.note('Duplicate drop-in for '+this.nameOf(code)+' ('+who+') dropped'); return false; }
+      if (!opt.force && src!=='superchat'){
+        const pp=this.pend.filter(p=>p.src==='sub'), mine=(this.paidBy.get(code)||0)+pp.filter(p=>p.code===code).length;
+        if (this.paid+pp.length>=CHAT_RULES.PAID_CAP || mine>=CHAT_RULES.PAID_PER_COUNTRY){
+          SAVED.add({code, type:orig==='revive'?'revive':'shield', src, user});
+          this.note('Saved for next round (limit reached): '+who+' → drop-in '+this.nameOf(code));
+          this.feed.unshift({txt:'⏳ '+this.nameOf(code)+' joins next round', col:'#ffcf3d', t:0}); if (this.feed.length>3) this.feed.length=3;
+          LIVEVOX.say('saved'); return false;
+        }
+      }
+      const withShield = opt.landShield!==undefined ? !!opt.landShield : orig==='shield';
+      this.pend.push({code, type:'land', withShield, src, user});
+      this.note(this.nameOf(code)+' is not in this round: '+who+' drops it into the arena'+(withShield?' with a shield':''));
+      return true;
+    }
     if (type==='auto') type = b.alive ? 'shield' : 'revive';
     const who = src==='chat' ? 'chat' : (src==='sub'?'subscriber ':'super chat ')+user;
     if (type==='shield' && !b.alive){ this.note('Shield for '+this.nameOf(code)+' ('+who+') ignored: already eliminated'); return false; }
-    if (this.pend.some(p=>p.code===code && p.type===type)){ this.note('Duplicate '+type+' for '+this.nameOf(code)+' ('+who+') dropped'); return false; }
-    if (src!=='chat' && !opt.force){
-      const pp=this.pend.filter(p=>p.src!=='chat'), mine=(this.paidBy.get(code)||0)+pp.filter(p=>p.code===code).length;
+    if (src==='chat' && this.pend.some(p=>p.code===code && p.type===type)){ this.note('Duplicate '+type+' for '+this.nameOf(code)+' ('+who+') dropped'); return false; }
+    if (src==='sub' && !opt.force){
+      const pp=this.pend.filter(p=>p.src==='sub'), mine=(this.paidBy.get(code)||0)+pp.filter(p=>p.code===code).length;
       const full=this.paid+pp.length>=CHAT_RULES.PAID_CAP, many=mine>=CHAT_RULES.PAID_PER_COUNTRY;
       if (full || many){
         SAVED.add({code, type:orig, src, user});
@@ -4752,7 +4813,7 @@ const CHAT = {
         return false;
       }
     }
-    this.pend.push({code,type,src,user,saved:!!opt.saved});
+    this.pend.push({code,type,src,user,saved:!!opt.saved,withShield:!!opt.withShield});
     if (type==='revive' && b.alive){ this.note(this.nameOf(code)+' revival ('+who+') waits for its elimination'); this.feed.unshift({txt:'⏳ '+this.nameOf(code)+' revive ready', col:'#ffd34d', t:0}); if (this.feed.length>3) this.feed.length=3; }
     else if (type==='shield' && b.shield) this.note(this.nameOf(code)+' already shielded: '+who+' shield waits', '#ffd34d');
     return true;
@@ -4760,7 +4821,7 @@ const CHAT = {
   react(p, type, name){
     if (p.saved){ LIVEVOX.say('savedShield', name); return; }
     const kind = p.src==='chat' ? 'chat' : p.src==='sub' ? 'sub' : 'sc';
-    const key = kind==='chat' ? (type==='shield'?'rChatShield':'rChatRevive') : kind==='sub' ? 'rSub' : (type==='shield'?'rScShield':'rScRevive');
+    const key = kind==='chat' ? (type==='shield'?'rChatShield':'rChatRevive') : kind==='sub' ? 'rSub' : (type==='shield'?'rScShield':(p.withShield?'rScReviveShield':'rScRevive'));
     if (kind==='chat' && COMMENTARY.spBusy()) return;    // free chat reactions never stack up
     LIVESCHED.react(kind); LIVEVOX.say(key, name);
   },
@@ -4769,9 +4830,9 @@ const CHAT = {
     const keep=[];
     for (const s of SAVED.q){
       const b=this.ball(s.code); if (!b){ keep.push(s); continue; }
-      const t = s.type==='auto' ? 'shield' : s.type;
-      const pp=this.pend.filter(p=>p.src!=='chat');
-      if (this.paid+pp.length>=CHAT_RULES.PAID_CAP || pp.filter(p=>p.code===s.code).length>=CHAT_RULES.PAID_PER_COUNTRY || this.pend.some(p=>p.code===s.code&&p.type===t)){ keep.push(s); continue; }
+      const t = (s.type==='auto' || s.src==='superchat') ? 'shield' : s.type;
+      const pp=this.pend.filter(p=>p.src==='sub');
+      if (s.src!=='superchat' && this.paid+pp.length>=CHAT_RULES.PAID_CAP || s.src!=='superchat' && pp.filter(p=>p.code===s.code).length>=CHAT_RULES.PAID_PER_COUNTRY || s.src!=='superchat' && this.pend.some(p=>p.code===s.code&&p.type===t)){ keep.push(s); continue; }
       this.pend.push({code:s.code, type:t, src:s.src, user:s.user, saved:t==='shield'});
       this.note('Saved power applied: '+t+' for '+this.nameOf(s.code)+' ('+(s.user||'viewer')+')');
       if (t==='revive') LIVEVOX.say('savedRevive', this.nameOf(s.code));
@@ -4780,7 +4841,7 @@ const CHAT = {
   },
   forceInclude(pool){
     if (!LIVE.on || !SAVED.q.length) return;
-    const N=CFG.N_BALLS, codes=[...new Set(SAVED.q.slice(0,CHAT_RULES.PAID_CAP).map(s=>s.code))];
+    const N=CFG.N_BALLS, codes=[...new Set(SAVED.q.filter(s=>s.src==='superchat').concat(SAVED.q.filter(s=>s.src!=='superchat').slice(0,CHAT_RULES.PAID_CAP)).map(s=>s.code))].slice(0,12);
     const prot=new Set(TIERS.A.concat(codes));
     for (const code of codes){
       if (pool.slice(0,N).some(c=>c.code===code)) continue;
@@ -4817,28 +4878,47 @@ const CHAT = {
     if (G && LIVE.on) LIVESCHED.tick(alive().length);
     if (!G || G.phase==='WINNER' || G.phase==='INTRO' || !this.pend.length) return;
     for (let i=0;i<this.pend.length;i++){
-      const p=this.pend[i], b=this.ball(p.code);
+      const p=this.pend[i];
+      if (p.type==='land'){
+        if (this.ball(p.code)){ p.type = p.withShield ? 'shield' : 'revive'; continue; }   // already dropped in by someone else
+        if (alive().length<2) continue;
+        const spot=freeSpot(null); if (!spot) continue;
+        const c=BY_CODE.get(p.code), a2=rnd(0,Math.PI*2), sp=curSpeed();
+        const nb={c, x:spot.x, y:spot.y, vx:Math.cos(a2)*sp, vy:Math.sin(a2)*sp, shield:!!p.withShield, alive:true};
+        if (nb.shield){ nb.shieldCol='#ffcf3d'; nb.shieldHits=1; }
+        G.balls.push(nb); G.field=fieldN()+1;
+        FACE.override(nb,'excited',1.8,0.24); G.comebackFx=1; SFX.comeback();
+        LIVECARD.push('🪂 '+c.name+' DROPS IN!', this.cardSub(p)+(nb.shield?' · with shield':''), p.code, '#ffcf3d');
+        LIVESCHED.react(p.src==='sub'?'sub':'sc'); LIVEVOX.say(nb.shield?'rLandShield':'rLand', c.name);
+        this.note('🪂 '+c.name+' dropped into the arena by '+(p.user||'viewer')+(nb.shield?' (shielded)':''));
+        this.feed.unshift({txt:'🪂 '+c.name+' · '+(p.user||'viewer'), col:'#ffcf3d', t:0}); if (this.feed.length>3) this.feed.length=3;
+        if (p.src==='sub'){ this.paid++; this.paidBy.set(p.code,(this.paidBy.get(p.code)||0)+1); }
+        this.pend.splice(i--,1); continue;
+      }
+      const b=this.ball(p.code);
       if (!b){ this.pend.splice(i--,1); continue; }
       const who = p.src==='chat' ? 'CHAT' : p.src==='sub' ? 'SUBSCRIBER' : 'SUPER CHAT';
       if (p.type==='shield'){
+        if (!b.alive && p.src==='superchat'){ p.type='revive'; p.withShield=true; i--; continue; }   // fell meanwhile: bring it back shielded
         if (!b.alive){ this.pend.splice(i--,1); this.note(this.nameOf(p.code)+' was eliminated before its shield landed'); continue; }
-        if (b.shield) continue;
-        b.shield=true; b.shieldCol = p.src==='chat' ? PAL.shield : '#ffcf3d';
+        if (b.shield && p.src!=='superchat') continue;            // free / subscriber shields wait their turn
+        if (b.shield){ b.shieldHits=(b.shieldHits||1)+1; b.shieldCol='#ffcf3d'; }   // a Super Chat stacks: one more fall survived
+        else { b.shield=true; b.shieldHits=1; b.shieldCol = p.src==='chat' ? PAL.shield : '#ffcf3d'; }
         FACE.override(b,'proud',2.0,0.14);
-        SFX.shield(); LIVECARD.push('🛡 '+b.c.name+' SHIELDED', this.cardSub(p), p.code, b.shieldCol); this.react(p,'shield',b.c.name);
+        SFX.shield(); LIVECARD.push((b.shieldHits>1?'🛡×'+b.shieldHits+' ':'🛡 ')+b.c.name+(b.shieldHits>1?' DOUBLE SHIELD!':' SHIELDED'), this.cardSub(p), p.code, b.shieldCol); this.react(p,'shield',b.c.name);
         this.note('🛡 '+b.c.name+' · '+(p.src==='chat'?'chat':p.user), b.shieldCol, true);
       } else {
-        if (b.alive) continue;                     // waits for elimination
+        if (b.alive){ if (p.src==='superchat'){ p.type='shield'; i--; continue; } continue; }   // Super Chat never waits: alive -> shield
         if (alive().length<2) continue;            // never revive into a finished round
         const spot=freeSpot(b); if (!spot) continue;   // arena too full this frame: retry
         const i2=G.dead.findIndex(d=>d.c.code===p.code); if (i2>=0) G.dead.splice(i2,1);
-        b.alive=true; b.shield=false; b.shieldCol=null; b.x=spot.x; b.y=spot.y;
+        b.alive=true; b.shield=!!p.withShield; b.shieldHits=p.withShield?1:0; b.shieldCol=p.withShield?'#ffcf3d':null; b.x=spot.x; b.y=spot.y;
         const a2=rnd(0,Math.PI*2), sp=curSpeed(); b.vx=Math.cos(a2)*sp; b.vy=Math.sin(a2)*sp;
         FACE.override(b,'excited',1.6,0.22); G.comebackFx=1;
-        SFX.comeback(); LIVECARD.push('♻ '+b.c.name+' IS BACK!', this.cardSub(p), p.code, '#5ef2c8'); this.react(p,'revive',b.c.name);
+        SFX.comeback(); LIVECARD.push('♻ '+b.c.name+' IS BACK!', this.cardSub(p)+(p.withShield?' · with shield':''), p.code, p.withShield?'#ffcf3d':'#5ef2c8'); this.react(p,'revive',b.c.name);
         this.note('♻ '+b.c.name+' · '+(p.src==='chat'?'chat':p.user), '#5ef2c8', true);
       }
-      if (p.src!=='chat'){ this.paid++; this.paidBy.set(p.code,(this.paidBy.get(p.code)||0)+1); }
+      if (p.src==='sub'){ this.paid++; this.paidBy.set(p.code,(this.paidBy.get(p.code)||0)+1); }
       this.pend.splice(i--,1);
     }
   },
@@ -4940,18 +5020,22 @@ const LIVE_LINES = {
          'Name, flag or short form — {r} messages revives your country!',
          'Revive time! {R} different messages for your fallen country!',
          "Don't give up! {R} different messages and your country returns!"],
-  sc:["Super Chat the word 'revive' with your country's name, and your knocked-out country jumps straight back into the arena!",
+  sc:["Super Chat the word 'revive' with your country's name, and your knocked-out country jumps straight back into the arena — with a shield!",
       "Super Chat the word 'shield' with your country's name, and it's protected from the next fall into the hole!",
-      "Only three super powers each round! Super Chat 'shield' to protect your country, or 'revive' to bring it back!",
-      'Forgot the country in your Super Chat? No problem — your last supported country gets the power, or the next one you type!'],
+      "No limit on Super Chats! Every 'shield' or 'revive' with your country works instantly — back in the arena and shielded!",
+      'Forgot the country in your Super Chat? No problem — your last supported country gets the power, or the next one you type!',
+      'Your country not playing this round? Super Chat its name with revive or shield, and it drops straight into the arena with a shield!'],
   sub:["Subscribe now, then type your country in chat! If it's still alive it gets a shield, and if it's out, it comes back!",
        'Every new subscriber gets a free power! Subscribe, then name your country — shield if alive, revival if eliminated!',
-       'Hit subscribe and back your country in chat — it gets a shield or a comeback, up to two powers per country each round!'],
+       'Hit subscribe and back your country in chat — it gets a shield or a comeback right away!'],
   rChatShield:['Chat power! {c} is shielded!','Shield up for {c}!'],
   rChatRevive:['Chat revival! {c} is back!','Comeback! The chat saves {c}!'],
   rScShield:['Super Chat shield for {c}!'],
   rScRevive:['Super Chat comeback — {c} is back!'],
+  rScReviveShield:['Super Chat comeback — {c} is back with a shield!','{c} returns, shield on — thanks to a Super Chat!'],
   rSub:['New subscriber! {c} powers up!','Thanks for subscribing — {c} gets a boost!'],
+  rLand:['Super Chat drop-in! {c} joins the arena!','Here comes {c} — a Super Chat brings them into the fight!'],
+  rLandShield:['Super Chat drop-in! {c} lands with a shield!','{c} joins the arena — shield on!'],
   saved:['Super powers are maxed out this round — your power is saved for the next one!',
          "Limit reached! Don't worry, your power carries over to the next round!"],
   savedShield:['Saved power activated! {c} starts this round shielded!'],
@@ -5109,8 +5193,8 @@ function drawLiveBoxes(){
     ctx.textAlign='right'; ctx.fillStyle=r[3]; ctx.font='800 17px "FR Poppins",system-ui,sans-serif'; ctx.fillText(r[2], rx+BW-16, y); ctx.textAlign='left'; });
   const ev=CHAT.feed[0], show=ev && ev.t<8000;
   ctx.textAlign='center'; ctx.font=(show?'800 15px':'700 14px')+' "FR Poppins",system-ui,sans-serif';
-  const left=Math.max(0,CHAT_RULES.PAID_CAP-CHAT.paid-CHAT.pend.filter(p=>p.src!=='chat').length);
-  let ft = show ? ev.txt : 'Super powers left: '+left+'/'+CHAT_RULES.PAID_CAP+(SAVED.q.length?'   ·   ⏳ '+SAVED.q.length+' saved':'');
+  const left=Math.max(0,CHAT_RULES.PAID_CAP-CHAT.paid-CHAT.pend.filter(p=>p.src==='sub').length);
+  let ft = show ? ev.txt : '⭐ no limit · 🔔 left '+left+'/'+CHAT_RULES.PAID_CAP+(SAVED.q.length?'   ·   ⏳ '+SAVED.q.length+' saved':'');
   ctx.fillStyle = show ? ev.col : '#ffcf3d';
   while (ft.length>4 && ctx.measureText(ft).width>BW-26) ft=ft.slice(0,-2);
   ctx.fillText(ft, rx+BW/2, BY+BH-20);
@@ -5149,6 +5233,10 @@ function testSupport(code, n, member, untilFlag){
   const p5=seg('liveCount', ()=>LIVE.countAll, v=>{ LIVE.countAll=(v==='true'); CHAT.note('Counting: '+(LIVE.countAll?'every message':'different messages only')); });
   const setTargets=(s,r)=>{ s=Math.max(3,Math.min(200,Math.round(+s||30))); r=Math.max(3,Math.min(300,Math.round(+r||60)));
     LIVE.shieldN=CHAT_RULES.SHIELD=s; LIVE.reviveN=CHAT_RULES.REVIVE=r; saveLive(); CHAT.note('Chat targets set: shield '+s+', revive '+r); livePaint(); };
+  const setSub=()=>{ LIVE.subCap=CHAT_RULES.PAID_CAP=Math.max(1,Math.min(200,Math.round(+$('liveSubCap').value||30)));
+    LIVE.subPer=CHAT_RULES.PAID_PER_COUNTRY=Math.max(1,Math.min(20,Math.round(+$('liveSubPer').value||2)));
+    saveLive(); CHAT.note('Subscriber powers: max '+LIVE.subCap+' per round, '+LIVE.subPer+' per country'); livePaint(); };
+  $('liveSubCap').addEventListener('change',setSub); $('liveSubPer').addEventListener('change',setSub);
   $('liveShieldN').addEventListener('change',()=>setTargets($('liveShieldN').value, LIVE.reviveN));
   $('liveReviveN').addEventListener('change',()=>setTargets(LIVE.shieldN, $('liveReviveN').value));
   $('liveTargets').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; const [s,r]=b.dataset.v.split(','); setTargets(s,r); });
@@ -5192,10 +5280,12 @@ function testSupport(code, n, member, untilFlag){
   $('liveQuotaCancel').addEventListener('click',()=>{ CHAT.fallbackNext=false; CHAT.note('Quota fallback cancelled'); livePaint(); });
   function livePaint(){
     p1(); p2(); p3(); p4(); p5();
+    if (document.activeElement!==$('liveSubCap')) $('liveSubCap').value=LIVE.subCap;
+    if (document.activeElement!==$('liveSubPer')) $('liveSubPer').value=LIVE.subPer;
     if (document.activeElement!==$('liveShieldN')) $('liveShieldN').value=LIVE.shieldN;
     if (document.activeElement!==$('liveReviveN')) $('liveReviveN').value=LIVE.reviveN;
     [...$('liveTargets').children].forEach(b=>b.classList.toggle('on', b.dataset.v===LIVE.shieldN+','+LIVE.reviveN));
-    $('liveRulesHint').textContent=CHAT_RULES.SHIELD+(LIVE.countAll?' chat messages':' different chat messages')+' = shield, '+CHAT_RULES.REVIVE+' after elimination = revival (once each per country per round, members count double). Super Chats with a keyword + subscribers: max 3 per round, 2 per country.';
+    $('liveRulesHint').textContent=CHAT_RULES.SHIELD+(LIVE.countAll?' chat messages':' different chat messages')+' = shield, '+CHAT_RULES.REVIVE+' after elimination = revival (once each per country per round, members count double). Super Chats with a keyword: no limit, instant. Subscribers: max '+CHAT_RULES.PAID_CAP+' per round, '+CHAT_RULES.PAID_PER_COUNTRY+' per country.';
     $('liveCornerNote').textContent = LIVE.corner==='box' && !boxLayoutOn() ? 'Boxes need the Original header & question style (HUD tab). Showing the top-left corner panel instead.' : '';
     const pend=CHAT.pend.map(p=>(p.type==='shield'?'🛡 ':'♻ ')+CHAT.nameOf(p.code)+' ('+(p.src==='chat'?'chat':p.user)+')');
     const aw=[...new Set(CHAT.await.values())].map(a=>a.user+' → '+(a.type==='auto'?'effect':a.type)+' (waiting for a country)');
@@ -5209,6 +5299,15 @@ function testSupport(code, n, member, untilFlag){
     const opts=G.balls.map(b=>({code:b.c.code,name:b.c.name,alive:b.alive})).sort((a,b)=>(b.alive-a.alive)||a.name.localeCompare(b.name));
     sel.innerHTML=opts.map(o=>'<option value="'+o.code+'">'+(o.alive?'● ':'✖ ')+o.name+'</option>').join(''); if (opts.some(o=>o.code===cur)) sel.value=cur; };
   $('mCountry').addEventListener('focus', fillM);
+  const fillPool=()=>{ const sel=$('mPool'), cur=sel.value; if (!G) return; const inR=new Set(G.balls.map(b=>b.c.code));
+    const opts=ALL_COUNTRIES.filter(c=>!inR.has(c.code)).sort((a,b)=>a.name.localeCompare(b.name));
+    sel.innerHTML=opts.map(c=>'<option value="'+c.code+'">'+c.name+'</option>').join(''); if (opts.some(o=>o.code===cur)) sel.value=cur; };
+  $('mPool').addEventListener('focus', fillPool);
+  $('mLand').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return;
+    if (!LIVE.on){ $('mLandMsg').textContent='Turn Interactive mode ON first (Live page).'; return; }
+    fillPool(); const code=$('mPool').value; if (!code) return; const before=SAVED.q.length;
+    const ok=CHAT.request(code, b.dataset.k==='landShield'?'shield':'revive', 'superchat', ($('mName').value||'').trim()||'@manual', {land:true, landShield:b.dataset.k==='landShield', force:$('mForce').checked});
+    $('mLandMsg').textContent = ok ? CHAT.nameOf(code)+' drops into the arena now.' : SAVED.q.length>before ? 'Limit reached: saved for the next round.' : 'Not applied — see the Log tab.'; livePaint(); });
   $('mBtns').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return;
     if (!LIVE.on){ $('mMsg').textContent='Turn Interactive mode ON first (Live page).'; return; }
     $('mMsg').textContent=CHAT.manual(b.dataset.k, $('mCountry').value, ($('mName').value||'').trim(), $('mForce').checked); livePaint(); });
@@ -5218,6 +5317,7 @@ function testSupport(code, n, member, untilFlag){
   const kindName={chat:'💬 Chat power',sc:'⭐ Super Chat',sub:'🔔 Subscribe'};
   const mPaint=()=>{
     if (document.activeElement!==$('mCountry')) fillM();
+    if (document.activeElement!==$('mPool')) fillPool();
     const k=G?Math.max(0,G.roundNo-1)%10:0;
     $('mSched').innerHTML='This round: <b>'+(kindName[LIVESCHED.kind]||'—')+'</b><br>Set of 10: '+LIVESCHED.plan.map((x,i)=>(i===k?'<b>[':'')+({chat:'C',sc:'S',sub:'U'}[x]||'·')+(i===k?']</b>':'')).join(' ')+' &nbsp;(C chat · S super chat · U subscribe)';
     $('mSaved').innerHTML = SAVED.q.length ? SAVED.q.map((s,i)=>(i+1)+'. '+CHAT.nameOf(s.code)+' — '+(s.type==='auto'?'subscriber power':s.type)+' ('+(s.user||'viewer')+')').join('<br>') : 'Empty.';
