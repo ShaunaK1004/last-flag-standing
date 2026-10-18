@@ -123,11 +123,6 @@
       <div class="hrow"><span>Support per person</span><div class="seg" id="liveCap"><button data-v="false">Open (no cap)</button><button data-v="true">Controlled (10 each)</button></div></div>
     </div>
     <div class="pgroup" data-page="live">
-      <h2>Jewel gifts (vertical-live gifts)</h2>
-      <label class="blab">Minimum Jewels for one shield<input class="tin" id="jewelMin" type="number" min="1" max="100000"></label>
-      <div class="hint">Smaller gifts still get a thank-you card but no power. One person's Jewels add up for 10 minutes, so 10 gifts of 5 = a shield. Default 50.</div>
-    </div>
-    <div class="pgroup" data-page="live">
       <h2>Status</h2>
       <div class="hint" id="liveStatus" style="margin-top:0;color:#c9d3ff"></div>
       <div class="hint" id="liveFallback" style="color:#ffcf3d;font-weight:700"></div>
@@ -151,15 +146,6 @@
       <h2>Event log</h2>
       <pre id="liveLog" style="margin:0;font-size:10.5px;line-height:1.5;color:#a9b6ea;white-space:pre-wrap;max-height:430px;overflow:hidden"></pre>
     </div>
-
-    <div class="pgroup" data-page="events">
-      <h2>Highlights &amp; season data</h2>
-      <div class="hint" id="evInfo" style="margin-top:0;color:#c9d3ff"></div>
-      <div class="seg" style="margin-top:6px"><button id="evDl">Download rounds (JSON)</button><button id="evCopy">Copy rounds</button></div>
-      <div class="seg" style="margin-top:6px"><button id="evSeason">Download season table (CSV)</button><button id="evClear">Clear log</button></div>
-      <label class="blab" style="margin-top:8px">Send each finished round to a webhook (optional)<input class="tin" id="evHook" placeholder="https://script.google.com/macros/s/.../exec"></label>
-      <div class="hint">OBS can't always save downloads. Use Copy, or the webhook, if Download does nothing.</div>
-    </div>
     <div class="pgroup" data-page="log">
       <h2>Quota fallback</h2>
       <div class="hint" style="margin-top:0">When the YouTube quota runs out, the next round starts as normal Flags War Arena with interactive mode off. Test it here.</div>
@@ -172,13 +158,8 @@
       <div class="seg" style="margin-top:6px"><button id="tShield">Fill to shield (30)</button><button id="tRevive">Fill to revival (60)</button></div>
       <div class="seg" style="margin-top:6px"><button id="tScRevive">Super chat: revive</button><button id="tScShield">Super chat: shield</button></div>
       <div class="seg" style="margin-top:6px"><button id="tScNoCountry">Super chat, no country</button><button id="tSub">New subscriber</button></div>
+      <div class="seg" style="margin-top:6px"><button id="tMem">New member</button><button id="tGift">Gifted ×5</button></div>
       <div class="hint" id="tMsg" style="color:#c9d3ff">● alive · ✖ eliminated. Buttons use the selected country (revival tests pick an eliminated one).</div>
-    </div>
-    <div class="pgroup" data-page="test">
-      <h2>Thank-you card tests</h2>
-      <div class="seg"><button id="thSc">⭐ Super Chat</button><button id="thSt">🎟️ Sticker</button></div>
-      <div class="seg" style="margin-top:6px"><button id="thJw">💎 Jewel gift</button><button id="thMb">👑 Membership</button></div>
-      <div class="hint" id="thMsg" style="color:#c9d3ff">Shows the thank-you card, then asks the viewer to name their country (shield or revival follows). Interactive mode must be ON.</div>
     </div>
     <div class="pgroup" data-page="test">
       <h2>Type your own message</h2>
@@ -202,11 +183,10 @@
       <div class="hint" id="seStatus" style="color:#c9d3ff"></div>
     </div>
     <div class="pgroup" data-page="yt">
-      <h2>Streamlabs (second alert source)</h2>
-      <label class="blab">Socket API token <a href="#" id="slTokShow" style="color:#8ea0e6;font-size:11px">show/hide</a><input class="tin" id="slTok" type="password" autocomplete="off" placeholder="Streamlabs dashboard > Settings > API Settings > API Tokens"></label>
+      <h2>Streamlabs (subscribers &amp; alerts)</h2>
+      <label class="blab">Socket API token <a href="#" id="slTokShow" style="color:#8ea0e6;font-size:11px">show</a><input class="tin" id="slTok" type="password" autocomplete="off" placeholder="Streamlabs → Settings → API Settings → API Tokens"></label>
       <div style="display:flex;gap:6px"><button class="wide" id="slConnect">Connect</button><button class="wide" id="slDisconnect">Disconnect</button></div>
       <div class="hint" id="slStatus" style="color:#c9d3ff"></div>
-      <div class="hint">Adds Super Chat, Sticker, Membership and Jewel alerts. Uses no YouTube quota. Chat still comes from StreamElements.</div>
     </div>
     <div class="pgroup" data-page="yt">
       <h2 id="ytTitle">YouTube API</h2>
@@ -2042,63 +2022,6 @@ if (typeof document!=='undefined' && document.getElementById('segPack')){
 const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 
-/* ==========================================================================
-   EVENT LOG + SEASON LEDGER  (added: monetization / highlights support)
-   Records every round (field, eliminations, viewer powers, winner) so the
-   highlight script can find the best moments and a season table can be built.
-   Presentation/telemetry only: it READS game state and never changes it.
-   Storage: localStorage (this browser profile). Export from Operator panel >
-   Event log page, or set a webhook URL to receive each finished round.
-   ========================================================================== */
-const EVLOG = (() => {
-  const KEY='flagsrumble-evlog-v1', SKEY='flagsrumble-season-v1', HKEY='flagsrumble-evhook-v1', MAX=300;
-  const ld=(k,d)=>{ try{ const v=JSON.parse(localStorage.getItem(k)||'null'); return v==null?d:v; }catch(e){ return d; } };
-  const sv=(k,v)=>{ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} };
-  let rounds=ld(KEY,[]), season=ld(SKEY,{}), cur=null, hook=ld(HKEY,'');
-  const save=()=>{ if (rounds.length>MAX) rounds=rounds.slice(-MAX); sv(KEY,rounds); };
-  const ms=()=>cur?Math.round(Date.now()-cur.ts):0;
-  const aliveN=()=>G?G.balls.filter(b=>b.alive).length:0;
-  function post(r){
-    if (!hook) return;
-    try{ fetch(hook,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(r)}).catch(()=>{}); }catch(e){}
-  }
-  function dl(name,text,type){
-    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:type||'application/json'}));
-    a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },500);
-  }
-  function copy(text){
-    const fb=()=>{ const t=document.createElement('textarea'); t.value=text; document.body.appendChild(t); t.select(); try{ document.execCommand('copy'); }catch(e){} t.remove(); };
-    try{ navigator.clipboard.writeText(text).catch(fb); }catch(e){ fb(); }
-  }
-  function seasonCsv(){
-    const rows=[['code','country','rounds','wins','top3','avg_place']];
-    Object.entries(season).sort((a,b)=>b[1].w-a[1].w || a[1].s/a[1].p-b[1].s/b[1].p).forEach(([c,v])=>{
-      const n=(typeof BY_CODE!=='undefined'&&BY_CODE.get(c))?BY_CODE.get(c).name:c;
-      rows.push([c,'"'+n.replace(/"/g,'""')+'"',v.p,v.w,v.t3,(v.s/v.p).toFixed(2)]);
-    });
-    return rows.map(r=>r.join(',')).join('\n');
-  }
-  return {
-    round(){ if (!G) return; cur={n:G.roundNo, ts:Date.now(), field:G.balls.map(b=>b.c.code), k:[], p:[], w:null, pl:[]}; rounds.push(cur); save(); },
-    kill(b){ if (!cur) return; cur.k.push([ms(), b.c.code, aliveN()]); },
-    power(type, code, src, user){ if (!cur) return; cur.p.push([ms(), type, code, src||'', String(user||'').slice(0,40)]); },
-    win(code, lasted){
-      if (!cur || !G) return;
-      cur.w={c:code, ms:ms(), lasted:Math.round((lasted||0)*10)/10};
-      cur.pl=[code].concat(G.dead.map(d=>d.c.code).reverse());       // 1st, 2nd, ... last
-      cur.pl.forEach((c,i)=>{ const s=season[c]||(season[c]={p:0,w:0,t3:0,s:0}); s.p++; s.s+=i+1; if(i===0)s.w++; if(i<3)s.t3++; });
-      sv(SKEY,season); save(); post(cur);
-    },
-    count(){ return rounds.length; },
-    getHook(){ return hook; }, setHook(u){ hook=String(u||'').trim(); sv(HKEY,hook); },
-    rounds:()=>rounds, season:()=>season,
-    exportRounds(){ dl('flags-rounds-'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.json', JSON.stringify({version:1,rounds},null,0)); },
-    exportSeason(){ dl('flags-season.csv', seasonCsv(), 'text/csv'); },
-    copyRounds(){ copy(JSON.stringify({version:1,rounds})); },
-    clear(){ rounds=[]; season={}; cur=null; save(); sv(SKEY,season); },
-  };
-})();
-
 let G = null;
 function careers(){ try{ return JSON.parse(localStorage.getItem('cbr_wins')||'{}'); }catch(e){ return {}; } }
 function addWin(code){ try{ const c=careers(); c[code]=(c[code]||0)+1; localStorage.setItem('cbr_wins',JSON.stringify(c)); }catch(e){} }
@@ -2172,7 +2095,6 @@ function newDraw(){
   FACE.reset();
   for (const b of balls) FACE.override(b, 'excited', 1.4, 0.18);
   if (typeof CHAT!=='undefined') CHAT.onRound();
-  if (typeof EVLOG!=='undefined') EVLOG.round();
 }
 
 /* Positional-only relaxation of the opening layout: separate every overlapping pair, then
@@ -2459,7 +2381,6 @@ function kill(b){
   const bx=b.x, by=b.y;
   b.alive=false; G.openKills++;
   G.dead.push({c:b.c});
-  if (typeof EVLOG!=='undefined') EVLOG.kill(b);
   if (typeof CHAT!=='undefined') CHAT.onKill(b);
   G.flash=1; G.shake=Math.max(G.shake,12);
   for (const v of alive()) if (Math.hypot(v.x-bx,v.y-by)<150) FACE.override(v,'surprised',0.9);
@@ -2573,7 +2494,7 @@ function tick(dtms){
   if (alive().length<=1 && G.phase!=='WINNER'){
     const w=alive()[0];
     if (w){ G.winner={c:w.c, lasted:(performance.now()-G.drawStart)/1000};
-      addWin(w.c.code); if (typeof EVLOG!=='undefined') EVLOG.win(w.c.code, G.winner.lasted); G.phase='WINNER'; G.tPhase=0; SFX.win(); COMMENTARY.winner(w.c); }
+      addWin(w.c.code); G.phase='WINNER'; G.tPhase=0; SFX.win(); COMMENTARY.winner(w.c); }
   }
 }
 
@@ -4643,8 +4564,6 @@ try { const s=JSON.parse(localStorage.getItem(LIVE_KEY)||'{}');
   if (s.shieldN>=3 && s.shieldN<=200) LIVE.shieldN=Math.round(s.shieldN); if (s.reviveN>=3 && s.reviveN<=300) LIVE.reviveN=Math.round(s.reviveN); } catch(e){}
 function saveLive(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({on:LIVE.on,strip:LIVE.strip,controlled:LIVE.controlled,corner:LIVE.corner,shieldN:LIVE.shieldN,reviveN:LIVE.reviveN,countAll:LIVE.countAll,subCap:LIVE.subCap,subPer:LIVE.subPer})); }catch(e){} }
 
-const JEWEL_KEY='flagsrumble-jewelmin-v1';
-function JEWEL_MIN(){ let v=50; try{ v=parseInt(localStorage.getItem(JEWEL_KEY)||'50',10); }catch(e){} return v>=1&&v<=100000?v:50; }
 const CHAT_RULES = { SHIELD:30, REVIVE:60, MEMBER_W:2, PERSON_CAP:10, PAID_CAP:3, PAID_PER_COUNTRY:2 };
 CHAT_RULES.SHIELD=LIVE.shieldN; CHAT_RULES.REVIVE=LIVE.reviveN; CHAT_RULES.PAID_CAP=LIVE.subCap; CHAT_RULES.PAID_PER_COUNTRY=LIVE.subPer;
 /* numbers spoken as words, so the voice says the target you set */
@@ -4770,7 +4689,7 @@ const CHAT = {
     }
     this.st.clear(); this.pend.length=0; this.await.clear(); this.paid=0; this.paidBy=new Map(); this.feed.length=0;
     this.roundStart=Date.now(); this.stats={msgs:0,late:0,counted:0};
-    LIVECARD.list=LIVECARD.list.filter(c=>c.keep); LIVESCHED.onRound(G?G.roundNo:1);   // thank-you cards carry over
+    LIVECARD.list.length=0; LIVESCHED.onRound(G?G.roundNo:1);
     if (LIVE.on){ this.note('Round '+(G?G.roundNo:'')+' started: counts reset · special commentary: '+({chat:'Chat power',sc:'Super Chat',sub:'Subscribe'}[LIVESCHED.kind])); if (SAVED.q.length) this.applySaved(); }
   },
   onKill(b){
@@ -4796,15 +4715,16 @@ const CHAT = {
     const codes = clean ? chatCountries(clean) : [];
 
     // a paid event waiting for this person's next country message
+    const anyCode = codes[0] || (clean && m.kind==='chat' ? chatCountriesAll(clean)[0] : null);
+    if (anyCode) this.last.set(uid, anyCode);
     const wk = this.await.has(uid) ? uid : this.await.has('n:'+lname) ? 'n:'+lname : null;
-    if (codes.length && wk && m.kind!=='subscribe'){
+    if (anyCode && wk && m.kind==='chat'){
       const w=this.await.get(wk); this.await.delete(uid); this.await.delete('n:'+lname);
-      this.request(codes[0], w.type, w.src, w.user);
+      this.request(anyCode, w.type, w.src, w.user, {layers:w.layers, land:!this.ball(anyCode), landShield:w.src==='superchat'});
     }
-    if (m.kind==='superchat' || m.kind==='subscribe') this.paidEvent(m, uid, uname, clean, codes);
+    if (['superchat','subscribe','member','gift','milestone'].includes(m.kind)) this.paidEvent(m, uid, uname, clean, codes);
     if (codes.length){
       for (const code of codes.slice(0,3)) this.S(code).msgs++;     // live support count shown on stream
-      this.last.set(uid, codes[0]);
       const key = LIVE.countAll ? 'm'+(++this.seq) : chatKey(clean), w = m.user&&m.user.member ? CHAT_RULES.MEMBER_W : 1;
       for (const code of codes.slice(0,3)) this.support(code, key, uid, w, t);
     }
@@ -4826,46 +4746,47 @@ const CHAT = {
   lateSuper(m){
     const uid=(m.user&&m.user.id)||(m.user&&m.user.name)||'anon', uname=(m.user&&m.user.name)||'viewer';
     const pk='superchat|'+uname.toLowerCase().replace(/^@/,''), prev=this.paidSeen.get(pk), now=Date.now();
-    const pk2='superchat|id|'+uid, prev2=this.paidSeen.get(pk2);
-    if ((prev && prev.via!==(m.via||'') && now-prev.t<90000) || (prev2 && prev2.via!==(m.via||'') && now-prev2.t<90000)) return;
-    this.paidSeen.set(pk,{t:now, via:m.via||''}); this.paidSeen.set(pk2,{t:now, via:m.via||''});
-    const jc=this.jewelCheck(m,uid); this.thank(m, uname, jc.extra); if (!jc.ok) return;
+    if (prev && prev.via!==(m.via||'') && now-prev.t<90000) return;
+    this.paidSeen.set(pk,{t:now, via:m.via||''});
     const clean=chatClean(m.text||'');
-    if (!chatIntent(clean)){ this.note('Super Chat from '+uname+' between rounds: no shield/revive keyword, no effect'); return; }
     const code=chatCountriesAll(clean)[0] || this.last.get(uid);
     if (!code){ this.note('Super Chat from '+uname+' between rounds: no country found'); return; }
     SAVED.add({code, type:'shield', src:'superchat', user:uname});
     this.note('Super Chat from '+uname+' between rounds: '+this.nameOf(code)+' gets its power at the start of the next round');
   },
+  /* subscribers rewarded today (survives an OBS reload): one power per subscriber */
+  subSeen(){ const d=new Date().toDateString(); if (!this._ss || this._ss.day!==d){ try{ const o=JSON.parse(localStorage.getItem('flagsrumble-subseen-v1')||'{}'); this._ss = o.day===d ? {day:d, keys:new Set(o.keys||[])} : {day:d, keys:new Set()}; }catch(e){ this._ss={day:d, keys:new Set()}; } } return this._ss; },
+  saveSubSeen(){ try{ localStorage.setItem('flagsrumble-subseen-v1', JSON.stringify({day:this._ss.day, keys:[...this._ss.keys].slice(-5000)})); }catch(e){} },
   paidEvent(m, uid, uname, clean, codes){
-    const src = m.kind==='superchat' ? 'superchat' : 'sub';
-    // the same super chat can arrive as a chat item AND as a StreamElements alert
-    const pk=src+'|'+uname.toLowerCase().replace(/^@/,''), prev=this.paidSeen.get(pk), now=Date.now();
-    const pk2=src+'|id|'+uid, prev2=this.paidSeen.get(pk2);
-    if ((prev && prev.via!==(m.via||'') && now-prev.t<90000) || (prev2 && prev2.via!==(m.via||'') && now-prev2.t<90000)){ this.note('Same '+(src==='sub'?'subscription':'super chat')+' from '+uname+' via a second source: ignored'); return; }
-    this.paidSeen.set(pk,{t:now, via:m.via||''}); this.paidSeen.set(pk2,{t:now, via:m.via||''});
-    if (src==='superchat'){ const jc=this.jewelCheck(m,uid); this.thank(m, uname, jc.extra); if (!jc.ok){ this.note('Jewel gift from '+uname+': under the '+JEWEL_MIN()+'-Jewel minimum, thank-you only'); return; } }
-    let type;
-    if (src==='superchat'){
-      type = chatIntent(clean);
-      if (!type){ this.note('Super chat from '+uname+': no shield/revive keyword, no effect'); return; }
-    } else type='auto';
-    let code = codes[0];
-    if (!code && src==='superchat'){                        // named a country that isn't playing: drop it into the arena
-      const out=chatCountriesAll(clean).find(c=>!this.ball(c));
-      if (out){ this.request(out, type, src, uname, {land:true}); return; }
+    const kind=m.kind, src = kind==='subscribe' ? 'sub' : 'superchat';
+    const lname=uname.toLowerCase().replace(/^@/,'');
+    const label={superchat:'Super Chat',member:'New member',gift:'Gifted memberships',milestone:'Member milestone',subscribe:'New subscriber'}[kind]||kind;
+    if (kind==='subscribe'){                                  // a subscriber counts once per day, whichever source saw it first
+      const S=this.subSeen(), k1=String(uid).startsWith('n:')?null:'id:'+uid, k2='n:'+lname;
+      if ((k1 && S.keys.has(k1)) || S.keys.has(k2)){ this.note('Subscriber '+uname+' already rewarded today: ignored'+(m.via?' ('+m.via+')':'')); return; }
+      if (k1) S.keys.add(k1); S.keys.add(k2); this.saveSubSeen();
+    } else {                                                  // the same paid event can arrive from 2-3 sources
+      const pk=kind+'|'+lname, prev=this.paidSeen.get(pk), now=Date.now();
+      if (prev && prev.via!==(m.via||'') && now-prev.t<90000){ this.note('Same '+label+' from '+uname+' via a second source: ignored'); return; }
+      this.paidSeen.set(pk,{t:now, via:m.via||''});
     }
-    if (!code){ const l=this.last.get(uid); if (l && this.ball(l)) code=l; }
-    if (!code){
-      const w={type,src,user:uname,t:Date.now()}; this.await.set(uid,w); this.await.set('n:'+uname.toLowerCase().replace(/^@/,''),w);
-      this.note((src==='sub'?'New subscriber ':'Super chat from ')+uname+': waiting for their next country message'); this.feed.unshift({txt:'★ '+uname+': name your country!', col:'#ffd34d', t:0}); if (this.feed.length>3) this.feed.length=3;
+    const layers = kind==='member' ? 2 : kind==='gift' ? Math.max(1,Math.min(5,m.count||1)) : 1;
+    const type = src==='superchat' ? (chatIntent(clean)||'shield') : 'auto';
+    this.note(label+' from '+uname+(kind==='gift'?' ×'+(m.count||1):'')+(m.amount?' · '+m.amount:''));
+    let code = codes[0] || (clean ? chatCountriesAll(clean)[0] : null);   // named in the event's own text (any of 195)
+    if (!code){ const l=this.last.get(uid) || this.last.get(this.names.get(lname)); if (l && BY_CODE.has(l)) code=l; }   // last supported
+    if (!code){                                                                              // next message that names a country
+      const w={type,src,user:uname,layers,t:Date.now()}; this.await.set(uid,w); this.await.set('n:'+lname,w);
+      this.note(label+' from '+uname+': waiting for their next country message'); this.feed.unshift({txt:'★ '+uname+': name your country!', col:'#ffd34d', t:0}); if (this.feed.length>3) this.feed.length=3;
       return;
     }
-    this.request(code, type, src, uname);
+    this.request(code, type, src, uname, {layers, land:!this.ball(code), landShield: src==='superchat'});
   },
   request(code, type, src, user, opt){
     opt=opt||{};
     const b=this.ball(code);
+    const layers=Math.max(1,opt.layers||1);
+    if (src==='sub' && !b){ opt.land=true; opt.landShield=false; }   // subscriber: country not playing drops in, no shield
     if (src==='superchat'){                               // Super Chat = spawn/revive WITH a shield, or shield if alive
       if (!b){ opt.land=true; opt.landShield=true; }
       else if (b.alive) type='shield';
@@ -4886,7 +4807,7 @@ const CHAT = {
         }
       }
       const withShield = opt.landShield!==undefined ? !!opt.landShield : orig==='shield';
-      this.pend.push({code, type:'land', withShield, src, user});
+      this.pend.push({code, type:'land', withShield, src, user, layers});
       this.note(this.nameOf(code)+' is not in this round: '+who+' drops it into the arena'+(withShield?' with a shield':''));
       return true;
     }
@@ -4905,7 +4826,7 @@ const CHAT = {
         return false;
       }
     }
-    this.pend.push({code,type,src,user,saved:!!opt.saved,withShield:!!opt.withShield});
+    this.pend.push({code,type,src,user,saved:!!opt.saved,withShield:!!opt.withShield,layers});
     if (type==='revive' && b.alive){ this.note(this.nameOf(code)+' revival ('+who+') waits for its elimination'); this.feed.unshift({txt:'⏳ '+this.nameOf(code)+' revive ready', col:'#ffd34d', t:0}); if (this.feed.length>3) this.feed.length=3; }
     else if (type==='shield' && b.shield) this.note(this.nameOf(code)+' already shielded: '+who+' shield waits', '#ffd34d');
     return true;
@@ -4917,31 +4838,7 @@ const CHAT = {
     if (kind==='chat' && COMMENTARY.spBusy()) return;    // free chat reactions never stack up
     LIVESCHED.react(kind); LIVEVOX.say(key, name);
   },
-  /* thank-you card for every paid event: Super Chat, Super Sticker, Jewel gift, membership */
-  /* Jewel gifts: small gifts alone give NO power (anti-abuse). A person's Jewels add up for 10 minutes;
-     every JEWEL_MIN Jewels earns one shield. Anything unreadable earns no power (use Manual powers). */
-  jewelPool:new Map(),
-  jewelCheck(m, uid){
-    if (m.what!=='Jewel gift') return {ok:true, extra:''};
-    const min=JEWEL_MIN(); let n=Number(m.jewels)||0;
-    if (!n){ const g=String(m.amount||'').match(/\d+/); n=g?parseInt(g[0],10):0; }
-    if (!n){ this.note('Jewel gift from '+(m.user&&m.user.name)+': could not read the Jewel count, no power (use Manual powers if deserved)'); return {ok:false, extra:'thank you!'}; }
-    const now=Date.now(); let p=this.jewelPool.get(uid); if (!p || now-p.t>600000) p={n:0,t:now};
-    p.n+=n; p.t=now;
-    if (p.n>=min){ p.n-=min; this.jewelPool.set(uid,p); return {ok:true, extra:''}; }
-    this.jewelPool.set(uid,p);
-    return {ok:false, extra:(min-p.n)+' more Jewels = a shield'};
-  },
-  thank(m, uname, extra){
-    const what=m.what||'Super Chat';
-    const icon={'Super Chat':'⭐','Super Sticker':'🎟️','Jewel gift':'💎','Gift':'🎁','Membership':'👑','Gift memberships':'👑'}[what]||'⭐';
-    const nm=String(uname||'viewer').replace(/[\u0000-\u001f<>]/g,'').replace(/^@/,'').slice(0,22)||'viewer';
-    let amt=m.amount; if (typeof amt==='number') amt=String(amt); amt=String(amt||'').slice(0,24);
-    LIVECARD.push('THANK YOU, '+nm.toUpperCase()+'!', what+(amt?' · '+amt:'')+' · '+(extra||'you\u2019re a legend'), null, '#ffd34d', icon, true);
-    this.note('Thank-you card: '+nm+' · '+what+(amt?' '+amt:''));
-    if (typeof EVLOG!=='undefined') EVLOG.power('thanks', '', 'paid:'+what, nm+(amt?' '+amt:''));
-  },
-  cardSub(p){ return p.saved ? 'Saved power · '+(p.user||'viewer') : p.src==='chat' ? 'Chat power' : p.src==='sub' ? 'New subscriber · '+(p.user||'') : 'Super Chat · '+(p.user||''); },
+  cardSub(p){ return p.saved ? 'Saved power · '+(p.user||'viewer') : p.src==='chat' ? 'Chat power' : p.src==='sub' ? 'New subscriber · '+(p.user||'') : 'Super Chat · '+(p.user||'')+((p.layers||1)>1?' · shield ×'+p.layers:''); },
   applySaved(){
     const keep=[];
     for (const s of SAVED.q){
@@ -5001,12 +4898,11 @@ const CHAT = {
         const spot=freeSpot(null); if (!spot) continue;
         const c=BY_CODE.get(p.code), a2=rnd(0,Math.PI*2), sp=curSpeed();
         const nb={c, x:spot.x, y:spot.y, vx:Math.cos(a2)*sp, vy:Math.sin(a2)*sp, shield:!!p.withShield, alive:true};
-        if (nb.shield){ nb.shieldCol='#ffcf3d'; nb.shieldHits=1; }
+        if (nb.shield){ nb.shieldCol='#ffcf3d'; nb.shieldHits=p.layers||1; }
         G.balls.push(nb); G.field=fieldN()+1;
         FACE.override(nb,'excited',1.8,0.24); G.comebackFx=1; SFX.comeback();
         LIVECARD.push('🪂 '+c.name+' DROPS IN!', this.cardSub(p)+(nb.shield?' · with shield':''), p.code, '#ffcf3d');
-        LIVESCHED.react(p.src==='sub'?'sub':'sc'); LIVEVOX.say(nb.shield?'rLandShield':'rLand', c.name);
-        if (typeof EVLOG!=='undefined') EVLOG.power('land', p.code, p.src, p.user);
+        LIVESCHED.react(p.src==='sub'?'sub':'sc'); LIVEVOX.say(p.src==='sub'?'rSub':(nb.shield?'rLandShield':'rLand'), c.name);
         this.note('🪂 '+c.name+' dropped into the arena by '+(p.user||'viewer')+(nb.shield?' (shielded)':''));
         this.feed.unshift({txt:'🪂 '+c.name+' · '+(p.user||'viewer'), col:'#ffcf3d', t:0}); if (this.feed.length>3) this.feed.length=3;
         if (p.src==='sub'){ this.paid++; this.paidBy.set(p.code,(this.paidBy.get(p.code)||0)+1); }
@@ -5019,23 +4915,21 @@ const CHAT = {
         if (!b.alive && p.src==='superchat'){ p.type='revive'; p.withShield=true; i--; continue; }   // fell meanwhile: bring it back shielded
         if (!b.alive){ this.pend.splice(i--,1); this.note(this.nameOf(p.code)+' was eliminated before its shield landed'); continue; }
         if (b.shield && p.src!=='superchat') continue;            // free / subscriber shields wait their turn
-        if (b.shield){ b.shieldHits=(b.shieldHits||1)+1; b.shieldCol='#ffcf3d'; }   // a Super Chat stacks: one more fall survived
-        else { b.shield=true; b.shieldHits=1; b.shieldCol = p.src==='chat' ? PAL.shield : '#ffcf3d'; }
+        if (b.shield){ b.shieldHits=(b.shieldHits||1)+(p.layers||1); b.shieldCol='#ffcf3d'; }   // paid power stacks: more falls survived
+        else { b.shield=true; b.shieldHits=(p.src==='superchat'?(p.layers||1):1); b.shieldCol = p.src==='chat' ? PAL.shield : '#ffcf3d'; }
         FACE.override(b,'proud',2.0,0.14);
-        SFX.shield(); LIVECARD.push((b.shieldHits>1?'🛡×'+b.shieldHits+' ':'🛡 ')+b.c.name+(b.shieldHits>1?' DOUBLE SHIELD!':' SHIELDED'), this.cardSub(p), p.code, b.shieldCol); this.react(p,'shield',b.c.name);
+        SFX.shield(); LIVECARD.push((b.shieldHits>1?'🛡×'+b.shieldHits+' ':'🛡 ')+b.c.name+(b.shieldHits>1?' SHIELD ×'+b.shieldHits+'!':' SHIELDED'), this.cardSub(p), p.code, b.shieldCol); this.react(p,'shield',b.c.name);
         this.note('🛡 '+b.c.name+' · '+(p.src==='chat'?'chat':p.user), b.shieldCol, true);
-        if (typeof EVLOG!=='undefined') EVLOG.power('shield', p.code, p.src, p.user);
       } else {
         if (b.alive){ if (p.src==='superchat'){ p.type='shield'; i--; continue; } continue; }   // Super Chat never waits: alive -> shield
         if (alive().length<2) continue;            // never revive into a finished round
         const spot=freeSpot(b); if (!spot) continue;   // arena too full this frame: retry
         const i2=G.dead.findIndex(d=>d.c.code===p.code); if (i2>=0) G.dead.splice(i2,1);
-        b.alive=true; b.shield=!!p.withShield; b.shieldHits=p.withShield?1:0; b.shieldCol=p.withShield?'#ffcf3d':null; b.x=spot.x; b.y=spot.y;
+        b.alive=true; b.shield=!!p.withShield; b.shieldHits=p.withShield?(p.layers||1):0; b.shieldCol=p.withShield?'#ffcf3d':null; b.x=spot.x; b.y=spot.y;
         const a2=rnd(0,Math.PI*2), sp=curSpeed(); b.vx=Math.cos(a2)*sp; b.vy=Math.sin(a2)*sp;
         FACE.override(b,'excited',1.6,0.22); G.comebackFx=1;
         SFX.comeback(); LIVECARD.push('♻ '+b.c.name+' IS BACK!', this.cardSub(p)+(p.withShield?' · with shield':''), p.code, p.withShield?'#ffcf3d':'#5ef2c8'); this.react(p,'revive',b.c.name);
         this.note('♻ '+b.c.name+' · '+(p.src==='chat'?'chat':p.user), '#5ef2c8', true);
-        if (typeof EVLOG!=='undefined') EVLOG.power('revive', p.code, p.src, p.user);
       }
       if (p.src==='sub'){ this.paid++; this.paidBy.set(p.code,(this.paidBy.get(p.code)||0)+1); }
       this.pend.splice(i--,1);
@@ -5114,7 +5008,7 @@ function drawLiveCorner(){
     ctx.fillText((r.alive?'🛡':'♻')+' '+r.n+'/'+r.need, cx, PY+Y.lab);
   });
   const ev=CHAT.feed[0], show=ev && ev.t<12000;
-  const txt=show ? ev.txt : 'Super chat "revive"/"shield" + country';
+  const txt=show ? ev.txt : '⭐ Super Chat your country = 🛡 power!';
   ctx.textAlign=al; ctx.font=(show?'800 16px':'700 14px')+' "FR Poppins",system-ui,sans-serif'; ctx.fillStyle=show?ev.col:'#ffcf3d';
   let s2=txt, maxW=PW-24; if (ctx.measureText(s2).width>maxW){ while (s2.length>4 && ctx.measureText(s2+'…').width>maxW) s2=s2.slice(0,-1); s2+='…'; }
   ctx.fillText(s2, xo, PY+Y.tick);
@@ -5139,11 +5033,11 @@ const LIVE_LINES = {
          'Name, flag or short form — {r} messages revives your country!',
          'Revive time! {R} different messages for your fallen country!',
          "Don't give up! {R} different messages and your country returns!"],
-  sc:["Super Chat the word 'revive' with your country's name, and your knocked-out country jumps straight back into the arena — with a shield!",
-      "Super Chat the word 'shield' with your country's name, and it's protected from the next fall into the hole!",
-      "No limit on Super Chats! Every 'shield' or 'revive' with your country works instantly — back in the arena and shielded!",
+  sc:["Super Chat your country's name, flag or short form — if it's out, it jumps straight back into the arena with a shield!",
+      "Super Chat your country, and it's protected from the next fall into the hole — instantly!",
+      "No limit on Super Chats! Every Super Chat with your country works instantly — back in the arena and shielded!",
       'Forgot the country in your Super Chat? No problem — your last supported country gets the power, or the next one you type!',
-      'Your country not playing this round? Super Chat its name with revive or shield, and it drops straight into the arena with a shield!'],
+      'Your country not playing this round? Super Chat its name, and it drops straight into the arena with a shield!'],
   sub:["Subscribe now, then type your country in chat! If it's still alive it gets a shield, and if it's out, it comes back!",
        'Every new subscriber gets a free power! Subscribe, then name your country — shield if alive, revival if eliminated!',
        'Hit subscribe and back your country in chat — it gets a shield or a comeback right away!'],
@@ -5212,8 +5106,7 @@ SAVED.load();
 /* ---- popup card in the question area (outside the ring, see-through) ---- */
 const LIVECARD = {
   list:[], DUR:3400,
-  push(title, sub, code, col, icon, keep){ if (!LIVE.on) return; this.list.push({title,sub,code,col:col||'#5ef2c8',t:0,icon:icon||'',keep:!!keep});
-    if (this.list.length>4){ let i=this.list.findIndex((c,ix)=>ix>=1 && !c.keep); if (i<1) i=1; this.list.splice(i,1); } },
+  push(title, sub, code, col){ if (!LIVE.on) return; this.list.push({title,sub,code,col:col||'#5ef2c8',t:0}); if (this.list.length>4) this.list.splice(1,1); },
   tick(dt){ if (!this.list.length) return; this.list[0].t+=dt; if (this.list[0].t>this.DUR) this.list.shift(); },
   alpha(){ const c=this.list[0]; if (!c) return 0; const t=c.t; return t<250 ? t/250 : t>this.DUR-300 ? Math.max(0,(this.DUR-t)/300) : 1; },
   draw(){
@@ -5227,9 +5120,6 @@ const LIVECARD = {
     const sp=sprites.get(c.code);
     if (sp){ ctx.save(); ctx.shadowColor=c.col; ctx.shadowBlur=22; ctx.drawImage(sp,fx,fy,fd,fd); ctx.restore();
       ctx.lineWidth=4; ctx.strokeStyle=c.col; ctx.beginPath(); ctx.arc(fx+fd/2,fy+fd/2,fd/2+3,0,7); ctx.stroke(); }
-    else if (c.icon){ ctx.save(); ctx.lineWidth=4; ctx.strokeStyle=c.col; ctx.beginPath(); ctx.arc(fx+fd/2,fy+fd/2,fd/2+3,0,7); ctx.stroke();
-      ctx.font='56px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle='#fff';
-      ctx.fillText(c.icon, fx+fd/2, fy+fd/2+3); ctx.restore(); }
     const tx=fx+fd+22, tw=x+w-22-tx;
     ctx.textAlign='left'; ctx.textBaseline='middle';
     let fs=box?34:46; ctx.font='900 '+fs+'px "FR Oswald",system-ui,sans-serif';
@@ -5393,6 +5283,11 @@ function testSupport(code, n, member, untilFlag){
     setTimeout(()=>{ const c=pick(); CHAT.ingest({kind:'chat',user:u,text:'come on '+CHAT.nameOf(c).toLowerCase(),t:Date.now()}); say(u.name+' then wrote "come on '+CHAT.nameOf(c)+'"'); }, 1500); });
   $('tSub').addEventListener('click',()=>{ const u=paid('', 'subscribe'); if(!u) return;
     setTimeout(()=>{ const c=pick(); CHAT.ingest({kind:'chat',user:u,text:CHAT.nameOf(c).toLowerCase()+' forever',t:Date.now()}); say(u.name+' (new subscriber) then wrote "'+CHAT.nameOf(c)+' forever"'); }, 1500); });
+  const tEvt=(kind,count)=>{ if(!needOn())return; const c=pick(); const u={id:'ev'+Math.floor(Math.random()*1e6),name:'@fan'+Math.floor(Math.random()*90+10)};
+    CHAT.ingest({kind:'chat',user:u,text:'go '+CHAT.nameOf(c).toLowerCase(),t:Date.now()});
+    CHAT.ingest({kind,count,user:u,text:'',t:Date.now()}); say((kind==='member'?'New member ':'Gifted ×'+count+' from ')+u.name+' (supports '+CHAT.nameOf(c)+')'); };
+  $('tMem').addEventListener('click',()=>tEvt('member'));
+  $('tGift').addEventListener('click',()=>tEvt('gift',5));
   $('tSend').addEventListener('click',()=>{ if(!needOn())return;
     const h=($('tHandle').value||'@me').trim(), text=$('tText').value||'';
     CHAT.ingest({kind, user:{id:'h:'+h.toLowerCase(), name:h, member:$('tIsMember').checked}, text, t:Date.now(), amount:kind==='superchat'?100:0});
@@ -5408,7 +5303,7 @@ function testSupport(code, n, member, untilFlag){
     if (document.activeElement!==$('liveShieldN')) $('liveShieldN').value=LIVE.shieldN;
     if (document.activeElement!==$('liveReviveN')) $('liveReviveN').value=LIVE.reviveN;
     [...$('liveTargets').children].forEach(b=>b.classList.toggle('on', b.dataset.v===LIVE.shieldN+','+LIVE.reviveN));
-    $('liveRulesHint').textContent=CHAT_RULES.SHIELD+(LIVE.countAll?' chat messages':' different chat messages')+' = shield, '+CHAT_RULES.REVIVE+' after elimination = revival (once each per country per round, members count double). Super Chats with a keyword: no limit, instant. Subscribers: max '+CHAT_RULES.PAID_CAP+' per round, '+CHAT_RULES.PAID_PER_COUNTRY+' per country.';
+    $('liveRulesHint').textContent=CHAT_RULES.SHIELD+(LIVE.countAll?' chat messages':' different chat messages')+' = shield, '+CHAT_RULES.REVIVE+' after elimination = revival (once each per country per round, members count double). Super Chats naming a country: no limit, instant. Subscribers: max '+CHAT_RULES.PAID_CAP+' per round, '+CHAT_RULES.PAID_PER_COUNTRY+' per country.';
     $('liveCornerNote').textContent = LIVE.corner==='box' && !boxLayoutOn() ? 'Boxes need the Original header & question style (HUD tab). Showing the top-left corner panel instead.' : '';
     const pend=CHAT.pend.map(p=>(p.type==='shield'?'🛡 ':'♻ ')+CHAT.nameOf(p.code)+' ('+(p.src==='chat'?'chat':p.user)+')');
     const aw=[...new Set(CHAT.await.values())].map(a=>a.user+' → '+(a.type==='auto'?'effect':a.type)+' (waiting for a country)');
@@ -5708,84 +5603,65 @@ const SE = {
     if (!id || (!CHAT.last.has(id) && CHAT.names.has(lname))) id=CHAT.names.get(lname)||id||('n:'+lname);
     const base={via:'se-act', user:{id, name}, t:Date.now(), id:a._id?'se:'+a._id:undefined};
     if (type==='subscriber' || type==='follow' || type==='follower') CHAT.ingest(Object.assign(base,{kind:'subscribe', text:''}));
-    else {
-      const amt = dd.formattedAmount || (dd.amount!=null ? (dd.currency ? dd.amount+' '+dd.currency : dd.amount) : '');
-      const paid = (what, text) => CHAT.ingest(Object.assign(base,{kind:'superchat', what, text, amount:amt, jewels:Number(dd.jewelsAmount||dd.jewels||dd.amount)||0}));
-      if (type==='superchat') paid('Super Chat', dd.message||'');
-      else if (type==='sponsor' || type==='membership' || type==='member') paid('Membership', ((dd.message||'')+' shield').trim());
-      else if (type==='supersticker' || type==='sticker' || type==='super_sticker') paid('Super Sticker', ((dd.message||'')+' shield').trim());
-      else if (/jewel|gift/.test(type)) paid(/jewel/.test(type)?'Jewel gift':'Gift', ((dd.message||'')+' shield').trim());
-    }
+    else if (type==='superchat') CHAT.ingest(Object.assign(base,{kind:'superchat', text:dd.message||'', amount:dd.amount}));
+    else if (type==='sponsor' && !dd.gifted && !dd.sender) CHAT.ingest(Object.assign(base,{kind:'member', text:dd.message||''}));
+    else if (type==='communityGiftPurchase') CHAT.ingest(Object.assign(base,{kind:'gift', count:+dd.amount||+dd.count||1, text:''}));
   },
 };
 SE.load();
 
 /* ==========================================================================
-   STREAMLABS (second alert source, runs next to StreamElements)
-   Streamlabs Socket API: Socket.IO v2 at https://sockets.streamlabs.com?token=<socket token>
-   Events arrive as 'event' with {type, for, message:[...]}. Only YouTube events are used:
-   superchat (also stickers), subscription (= channel membership), and anything whose
-   type contains jewel / gift / sticker. Every new event type is written to the Event log
-   once, so you can see exactly what Streamlabs sends for Jewels.
-   Uses NO YouTube API quota. Chat messages still come from StreamElements.
+   7F. STREAMLABS (alerts only: YouTube subscribers, members, Super Chats)
+   Socket API (socket.io v2 protocol over a plain WebSocket). Streamlabs reports a
+   YouTube channel subscription as type "follow" for "youtube_account".
+   Whichever of StreamElements / Streamlabs reports an event first applies it;
+   the other copy is ignored, and a subscriber is rewarded once per day.
    ========================================================================== */
 const SL_KEY='flagsrumble-sl-v1';
 const SL = {
-  url:'https://sockets.streamlabs.com', lib:'https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.0.3/socket.io.js',
-  cfg:{ token:'', auto:false }, sock:null, wanted:false, status:'Not connected', events:0, seenT:{},
-  load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem(SL_KEY)||'{}')); }catch(e){}
-          this.wanted=!!(this.cfg.auto && this.cfg.token); },
+  cfg:{ token:'', auto:false }, ws:null, wanted:false, status:'Not connected', retry:0, nextTry:0, pingT:null, ok:false, events:0,
+  load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem(SL_KEY)||'{}')); }catch(e){} this.wanted=!!(this.cfg.auto && this.cfg.token); },
   save(){ try{ localStorage.setItem(SL_KEY, JSON.stringify(this.cfg)); }catch(e){} },
-  loadLib(cb){
-    if (window.io) return cb();
-    const s=document.createElement('script'); s.src=this.lib; s.onload=cb;
-    s.onerror=()=>{ this.status='Could not load the socket.io library (offline?)'; };
-    document.head.appendChild(s);
-  },
-  connect(){
-    const tok=String(this.cfg.token||'').trim(); if (!tok){ this.status='Paste your Streamlabs Socket API token'; return; }
-    this.cfg.auto=true; this.save(); this.wanted=true; this.status='Connecting…';
-    this.loadLib(()=>{
-      this.close();
-      try{
-        const sock=window.io(this.url+'?token='+encodeURIComponent(tok), {transports:['websocket']}); this.sock=sock;
-        sock.on('connect', ()=>{ this.status='Connected'; CHAT.note('Streamlabs connected'); });
-        sock.on('disconnect', ()=>{ this.status='Disconnected - retrying'; });
-        sock.on('connect_error', e=>{ this.status='Connection error: '+((e&&e.message)||e); });
-        sock.on('event', e=>{ try{ this.onEvent(e); }catch(x){ CHAT.note('Streamlabs event error: '+x.message); } });
-      }catch(e){ this.status='Could not connect: '+e.message; }
-    });
-  },
-  close(){ const s=this.sock; this.sock=null; if (s){ try{ s.off(); s.close(); }catch(e){} } },
+  connect(){ if (!this.cfg.token.trim()){ this.status='Enter your Socket API token'; return; }
+    this.cfg.auto=true; this.save(); this.wanted=true; this.retry=0; this.nextTry=0; this.close(); this.open(); },
   disconnect(){ this.wanted=false; this.cfg.auto=false; this.save(); this.close(); this.status='Disconnected'; },
-  onEvent(e){
-    if (!e || !e.type) return;
+  close(){ clearInterval(this.pingT); this.pingT=null; this.ok=false; const w=this.ws; this.ws=null; if (w){ w.onclose=null; w.onmessage=null; try{ w.close(); }catch(e){} } },
+  open(){
+    try{
+      const ws=new WebSocket('wss://sockets.streamlabs.com/socket.io/?token='+encodeURIComponent(this.cfg.token.trim())+'&EIO=3&transport=websocket');
+      this.ws=ws; this.status='Connecting…';
+      ws.onmessage=e=>this.onFrame(String(e.data));
+      ws.onclose=e=>{ if (this.ws!==ws) return; clearInterval(this.pingT); this.ws=null; this.ok=false;
+        if (this.wanted){ const d=[2,5,10,20,30][Math.min(this.retry,4)]; this.retry++; this.nextTry=Date.now()+d*1000; this.status='Connection lost ('+(e.code||'')+'). Retrying…'; } };
+      ws.onerror=()=>{};
+    }catch(e){ this.ws=null; this.status='Could not open the connection'; }
+  },
+  onFrame(f){
+    if (f[0]==='0'){ try{ const o=JSON.parse(f.slice(1)); clearInterval(this.pingT); this.pingT=setInterval(()=>{ try{ this.ws&&this.ws.send('2'); }catch(e){} }, o.pingInterval||25000); }catch(e){} return; }
+    if (f==='40'){ this.ok=true; this.retry=0; this.status='Live: alerts'; CHAT.note('Streamlabs connected'); return; }
+    if (f.startsWith('44')){ this.status='Streamlabs refused the token'; CHAT.note('Streamlabs error: '+f.slice(2,120)); this.wanted=false; this.cfg.auto=false; this.save(); this.close(); return; }
+    if (f.startsWith('42')){ let arr; try{ arr=JSON.parse(f.slice(2)); }catch(e){ return; } if (arr[0]==='event') this.onEvent(arr[1]); }
+  },
+  onEvent(ev){
+    if (!ev) return; const type=String(ev.type||''), forr=String(ev.for||'');
+    if (/^streamlabels|^alertPlaying|^alertplaying|^rollEndCredits/i.test(type)) return;        // Streamlabs housekeeping
     this.events++;
-    if (e.for && e.for!=='youtube_account') return;           // Twitch etc.: not used
-    const type=String(e.type).toLowerCase();
-    if (!this.seenT[type]){ this.seenT[type]=1; CHAT.note('Streamlabs event type seen: '+type+' (for '+(e.for||'?')+')'); }
-    const list=Array.isArray(e.message)?e.message:[e.message];
-    for (const dd of list){
-      if (!dd) continue;
-      const name=dd.name||dd.displayName||dd.username||'viewer', lname=String(name).toLowerCase().replace(/^@/,'');
-      let id=dd.channelId||dd.providerId||'';
+    const list=Array.isArray(ev.message)?ev.message:[ev.message||{}];
+    for (const m of list){
+      const name=m.name||m.display_name||m.from||'viewer', lname=String(name).toLowerCase().replace(/^@/,'');
+      CHAT.note('Streamlabs event: '+type+' ('+(forr||'?')+') · '+name);
+      if (forr && forr!=='youtube_account' && type!=='superchat') continue;
+      let id=m.id||m.channelId||m.channel_id||'';
       if (!id || (!CHAT.last.has(id) && CHAT.names.has(lname))) id=CHAT.names.get(lname)||id||('n:'+lname);
-      const eid=e.event_id||dd._id||dd.id;
-      const base={via:'sl-act', user:{id, name}, t:Date.now(), id:eid?'sl:'+eid:undefined};
-      const amt=dd.displayString || dd.formattedAmount || (dd.amount!=null ? (dd.currency?dd.amount+' '+dd.currency:String(dd.amount)) : '');
-      const paid=(what,text)=>CHAT.ingest(Object.assign(base,{kind:'superchat', what, text, amount:amt, jewels:Number(dd.jewelsAmount||dd.jewels||dd.amount)||0}));
-      if (type==='superchat'){
-        if (/sticker/i.test(String(dd.messageType||''))) paid('Super Sticker','shield'); else paid('Super Chat', dd.comment||dd.message||'');
-      }
-      else if (type==='subscription') paid('Membership','shield');
-      else if (/jewel|gift/.test(type)) paid(/jewel/.test(type)?'Jewel gift':'Gift', ((dd.comment||dd.message||'')+' shield').trim());
-      else if (/sticker/.test(type)) paid('Super Sticker','shield');
-      // 'follow' (a plain YouTube subscribe) is left to StreamElements, which already handles it
+      const base={via:'sl', user:{id, name}, t:Date.now(), id:m._id?'sl:'+m._id:undefined};
+      if (type==='follow') CHAT.ingest(Object.assign(base,{kind:'subscribe', text:''}));
+      else if (type==='superchat') CHAT.ingest(Object.assign(base,{kind:'superchat', text:m.comment||m.message||'', amount:m.displayString||m.amount}));
+      else if (type==='subscription'){ if (m.gifter || m.gifted) continue; CHAT.ingest(Object.assign(base,{kind:'member', text:m.message||''})); }
     }
   },
 };
 SL.load();
-if (SL.wanted) setTimeout(()=>SL.connect(), 2000);
+setInterval(()=>{ if (SL.wanted && !SL.ws && Date.now()>=SL.nextTry) SL.open(); }, 1000);
 
 const SRC = {
   cfg:{ source:'se' }, downSince:0, upSince:0,
@@ -5821,21 +5697,18 @@ const SRC = {
 SRC.load();
 setInterval(()=>SRC.tick(), 1000);
 
-ytToMsg.seenT={};
 function ytToMsg(it, t){
   const s=it.snippet||{}, a=it.authorDetails||{};
   const user={ id:a.channelId||s.authorChannelId||a.displayName, name:a.displayName||'viewer', member:!!a.isChatSponsor };
   const type = s.type || (s.textMessageDetails ? 'textMessageEvent' : s.superChatDetails ? 'superChatEvent' : '');
   switch (type){
     case 'textMessageEvent': return {id:it.id, kind:'chat', user, text:(s.textMessageDetails&&s.textMessageDetails.messageText)||s.displayMessage||'', t};
-    case 'superChatEvent': { const d=s.superChatDetails||{}; return {id:it.id, kind:'superchat', what:'Super Chat', user, text:d.userComment||'', amount:d.amountDisplayString||'', t}; }
-    case 'superStickerEvent': { const d=s.superStickerDetails||{}; return {id:it.id, kind:'superchat', what:'Super Sticker', user, text:'shield', amount:d.amountDisplayString||'', t}; }   // a Super Sticker = a shield (no text to read)
-    case 'giftEvent': { const d=s.giftDetails||{}; return {id:it.id, kind:'superchat', what:'Jewel gift', jewels:(Number(d.jewelsAmount)||0)*Math.max(1,Number(d.comboCount)||1), user, text:'shield',
-        amount:(d.jewelsAmount?d.jewelsAmount+' Jewels':'')+(d.giftName?(d.jewelsAmount?' · ':'')+d.giftName:'')+(d.comboCount>1?' x'+d.comboCount:''), t}; }      // Jewels (vertical-live gifts) = a shield
-    case 'newSponsorEvent': return {id:it.id, kind:'superchat', what:'Membership', user:Object.assign(user,{member:true}), text:'shield', amount:'', t};
-    case 'membershipGiftingEvent': return {id:it.id, kind:'superchat', what:'Gift memberships', user, text:'shield', amount:'', t};
-    case 'memberMilestoneChatEvent': return {id:it.id, kind:'chat', user:Object.assign(user,{member:true}), text:(s.memberMilestoneChatDetails&&s.memberMilestoneChatDetails.userComment)||'', t};
-    default: if (type && !ytToMsg.seenT[type]){ ytToMsg.seenT[type]=1; if (typeof CHAT!=='undefined' && type!=='tombstone') CHAT.note('Chat item type not used by the rules: '+type); } return null;
+    case 'superChatEvent': { const d=s.superChatDetails||{}; return {id:it.id, kind:'superchat', user, text:d.userComment||'', amount:d.amountDisplayString||'', t}; }
+    case 'superStickerEvent': { const d=s.superStickerDetails||{}; return {id:it.id, kind:'superchat', user, text:'', amount:d.amountDisplayString||'', t}; }
+    case 'memberMilestoneChatEvent': return {id:it.id, kind:'milestone', user:Object.assign(user,{member:true}), text:(s.memberMilestoneChatDetails&&s.memberMilestoneChatDetails.userComment)||'', t};
+    case 'newSponsorEvent': return {id:it.id, kind:'member', user:Object.assign(user,{member:true}), text:'', t};
+    case 'membershipGiftingEvent': { const d=s.membershipGiftingDetails||{}; return {id:it.id, kind:'gift', count:+d.giftMembershipsCount||1, user, text:'', t}; }
+    default: return null;                    // gift received, polls, deletions: no power
   }
 }
 
@@ -5903,6 +5776,12 @@ function ytToMsg(it, t){
     if (!LIVE.on) s += '<br>Interactive mode is OFF on the Live page: chat is not counted.';
     $('srcStatus').innerHTML = s;
   };
+  $('slTok').value=SL.cfg.token;
+  $('slTokShow').addEventListener('click',e=>{ e.preventDefault(); const k=$('slTok'); k.type = k.type==='password' ? 'text' : 'password'; });
+  $('slConnect').addEventListener('click',()=>{ SL.cfg.token=$('slTok').value.trim(); SL.save(); SL.connect(); paint(); });
+  $('slDisconnect').addEventListener('click',()=>{ SL.disconnect(); paint(); });
+  const basePaint2=paint;
+  paint=function(){ basePaint2(); $('slStatus').innerHTML='<b>'+SL.status+'</b>'+(SL.events?'<br>Events received: '+SL.events:''); };
   window.__ytPaint=paint;
   setInterval(()=>{ YT.tickResume(); paint(); }, 1000); paint();
 })();
@@ -6008,110 +5887,8 @@ try{ const q=new URLSearchParams(location.search).get('preset');
   show(cur);
 })();
 
-
-(function(){
-  const $=id=>document.getElementById(id); if(!$('evDl')) return;
-  const paint=()=>{ $('evInfo').textContent=EVLOG.count()+' rounds logged · '+Object.keys(EVLOG.season()).length+' countries in the season table'; };
-  $('evDl').addEventListener('click',()=>{ EVLOG.exportRounds(); });
-  $('evCopy').addEventListener('click',()=>{ EVLOG.copyRounds(); $('evInfo').textContent='Copied '+EVLOG.count()+' rounds to the clipboard'; });
-  $('evSeason').addEventListener('click',()=>{ EVLOG.exportSeason(); });
-  $('evClear').addEventListener('click',()=>{ if(confirm('Delete the whole round log and season table?')){ EVLOG.clear(); paint(); } });
-  $('evHook').value=EVLOG.getHook(); $('evHook').addEventListener('change',e=>EVLOG.setHook(e.target.value));
-  paint(); setInterval(paint,5000);
-})();
-
-/* ==========================================================================
-   VIEWER MODE  (?viewer=1[&follow=BR])  - public page for step "own your audience"
-   Hides the operator panel, lets a visitor follow one country (pulsing ring,
-   live status, personal best), and links back to the live stream.
-   Never touches the simulation. Off unless ?viewer=1 is in the URL.
-   ========================================================================== */
-(function(){
-  const q=new URLSearchParams(location.search);
-  if (q.get('viewer')!=='1') return;
-  const LINKS={ live:'https://www.youtube.com/@flagswararena/live', discord:'' };   // <- edit these
-  const VKEY='flagsrumble-viewer-v1';
-  let follow=(q.get('follow')||'').toUpperCase();
-  if (!BY_CODE.has(follow)) follow='';
-  let stats={}; try{ stats=JSON.parse(localStorage.getItem(VKEY)||'{}'); }catch(e){}
-  const st=document.createElement('style');
-  st.textContent='body.viewer #panel{display:none!important}'+
-   '#vbar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;padding:8px 12px;background:rgba(8,12,34,.92);color:#fff;font:600 14px system-ui,sans-serif}'+
-   '#vbar select,#vbar button,#vbar a{font:inherit;color:#fff;background:#243079;border:1px solid #4a5bd6;border-radius:8px;padding:6px 10px;text-decoration:none;cursor:pointer}'+
-   '#vbar a.live{background:#d8232a;border-color:#ff5a5f}#vbar .s{flex:1 1 100%;text-align:center;color:#ffe14d;min-height:18px}';
-  document.head.appendChild(st); document.body.classList.add('viewer');
-  const flag=c=>String.fromCodePoint(...[...c].map(ch=>127397+ch.charCodeAt(0)));
-  const bar=document.createElement('div'); bar.id='vbar';
-  const opts=ALL_COUNTRIES.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>'<option value="'+c.code+'">'+(c.code.length===2?flag(c.code)+' ':'')+c.name+'</option>').join('');
-  bar.innerHTML='<select id="vSel"><option value="">Pick your country…</option>'+opts+'</select>'+
-    '<button id="vShare">Share my country</button>'+
-    '<a class="live" target="_blank" rel="noopener" href="'+LINKS.live+'">▶ Watch LIVE</a>'+
-    (LINKS.discord?'<a target="_blank" rel="noopener" href="'+LINKS.discord+'">Discord</a>':'')+
-    '<div class="s" id="vStat">Pick a country to follow it round after round.</div>';
-  document.body.appendChild(bar);
-  const sel=bar.querySelector('#vSel'), stat=bar.querySelector('#vStat'); sel.value=follow;
-  sel.addEventListener('change',()=>{ follow=sel.value; const u=new URL(location.href); if(follow)u.searchParams.set('follow',follow); else u.searchParams.delete('follow'); history.replaceState(null,'',u); });
-  bar.querySelector('#vShare').addEventListener('click',e=>{ if(!follow){ stat.textContent='Pick a country first.'; return; }
-    const u=new URL(location.href); u.searchParams.set('follow',follow); try{ navigator.clipboard.writeText(u.href); e.target.textContent='Link copied ✓'; setTimeout(()=>e.target.textContent='Share my country',1800);}catch(x){ stat.textContent=u.href; } });
-  const _db=drawBalls;
-  drawBalls=function(){ _db(); if(!follow||!G) return; const b=G.balls.find(x=>x.c.code===follow); if(!b||!b.alive) return;
-    const t=performance.now()/300; ctx.save(); ctx.strokeStyle='#ffe14d'; ctx.lineWidth=6; ctx.globalAlpha=0.75+0.25*Math.sin(t);
-    ctx.beginPath(); ctx.arc(CFG.CX+b.x,CFG.CY+b.y,CFG.BALL_R+12+3*Math.sin(t),0,Math.PI*2); ctx.stroke(); ctx.restore(); };
-  let recorded=0;
-  setInterval(()=>{
-    if(!follow||!G){ return; }
-    const name=BY_CODE.get(follow).name, b=G.balls.find(x=>x.c.code===follow), s=stats[follow]||{r:0,w:0,best:0};
-    const total=G.dead.length+1, di=G.dead.findIndex(d=>d.c.code===follow);
-    if (G.phase==='WINNER' && recorded!==G.roundNo && b){
-      recorded=G.roundNo; const place=(G.winner&&G.winner.c.code===follow)?1:(di>=0?total-di:total);
-      s.r++; if(place===1)s.w++; if(!s.best||place<s.best)s.best=place; stats[follow]=s;
-      try{ localStorage.setItem(VKEY,JSON.stringify(stats)); }catch(e){}
-    }
-    const rec=s.r?'  ·  Your record: '+s.w+' win'+(s.w===1?'':'s')+' in '+s.r+' rounds, best #'+s.best:'';
-    let t;
-    if(!b) t=name+' is not in this round — it may be in the next.';
-    else if(G.phase==='WINNER') t=(G.winner&&G.winner.c.code===follow)?'🏆 '+name+' WINS!':name+' finished #'+(di>=0?total-di:total);
-    else if(b.alive) t=name+' is alive · '+G.balls.filter(x=>x.alive).length+' left';
-    else t=name+' was eliminated (#'+(total-di)+')';
-    stat.textContent=t+rec;
-  },250);
-})();
-
-
-(function(){
-  const $=id=>document.getElementById(id); if(!$('slConnect')) return;
-  $('slTok').value=SL.cfg.token||'';
-  $('slTok').addEventListener('change',e=>{ SL.cfg.token=e.target.value.trim(); SL.save(); });
-  $('slTokShow').addEventListener('click',e=>{ e.preventDefault(); const t=$('slTok'); t.type=t.type==='password'?'text':'password'; });
-  $('slConnect').addEventListener('click',()=>{ SL.cfg.token=$('slTok').value.trim(); SL.connect(); });
-  $('slDisconnect').addEventListener('click',()=>SL.disconnect());
-  const paint=()=>{ $('slStatus').textContent=SL.status+(SL.events?' · '+SL.events+' events received':''); };
-  paint(); setInterval(paint,1000);
-})();
-
-
-(function(){
-  const $=id=>document.getElementById(id); if(!$('thSc')) return; let n=0;
-  const fire=(what,amount,text)=>{
-    if(!LIVE.on){ $('thMsg').textContent='Turn Interactive mode ON first (Live page).'; return; }
-    n++; const u={id:'thx'+n, name:'@thanks_test'+n, member:false};
-    CHAT.ingest({kind:'superchat', what, user:u, text, amount, t:Date.now(), id:'thx'+n+'-'+Date.now(), via:'test'});
-    $('thMsg').textContent='Sent: '+what+' from '+u.name+'. Now type a country in "Type your own message" (Chat, handle '+u.name+') to see the power.';
-  };
-  $('thSc').addEventListener('click',()=>fire('Super Chat','\u20b9100.00','love this game'));
-  $('thSt').addEventListener('click',()=>fire('Super Sticker','\u20b950.00','shield'));
-  $('thJw').addEventListener('click',()=>{ if(!LIVE.on){ fire('Jewel gift','',''); return; } const u={id:'thxj',name:'@jewel_test',member:false}; CHAT.ingest({kind:'superchat', what:'Jewel gift', jewels:5, user:u, text:'shield', amount:'5 Jewels', t:Date.now(), id:'thxj-'+Date.now(), via:'test'}); $('thMsg').textContent='Sent a 5-Jewel gift from @jewel_test (under the minimum: thank-you only). Press again 10 times, or raise it to 50 with a real gift, to see the shield.'; });
-  $('thMb').addEventListener('click',()=>fire('Membership','','shield'));
-})();
-
-
-(function(){
-  const el=document.getElementById('jewelMin'); if(!el) return; el.value=JEWEL_MIN();
-  el.addEventListener('change',()=>{ const v=Math.max(1,Math.min(100000,parseInt(el.value,10)||50)); el.value=v; try{ localStorage.setItem(JEWEL_KEY,String(v)); }catch(e){} });
-})();
-
 /* Expose for the headless verification harness (verify_sim.js). */
-window.__CBR__ = { EVLOG, SL, get G(){return G;}, CFG, step, tick, newDraw, alive, spokeSegs, COUNTRIES, CHAT, LIVE, YT, SE, SRC, SAVED, LIVESCHED, LIVECARD, POOL, TIERS, tieredField, ALL_COUNTRIES };
+window.__CBR__ = { get G(){return G;}, CFG, step, tick, newDraw, alive, spokeSegs, COUNTRIES, CHAT, LIVE, YT, SE, SL, SRC, SAVED, LIVESCHED, LIVECARD, POOL, TIERS, tieredField, ALL_COUNTRIES };
 </script>
 </body>
 </html>
