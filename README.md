@@ -93,9 +93,16 @@ To use one:
 3. Press **Enter** for the top match, or click one in the list. ↑/↓ moves through the list and Esc closes it.
 
 ## Paid event with no country named
-If a viewer Super Chats (or joins as a member, gifts memberships or subscribes) and has never named a country, the game says what to do. It's spoken right away, with real-event priority:
-- **Super Chat:** "Thank you Rahul Gaming! Now type your country's name or flag in chat, and it jumps into the arena with a shield!" (3 rotating lines)
-- **Subscriber:** "Thanks for subscribing, NewSub! Type your country's name or flag in chat to claim your free power!"
+If a viewer Super Chats (or joins as a member, gifts memberships or subscribes) and has never named a country, the game says what to do (Super Chats, members and gifts only). It's spoken right away, with real-event priority:
+- **Super Chat / member:** "Thank you Rahul Gaming for the Super Chat! Now type your country's name or flag in chat, and it jumps into the arena with a shield!" (3 rotating lines)
+- **Jewels** (champion card plays, power still needs a country): "Thank you Samira Jahangir for the Jewels! Type your country's name or flag in chat to claim its power!"
+- The name is a speakable version of the handle:
+  - The @ and YouTube's random end ("-v9f") are dropped.
+  - Joined words are split ("SamiraJahangir" becomes "Samira Jahangir").
+  - Symbols and decorations ("xX_…_Xx") are removed, and at most 3 words are kept.
+  - Only Latin letters and digits are kept, because the voices are English: "@Tanaka田中" becomes "Tanaka", "José" becomes "Jose".
+  - Nothing readable left (Chinese, Japanese, Hindi or emoji-only handles): the line is spoken without a name, e.g. "Thank you for the Super Chat!…". The exact handle still shows on screen.
+- **Subscriber:** nothing is spoken. The on-screen panel still shows "name your country!"
 - **Jewels:** when a champion card plays but the earned power still needs a country, the card's thank-you line says so.
 - It plays once per viewer every 2 minutes, so it never nags.
 - When they type the country, the power lands as usual: card, burst and "Super Chat shield for China!"
@@ -130,16 +137,26 @@ You don't need to restart OBS: the stream picks up the new countries within 10 m
 | `winart-local/` | Copy of the art for double-click testing on your PC. Not uploaded, not deployed. |
 | `tools/` | The cutting and packing tools. Not deployed (`.vercelignore`). |
 
-## Support lines (spoken, Live tab → Support lines)
-- **Champion-art Super Chat line:** every 2nd round, about 3.5 s after the round starts. It plays only if the last winner was shown with its champion art.
-- **Membership line:** every 3rd round, mid-round, while 45 to 34 countries are left.
-- They never clash with your other lines. Priority, highest first:
-  1. Reactions to real Super Chats and subscribers.
-  2. That round's chat, Super Chat or subscribe promo. These start at 32 countries left.
-  3. These support lines.
-  4. Normal commentary.
-- A support line waits until no other special line is playing. A real Super Chat removes it from the queue. If its slot passes, it's skipped for that round.
-- Turn on the membership line only once channel memberships are live and you actually run members-only polls.
+## Spoken promos: Smart sequence (default) or Classic
+Switch in Live tab → **Commentary sequence**. Each slot has its own On/Off switch.
+
+**Smart:** every round, each ask plays at most once, in its own slot:
+
+| When | Line |
+|---|---|
+| Even rounds, round start | Champion-art line (only if the last winner showed its art) |
+| 45→33 left | Odd rounds: chat-power shield prompt. Every 3rd round: the membership line instead |
+| 30→18 left | **Subscribe**, rotating. After a sub this round it says "Thanks for the new sub! You can too…". When subscriber powers are used up: "saved for the next round". Silent after 2 subs |
+| 16→11 left | **Super Chat**, rotating. One of the lines explains Jewels (50 = your name on the champion card, 200 = a power). After a paid event this round: "Another supporter!…". Silent after 2 |
+
+- A line waits for a pause in the commentary, so it never cuts across a knockout call. Near the end of its slot it plays after the current sentence instead.
+- Real Super Chats and subscribers always go first.
+- Promo lines never say a viewer's name. Only the "type your country" lines for Super Chat / Jewels / members do.
+
+**Classic:** the original plan.
+- Chat power on odd rounds.
+- Super Chat on 2 rounds and subscribe on 3 rounds of every 10.
+- Plus the art line and the membership line.
 
 ## If something goes wrong, the stream keeps going
 - **Art fails to load** (missing, broken or very slow): that winner gets the default winner card, and the Super Chat pop is skipped.

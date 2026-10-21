@@ -304,6 +304,14 @@ tools/art-src/demo_kit/     source PNGs + meta.json of the demo kit
   - On pick it sets `select.value` and dispatches `change` / `input`, so all existing code still reads the select.
   - Country search uses `chatCountriesAll(chatClean(q))`, then the exact code, aliases (UK / USA / UAE / KSA / DRC), then prefix, word-prefix and substring matches.
 
+- **v12 Smart sequence:** `PROMO` (SMART_JS in build_html.py, regenerated on every build) runs the slots.
+  - `cfg.mode` is 'smart' (default) or 'classic'. `LIVESCHED.tick` returns early in smart mode.
+  - `PROMO.event(kind)` is called from paidEvent and from a Jewels pop; it counts subs and paid events this round.
+  - Rotation indices are kept in localStorage `flagsrumble-promo-rot`.
+  - `plan()` re-plans when a switch changes; `done` keeps used slots used.
+  - Slot rule: speak when no special line is busy and the voice is idle, or when the force point is reached (n ≤ 35 / 20 / 12, art at +12 s). A gone slot is skipped.
+  - Spoken lines never contain handles: `scNoCountry` / `jThanks` / `jNeedCountry` were rewritten, and subscribers aren't asked aloud.
+
 ## 3. Adding a poster country (old layout, Russia-style) (repeat per country)
 1. **Normalize** the poster to 941×1672 (resize any 9:16).
 2. **Cut** with `tools/cut/`, as in v1:

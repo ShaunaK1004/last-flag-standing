@@ -345,7 +345,7 @@ function askCountry(uname, sub){
 const ASKED = new Map();
 const PROMO = {""", "function askCountry(")
 _once("      this.note(label+' from '+uname+': waiting for their next country message');",
-      "      this.note(label+' from '+uname+': waiting for their next country message'); askCountry(uname, src==='sub');")
+      "      this.note(label+' from '+uname+': waiting for their next country message'); askCountry(uname, src==='sub');", "askCountry(uname, src===")
 # Super Chat between rounds without a country: keep it waiting into the next round instead of dropping it
 _once("    if (!code){ this.note('Super Chat from '+uname+' between rounds: no country found'); return; }",
       "    if (!code){ const w={type:'shield', src:'superchat', user:uname, layers:1, label:'', t:Date.now()}, ln=uname.toLowerCase().replace(/^@/,'');\n      (this.lateAwait||(this.lateAwait=[])).push([uid, w], ['n:'+ln, w]); this.note('Super Chat from '+uname+' between rounds: waiting for their country (next round)'); askCountry(uname, false); return; }")
@@ -353,9 +353,9 @@ _once("    this.st.clear(); this.pend.length=0; this.await.clear();",
       "    this.st.clear(); this.pend.length=0; this.await.clear(); if (this.lateAwait){ for (const [k,w] of this.lateAwait) this.await.set(k,w); this.lateAwait=[]; }")
 # Jewels: when their champion card plays but the earned power still needs a country, the card's line says so
 _once("    if (pop){ const job={ code, uname, label:(Math.floor(r.total/P)*P)+' Jewels' };",
-      "    if (pop){ const job={ code, uname, label:(Math.floor(r.total/P)*P)+' Jewels', needCountry: power && !code };")
+      "    if (pop){ const job={ code, uname, label:(Math.floor(r.total/P)*P)+' Jewels', needCountry: power && !code };", "needCountry: power && !code")
 _once("const t=LIVEVOX.pick('jThanks').replace('{u}', this.spoken(j.uname));",
-      "const t=LIVEVOX.pick(j.needCountry?'jNeedCountry':'jThanks').replace('{u}', this.spoken(j.uname));")
+      "const t=LIVEVOX.pick(j.needCountry?'jNeedCountry':'jThanks').replace('{u}', this.spoken(j.uname));", "j.needCountry?'jNeedCountry':'jThanks'")
 
 # two Super Chats before the country is named: both count (shield layers add up)
 _once("      const w={type,src,user:uname,layers,label:kind==='superchat'?'':label,t:Date.now()}; this.await.set(uid,w);",
@@ -430,6 +430,142 @@ PICK_JS = r'''<script>
 if 'OBS-safe pickers.' in src:
     a_ = src.index('<script>\n/* OBS-safe pickers.'); b_ = src.index('</script>\n', a_) + len('</script>\n'); src = src[:a_] + src[b_:]
 i = src.rindex('</body>'); src = src[:i] + PICK_JS + src[i:]
+
+# ======== SMART commentary sequence (default) + classic kept; handle-free spoken lines ========
+SMART_JS = r'''/* ===== Spoken promo lines =====
+   Live tab -> Support lines -> Commentary sequence:
+   CLASSIC: the original plan (chat power on odd rounds; Super Chat on 2 and subscribe on 3 rounds of every 10)
+            plus the art line (even rounds) and the membership line (every 3rd round).
+   SMART (default) - every round, each ask at most once, in its own slot:
+     even rounds, start (+3.5 s) .. champion-art line (only if the last winner was shown with its art)
+     45..33 left ................... odd rounds: chat-power shield prompt; every 3rd round: membership line instead
+     30..18 left ................... SUBSCRIBE line (rotation; "thanks for the sub" after one came in; "saved for next
+                                     round" when the subscriber powers are used up; silent after 2 subs this round)
+     16..11 left ................... SUPER CHAT line (rotation incl. a Jewels line; "another one" after a paid event;
+                                     silent after 2 paid events this round)
+   A line waits for a breath gap (voice idle) so it never cuts across a knockout call; near the end of its slot it is
+   queued after the current sentence instead. Real viewer events always go first and drop a queued promo line.
+   A missed slot is skipped, never carried over. No line ever speaks a viewer's handle. */
+Object.assign(LIVE_LINES, {
+  scNoCountry:["Thank you {u} for the Super Chat! Now type your country's name or flag in chat, and it jumps into the arena with a shield!",
+               "{u}, thanks for the support! Which country is yours? Type its name or flag in chat, and it spawns in with a shield!",
+               "Thank you {u}! Your power is waiting. Type your country's name or flag in chat to bring it into the arena!"],
+  jThanks:['Thank you for the Jewels!','Big thanks for the Jewels!','Thank you so much for the Jewels!'],
+  jNeedCountry:["Thank you {u} for the Jewels! Type your country's name or flag in chat to claim its power!",
+                "Big thanks, {u}! Your Jewels earned a power. Type your country's name or flag to use it!"],
+  smartMember:['Join as a channel member: your country gets an instant shield, and you help choose the next champion art!',
+               'New members power up their country instantly, and members vote on which nation gets champion art next!',
+               'Want a say in the next warrior and beast? Join as a member and vote on the next concept art!'],
+  smartSub:["Subscribe, then type your country! Alive? It gets a shield. Out? It comes right back!",
+            'New subscribers get a free power! Subscribe and name your country: shield or comeback, instantly!',
+            '{N} left! Hit subscribe, type your country, and save it with a free shield or comeback!',
+            'Your country not in this round? Subscribe and type its name, and it drops straight in!'],
+  smartSubThanks:['Thanks for the new sub! You can too: subscribe, type your country, and get a free power!'],
+  smartSubSaved:["Subscribe now, and your country's free power is saved for the next round!"],
+  smartSc:['Super Chat your country! Shield if alive, comeback if out, and its champion card pops up with your name!',
+           '{N} left! Super Chat your country: instant shield, instant comeback, and your name on its champion card!',
+           "Your country's out? Super Chat it, and it's straight back with a shield, with your name on its champion card!",
+           'Not playing this round? Super Chat your country, and it drops right in with a shield, and your name!',
+           'No limit on Super Chats! Every one powers your country and puts your name on its champion card!',
+           "Sending Jewels? Every {J} puts your name on your country's champion card, and {P} Jewels give it a power!"],
+  smartScAnother:['Another supporter! Back your country the same way: Super Chat it, and your name goes on its champion card!'],
+});
+/* a handle as a speakable name for the English voices: "@SamiraJahangir-v9f" -> "Samira Jahangir", "@Rahul_Gaming_99" ->
+   "Rahul Gaming 99", "@Tanaka田中" -> "Tanaka". Only Latin letters and digits are kept; nothing readable left
+   ("@李小龙", "@😈") -> "" and the line is spoken without a name (the exact handle is still shown on screen). */
+function spokenName(u){
+  let s=String(u||'').trim().replace(/^@+/,'').replace(/-[a-z0-9]{2,4}$/i,'');              // YouTube's auto suffix (-v9f)
+  s=s.replace(/^(x+X+|X+x+)[_.\\-]*/,'').replace(/[_.\\-]*(x+X+|X+x+)$/,'');                // xX_name_Xx decorations
+  s=s.replace(/[_.\-]+/g,' ').replace(/([a-z])([A-Z])/g,'$1 $2').replace(/([A-Za-z])(\d)/g,'$1 $2');
+  s=s.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+  if ((s.match(/[A-Za-z]/g)||[]).length<2) return '';
+  const w=s.split(' ').filter(Boolean).slice(0,3).join(' '); return w.length>26 ? w.slice(0,26).trim() : w;
+}
+/* put the name into a line, or take the name slot out cleanly when there is no readable name */
+function fillName(t, name){
+  t=String(t||''); if (name) return t.replace('{u}', name);
+  return t.replace(/^\{u\},\s*(\w)/, (m,c)=>c.toUpperCase()).replace(/,\s*\{u\}/,'').replace(/\s*\{u\}/,'');
+}
+/* a paid event with no country named (now or earlier): tell them what to type, by name - once per viewer per 2 min.
+   Super Chat / Jewels / members only; subscribers are not asked aloud (the on-screen panel still shows it) */
+function askCountry(uname, sub, label){
+  try{ if (!LIVE.on || sub) return; const k=String(uname||'').toLowerCase().replace(/^@/,''), now=Date.now();
+    if (now-(ASKED.get(k)||0)<120000) return; ASKED.set(k, now);
+    const vl={'Jewels':'Jewels','New member':'membership','Gifted memberships':'gifted memberships','Member milestone':'membership'}[label||''];
+    let t=LIVEVOX.pick('scNoCountry'); if (!t) return; t=fillName(t, spokenName(uname)); if (vl) t=t.replace('the Super Chat', 'the '+vl);
+    COMMENTARY.special(t); }catch(e){}
+}
+const ASKED = new Map();
+const PROMO = {
+  cfg:{ mode:'smart', art:true, member:true, free:true, sub:true, sc:true }, t0:0, due:{}, ev:{sub:0, paid:0}, rot:{},
+  load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('flagsrumble-promo')||'{}')); this.rot=JSON.parse(localStorage.getItem('flagsrumble-promo-rot')||'{}')||{}; }catch(e){} },
+  save(){ try{ localStorage.setItem('flagsrumble-promo', JSON.stringify(this.cfg)); localStorage.setItem('flagsrumble-promo-rot', JSON.stringify(this.rot)); }catch(e){} },
+  smart(){ return this.cfg.mode!=='classic'; },
+  onRound(n){ n=n||1; this.t0=performance.now(); this.ev={sub:0, paid:0}; this.round=n; this.done={};
+    try{ this.artOK = typeof WINART!=='undefined' && WINART && WINART.ST.style==='art' && WINART.shownLast(); }catch(e){ this.artOK=false; }
+    this.plan(); },
+  plan(){                                            // re-planned whenever a switch changes; slots already used stay used
+    const n=this.round||1, S=this.smart(), dn=this.done||(this.done={});
+    this.due={ art: !dn.art && this.cfg.art && n%2===0 && !!this.artOK,
+               mid: dn.mid ? null : S ? ((this.cfg.member && n%3===0) ? 'smartMember' : (this.cfg.free && n%2===1 ? 'chat1' : null)) : (this.cfg.member && n%3===0 ? 'promoMember' : null),
+               sub: !dn.sub && S && this.cfg.sub, sc: !dn.sc && S && this.cfg.sc };
+    this.sig=JSON.stringify(this.cfg); },
+  event(kind){ if (kind==='subscribe') this.ev.sub++; else this.ev.paid++; },
+  idle(){ return !COMMENTARY.speaking && !COMMENTARY.queue.length; },
+  free(){ return !COMMENTARY.spBusy(); },
+  tick(n){
+    if (!LIVE.on || !G || G.phase==='WINNER' || G.phase==='INTRO') return;
+    if (this.sig!==JSON.stringify(this.cfg)) this.plan();
+    const age=performance.now()-this.t0, d=this.due, S=this.smart(), dn=this.done;
+    const slot=(key, open, gone, force, speak)=>{ if (!d[key] || !open) return; if (gone){ d[key]=false; dn[key]=true; return; }
+      if (this.free() && (!S || this.idle() || force)){ const k=d[key]; d[key]=false; dn[key]=true; speak(k); } };
+    slot('art', age>3500, age>25000 || n<50, age>12000, ()=>this.say('promoArt'));
+    if (S) slot('mid', n<=45, n<33, n<=35, k=>this.say(k));
+    else slot('mid', n<=45, n<34, true, k=>this.say(k));
+    slot('sub', n<=30, n<18, n<=20, ()=>this.saySub());
+    slot('sc', n<=16, n<11, n<=12, ()=>this.saySc());
+  },
+  saySub(){ if (this.ev.sub>=2) return; if (this.ev.sub===1) return this.say('smartSubThanks');
+    let left=1; try{ left=CHAT_RULES.PAID_CAP-CHAT.paid-CHAT.pend.filter(p=>p.src==='sub').length; }catch(e){}
+    this.say(left<=0 ? 'smartSubSaved' : 'smartSub', true); },
+  saySc(){ if (this.ev.paid>=2) return; this.say(this.ev.paid===1 ? 'smartScAnother' : 'smartSc', true); },
+  pick(k, seq){ const a=LIVE_LINES[k]; if (!a||!a.length) return ''; if (!seq) return LIVEVOX.pick(k);
+    const i=(this.rot[k]||0)%a.length; this.rot[k]=i+1; this.save(); return a[i]; },
+  fill(t){ const cap=s=>s.charAt(0).toUpperCase()+s.slice(1); let sw='thirty'; try{ sw=numWords(CHAT_RULES.SHIELD); }catch(e){}
+    if (LIVE.countAll) t=t.replace(/ different messages/g,' messages');
+    let J=50, P=200; try{ J=JEWELS.P(); P=JEWELS.A(); }catch(e){}
+    return t.replace('{S}',cap(sw)).replace('{s}',sw).replace('{N}', String(alive().length)).replace('{J}', J).replace('{P}', P); },
+  say(k, seq){ const t=this.pick(k, seq!==false && /^smart|^promo|^chat1$/.test(k)); if (t) COMMENTARY.special(this.fill(t), true); },
+};'''
+if 'const PROMO = {' in src:
+    a_ = src.index('/* a paid event with no country named') if '/* a paid event with no country named' in src else src.index('const PROMO = {')
+    if '/* ===== Spoken promo lines =====' in src: a_ = src.index('/* ===== Spoken promo lines =====')
+    b_ = src.index('\nPROMO.load();')
+    src = src[:a_] + SMART_JS + src[b_:]
+old_w = "  for (const [id,key] of [['promoArt','art'],['promoMember','member']]){ const el=document.getElementById(id); if (!el) continue;\n    const paint=()=>[...el.children].forEach(b=>b.classList.toggle('on', b.dataset.v===String(PROMO.cfg[key])));\n    el.addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; PROMO.cfg[key]=b.dataset.v==='true'; PROMO.save(); paint(); }); paint(); }"
+new_w = "  for (const [id,key] of [['promoMode','mode'],['promoArt','art'],['promoMember','member'],['promoFree','free'],['promoSub','sub'],['promoSc','sc']]){ const el=document.getElementById(id); if (!el) continue;\n    const paint=()=>[...el.children].forEach(b=>b.classList.toggle('on', b.dataset.v===String(PROMO.cfg[key])));\n    el.addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; PROMO.cfg[key]= key==='mode' ? b.dataset.v : b.dataset.v==='true'; PROMO.save(); paint(); }); paint(); }"
+if old_w in src: src = src.replace(old_w, new_w, 1)
+_once("  tick(n){\n    if (!LIVE.on || !G || G.phase==='WINNER' || G.phase==='INTRO') return;\n    if (this.kind==='chat'){",
+      "  tick(n){\n    if (!LIVE.on || !G || G.phase==='WINNER' || G.phase==='INTRO') return;\n    if (typeof PROMO!=='undefined' && PROMO.smart()) return;          // SMART sequence: PROMO speaks the promos\n    if (this.kind==='chat'){", "PROMO.smart()) return;")
+_once("    this.thank(m, uname);\n    const layers", "    this.thank(m, uname); try{ PROMO.event(kind); }catch(e){}\n    const layers", "try{ PROMO.event(kind); }")
+_once("    if (pop){ const job={ code, uname,", "    if (pop){ try{ PROMO.event('jewels'); }catch(e){} const job={ code, uname,", "PROMO.event('jewels')")
+# panel
+if 'id="promoMode"' not in src:
+    a_ = src.index('<h2>Support lines (spoken)</h2>'); b_ = src.index('</div>\n    <div class="pgroup" data-page="live">\n      <h2>Status</h2>', a_)
+    src = src[:a_] + '''<h2>Commentary sequence (spoken promos)</h2>
+      <div class="seg" id="promoMode"><button data-v="smart">Smart (every round, one ask per slot)</button><button data-v="classic">Classic (original plan)</button></div>
+      <div class="hrow" style="margin-top:8px"><span>Champion-art line · even rounds, round start</span><div class="seg" id="promoArt"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+      <div class="hrow"><span>Chat-power prompt · odd rounds, 45→33 left (Smart)</span><div class="seg" id="promoFree"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+      <div class="hrow"><span>Membership line · every 3rd round, mid-round</span><div class="seg" id="promoMember"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+      <div class="hrow"><span>Subscribe line · every round, 30→18 left (Smart)</span><div class="seg" id="promoSub"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+      <div class="hrow"><span>Super Chat line · every round, 16→11 left (Smart)</span><div class="seg" id="promoSc"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+      <div class="hint">Smart: each line waits for a pause in the commentary, a real Super Chat or subscriber always goes first, and after real ones the line becomes a thank-you or stays silent. Use the membership line only once channel memberships are live.</div>
+    ''' + src[b_:]
+
+# missing-country lines name the viewer (Super Chat / Jewels / members), with a speakable version of the handle
+src = src.replace("askCountry(uname, src==='sub');", "askCountry(uname, src==='sub', label);")
+src = src.replace("  spoken(u){ return String(u||'viewer').replace(/^@+/,'').replace(/[_.]+/g,' ').trim() || 'viewer'; },", "  spoken(u){ return spokenName(u); },")
+src = src.replace("const t=LIVEVOX.pick(j.needCountry?'jNeedCountry':'jThanks').replace('{u}', this.spoken(j.uname));", "const t=fillName(LIVEVOX.pick(j.needCountry?'jNeedCountry':'jThanks'), this.spoken(j.uname));")
 
 # header note about the art files
 old_h = 'Drop in audio/loop.mp3 later for a music bed.'
