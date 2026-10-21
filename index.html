@@ -115,6 +115,7 @@
       <h2>Options</h2>
       <div class="hrow"><span>On-screen chat panels</span><div class="seg" id="liveStrip"><button data-v="true">Show</button><button data-v="false">Hide</button></div></div>
       <div class="hrow"><span>Panel corner (next to the ring)</span><div class="seg" id="liveCorner"><button data-v="tl">↖ Top-left</button><button data-v="tr">↗ Top-right</button><button data-v="bl">↙ Bottom-left</button><button data-v="br">↘ Bottom-right</button><button data-v="box">▣ Boxes beside question</button></div><div class="hint" id="liveCornerNote" style="color:#ffcf3d;margin-top:4px"></div></div>
+      <div class="hrow"><span>Thank-you cards (Super Chat, Jewels, members, subscribers)</span><div class="seg" id="liveThanks"><button data-v="true">Show</button><button data-v="false">Off</button></div></div>
       <div class="hrow"><span>What counts</span><div class="seg" id="liveCount"><button data-v="true">Every message</button><button data-v="false">Different messages only</button></div></div>
       <div class="hrow"><span>Chat targets (messages)</span>
         <div style="display:flex;gap:6px"><label class="blab" style="flex:1;margin:0">🛡 Shield<input class="tin" id="liveShieldN" type="number" min="3" max="200" step="1"></label><label class="blab" style="flex:1;margin:0">♻ Revive<input class="tin" id="liveReviveN" type="number" min="3" max="300" step="1"></label></div>
@@ -124,6 +125,16 @@
         <div style="display:flex;gap:6px"><label class="blab" style="flex:1;margin:0">🔔 Max per round<input class="tin" id="liveSubCap" type="number" min="1" max="200" step="1"></label><label class="blab" style="flex:1;margin:0">🔔 Max per country<input class="tin" id="liveSubPer" type="number" min="1" max="20" step="1"></label></div>
       </div>
       <div class="hrow"><span>Support per person</span><div class="seg" id="liveCap"><button data-v="false">Open (no cap)</button><button data-v="true">Controlled (10 each)</button></div></div>
+    </div>
+    <div class="pgroup" data-page="live">
+      <h2>Jewels</h2>
+      <label class="blab">Champion card every <b id="jwPopV">50</b> Jewels<input type="range" id="jwPop" min="10" max="500" step="10" value="50" style="width:100%"></label>
+      <label class="blab">Country power (shield / comeback / drop-in) at <b id="jwP0V">200</b> Jewels<input type="range" id="jwP0" min="50" max="1000" step="10" value="200" style="width:100%"></label>
+      <label class="blab">…then again every <b id="jwStepV">100</b> more<input type="range" id="jwStep" min="50" max="500" step="10" value="100" style="width:100%"></label>
+      <div class="hrow"><span>Progress on the thank-you card</span><div class="seg" id="jwProg"><button data-v="true">Show</button><button data-v="false">Off</button></div></div>
+      <div class="hint">Each viewer's Jewels add up across rounds. One gift never gives more than one champion card and one power, however big. Small gifts get a thank-you card only (merged per viewer, no voice).</div>
+      <div class="hint" id="jwTop" style="color:#c9d3ff"></div>
+      <button class="wide" id="jwReset">Reset all Jewels totals</button>
     </div>
     <div class="pgroup" data-page="live">
       <h2>Support lines (spoken)</h2>
@@ -167,7 +178,7 @@
       <div class="seg" style="margin-top:6px"><button id="tShield">Fill to shield (30)</button><button id="tRevive">Fill to revival (60)</button></div>
       <div class="seg" style="margin-top:6px"><button id="tScRevive">Super chat: revive</button><button id="tScShield">Super chat: shield</button></div>
       <div class="seg" style="margin-top:6px"><button id="tScNoCountry">Super chat, no country</button><button id="tSub">New subscriber</button></div>
-      <div class="seg" style="margin-top:6px"><button id="tMem">New member</button><button id="tGift">Gifted ×5</button></div>
+      <div class="seg" style="margin-top:6px"><button id="tMem">New member</button><button id="tGift">Gifted ×5</button><button id="tJewel">Jewels ×2</button><button id="tJewel50">Jewels ×50</button></div>
       <div class="hint" id="tMsg" style="color:#c9d3ff">● alive · ✖ eliminated. Buttons use the selected country (revival tests pick an eliminated one).</div>
     </div>
     <div class="pgroup" data-page="test">
@@ -221,6 +232,7 @@
       <h2>Super Chat pop</h2>
       <div class="hint">When a Super Chat lands, that country's card bursts on screen for a moment (1-3 s, slider below) with the viewer's @handle (no sound), then the game carries on.</div>
       <div class="seg" id="waSc"><button data-v="on">On</button><button data-v="off">Off</button><button data-v="test">▶ Test pop</button></div>
+      <div class="hrow" style="margin-top:8px"><span>@handle position</span><div class="seg" id="waScTop"><button data-v="top">Upper banner + bottom bar</button><button data-v="bottom">Bottom bar only</button></div></div>
       <label class="blab" style="margin-top:8px">Pop length <b id="waScDurV">1.0 s</b><input type="range" id="waScDur" min="1" max="3" step="0.1" value="1" style="width:100%"></label>
       <label class="blab" style="margin-top:8px">Test handle<input class="tin" id="waScUser" value="@TestViewer"></label>
     </div>
@@ -4410,7 +4422,7 @@ const HUD_DRAW={
   ko:{royal:koRoyal,neon:koNeon,tv:koTV,arcade:koArcade,glass:koGlass,original:koOriginal},
 };
 function drawHUD(){ ctx.textAlign='center'; HUD_DRAW.header[HUD.header](); ctx.textAlign='center';
-  const ca=(LIVE.on && LIVECARD.list.length) ? LIVECARD.alpha() : 0;
+  const ca=(LIVECARD.list.length && (LIVE.on || LIVECARD.list[0].always)) ? LIVECARD.alpha() : 0;
   if (ca<1){ ctx.save(); ctx.globalAlpha=1-ca; HUD_DRAW.prompt[HUD.prompt](); ctx.restore(); } ctx.textAlign='center'; }
 function drawLower(){ ctx.textAlign='center'; HUD_DRAW.elim[HUD.elim](); ctx.textAlign='center'; HUD_DRAW.cta[HUD.cta](); ctx.textAlign='center'; }
 function drawKillCard(){ HUD_DRAW.ko[HUD.ko](); ctx.textAlign='center'; }
@@ -4601,13 +4613,13 @@ function render(){
      with interactive mode off.
    ========================================================================== */
 const LIVE_KEY = 'flagsrumble-live-v1';
-const LIVE = { on:false, strip:true, controlled:false, corner:'tl', shieldN:30, reviveN:60, countAll:true, subCap:30, subPer:2 };
+const LIVE = { on:false, strip:true, controlled:false, corner:'tl', shieldN:30, reviveN:60, countAll:true, subCap:30, subPer:2, thanks:true };
 try { const s=JSON.parse(localStorage.getItem(LIVE_KEY)||'{}');
-  for (const k of ['on','strip','controlled','countAll']) if (typeof s[k]==='boolean') LIVE[k]=s[k];
+  for (const k of ['on','strip','controlled','countAll','thanks']) if (typeof s[k]==='boolean') LIVE[k]=s[k];
   if (['tl','tr','bl','br','box'].includes(s.corner)) LIVE.corner=s.corner;
   if (s.subCap>=1 && s.subCap<=200) LIVE.subCap=Math.round(s.subCap); if (s.subPer>=1 && s.subPer<=20) LIVE.subPer=Math.round(s.subPer);
   if (s.shieldN>=3 && s.shieldN<=200) LIVE.shieldN=Math.round(s.shieldN); if (s.reviveN>=3 && s.reviveN<=300) LIVE.reviveN=Math.round(s.reviveN); } catch(e){}
-function saveLive(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({on:LIVE.on,strip:LIVE.strip,controlled:LIVE.controlled,corner:LIVE.corner,shieldN:LIVE.shieldN,reviveN:LIVE.reviveN,countAll:LIVE.countAll,subCap:LIVE.subCap,subPer:LIVE.subPer})); }catch(e){} }
+function saveLive(){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify({on:LIVE.on,strip:LIVE.strip,controlled:LIVE.controlled,corner:LIVE.corner,shieldN:LIVE.shieldN,reviveN:LIVE.reviveN,countAll:LIVE.countAll,subCap:LIVE.subCap,subPer:LIVE.subPer,thanks:LIVE.thanks})); }catch(e){} }
 
 const CHAT_RULES = { SHIELD:30, REVIVE:60, MEMBER_W:2, PERSON_CAP:10, PAID_CAP:3, PAID_PER_COUNTRY:2 };
 CHAT_RULES.SHIELD=LIVE.shieldN; CHAT_RULES.REVIVE=LIVE.reviveN; CHAT_RULES.PAID_CAP=LIVE.subCap; CHAT_RULES.PAID_PER_COUNTRY=LIVE.subPer;
@@ -4732,9 +4744,9 @@ const CHAT = {
       this.note('Quota used up: switched to normal Flags War Arena, interactive mode OFF');
       if (window.__livePaint) window.__livePaint();
     }
-    this.st.clear(); this.pend.length=0; this.await.clear(); this.paid=0; this.paidBy=new Map(); this.feed.length=0;
+    this.st.clear(); this.pend.length=0; this.await.clear(); if (this.lateAwait){ for (const [k,w] of this.lateAwait) this.await.set(k,w); this.lateAwait=[]; } this.paid=0; this.paidBy=new Map(); this.feed.length=0;
     this.roundStart=Date.now(); this.stats={msgs:0,late:0,counted:0};
-    LIVECARD.list.length=0; LIVESCHED.onRound(G?G.roundNo:1); try{ PROMO.onRound(G?G.roundNo:1); }catch(e){}
+    LIVECARD.list=LIVECARD.list.filter(c=>c.always); LIVESCHED.onRound(G?G.roundNo:1); try{ PROMO.onRound(G?G.roundNo:1); }catch(e){} try{ JEWELS.onRound(); }catch(e){}
     if (LIVE.on){ this.note('Round '+(G?G.roundNo:'')+' started: counts reset · special commentary: '+({chat:'Chat power',sc:'Super Chat',sub:'Subscribe'}[LIVESCHED.kind])); if (SAVED.q.length) this.applySaved(); }
   },
   onKill(b){
@@ -4744,13 +4756,15 @@ const CHAT = {
   /* one message from any source. m = {id,kind:'chat'|'superchat'|'subscribe',
      user:{id,name,member}, text, t(ms epoch, when SENT), amount} */
   ingest(m){
-    if (!LIVE.on || !G) return;
+    if (!G) return;
+    if (!LIVE.on){ if (['superchat','subscribe','member','gift','milestone','jewels'].includes(m.kind)) this.thankOnly(m); return; }
     if (m.id){                                   // the same message can arrive from two sources
       if (this.seen.has(m.id)) return;
       this.seen.add(m.id);
       if (this.seen.size>6000){ const it=this.seen.values(); for (let i=0;i<2000;i++) this.seen.delete(it.next().value); }
     }
     this.stats.msgs++;
+    if (m.kind==='jewels'){ try{ JEWELS.ingest(m); }catch(e){ try{ console.warn('jewels', e); }catch(_){} } return; }   // totals, champion card, power
     const t = m.t || Date.now();
     if (t < this.roundStart || G.phase==='WINNER'){ this.stats.late++; if (m.kind==='superchat') this.lateSuper(m); return; }   // belongs to another round
     const uid = (m.user&&m.user.id) || (m.user&&m.user.name) || 'anon';
@@ -4765,9 +4779,9 @@ const CHAT = {
     const wk = this.await.has(uid) ? uid : this.await.has('n:'+lname) ? 'n:'+lname : null;
     if (anyCode && wk && m.kind==='chat'){
       const w=this.await.get(wk); this.await.delete(uid); this.await.delete('n:'+lname);
-      this.request(anyCode, w.type, w.src, w.user, {layers:w.layers, land:!this.ball(anyCode), landShield:w.src==='superchat'});
+      this.request(anyCode, w.type, w.src, w.user, {layers:w.layers, land:!this.ball(anyCode), landShield:w.src==='superchat', label:w.label, noPop:!!w.noPop});
     }
-    if (['superchat','subscribe','member','gift','milestone'].includes(m.kind)) this.paidEvent(m, uid, uname, clean, codes);
+    if (['superchat','subscribe','member','gift','milestone','jewels'].includes(m.kind)) this.paidEvent(m, uid, uname, clean, codes);
     if (codes.length){
       for (const code of codes.slice(0,3)) this.S(code).msgs++;     // live support count shown on stream
       const key = LIVE.countAll ? 'm'+(++this.seq) : chatKey(clean), w = m.user&&m.user.member ? CHAT_RULES.MEMBER_W : 1;
@@ -4795,17 +4809,35 @@ const CHAT = {
     this.paidSeen.set(pk,{t:now, via:m.via||''});
     const clean=chatClean(m.text||'');
     const code=chatCountriesAll(clean)[0] || this.last.get(uid);
-    if (!code){ this.note('Super Chat from '+uname+' between rounds: no country found'); return; }
+    if (!code){ const w={type:'shield', src:'superchat', user:uname, layers:1, label:'', t:Date.now()}, ln=uname.toLowerCase().replace(/^@/,'');
+      (this.lateAwait||(this.lateAwait=[])).push([uid, w], ['n:'+ln, w]); this.note('Super Chat from '+uname+' between rounds: waiting for their country (next round)'); askCountry(uname, false); return; }
     SAVED.add({code, type:'shield', src:'superchat', user:uname});
     this.note('Super Chat from '+uname+' between rounds: '+this.nameOf(code)+' gets its power at the start of the next round');
   },
   /* subscribers rewarded today (survives an OBS reload): one power per subscriber */
   subSeen(){ const d=new Date().toDateString(); if (!this._ss || this._ss.day!==d){ try{ const o=JSON.parse(localStorage.getItem('flagsrumble-subseen-v1')||'{}'); this._ss = o.day===d ? {day:d, keys:new Set(o.keys||[])} : {day:d, keys:new Set()}; }catch(e){ this._ss={day:d, keys:new Set()}; } } return this._ss; },
   saveSubSeen(){ try{ localStorage.setItem('flagsrumble-subseen-v1', JSON.stringify({day:this._ss.day, keys:[...this._ss.keys].slice(-5000)})); }catch(e){} },
+  /* thank-you card for every paid event / subscriber (also when interactive mode is off) */
+  thank(m, uname){
+    if (!LIVE.thanks) return;
+    const k=m.kind, n=String(uname||'viewer').replace(/^@/,''), amt=m.amount?String(m.amount):'';
+    const sub = k==='superchat' ? 'Super Chat'+(amt?' · '+amt:'') : k==='jewels' ? 'Jewels'+(m.count>1?' ×'+m.count:'')+(amt&&!m.count?' · '+amt:'')
+      : k==='member' ? 'New member 💎' : k==='gift' ? 'Gifted '+(m.count||1)+' membership'+((m.count||1)>1?'s':'')+' 🎁'
+      : k==='milestone' ? 'Member milestone 🎉' : 'New subscriber 🔔';
+    const icon = {superchat:'⭐',jewels:'💎',member:'💎',gift:'🎁',milestone:'🎉',subscribe:'🔔'}[k]||'💛';
+    LIVECARD.push('THANK YOU '+n.toUpperCase()+'!', sub, null, '#ffcf3d', icon, true);
+    this.note('Thank-you card: '+n+' · '+sub);
+  },
+  thankOnly(m){
+    const uname=(m.user&&m.user.name)||'viewer', pk='thx|'+m.kind+'|'+uname.toLowerCase().replace(/^@/,''), prev=this.paidSeen.get(pk), now=Date.now();
+    if (prev && prev.via!==(m.via||'') && now-prev.t<90000) return;
+    if (m.kind==='subscribe'){ const S=this.subSeen(), k='n:'+uname.toLowerCase().replace(/^@/,''); if (S.keys.has(k)) return; }
+    this.paidSeen.set(pk,{t:now, via:m.via||''}); this.thank(m, uname);
+  },
   paidEvent(m, uid, uname, clean, codes){
-    const kind=m.kind, src = kind==='subscribe' ? 'sub' : 'superchat';
+    const kind=m.kind, src = kind==='subscribe' ? 'sub' : 'superchat';   // jewels / members / gifts follow the Super Chat rule
     const lname=uname.toLowerCase().replace(/^@/,'');
-    const label={superchat:'Super Chat',member:'New member',gift:'Gifted memberships',milestone:'Member milestone',subscribe:'New subscriber'}[kind]||kind;
+    const label={superchat:'Super Chat',member:'New member',gift:'Gifted memberships',milestone:'Member milestone',subscribe:'New subscriber',jewels:'Jewels'}[kind]||kind;
     if (kind==='subscribe'){                                  // a subscriber counts once per day, whichever source saw it first
       const S=this.subSeen(), k1=String(uid).startsWith('n:')?null:'id:'+uid, k2='n:'+lname;
       if ((k1 && S.keys.has(k1)) || S.keys.has(k2)){ this.note('Subscriber '+uname+' already rewarded today: ignored'+(m.via?' ('+m.via+')':'')); return; }
@@ -4815,17 +4847,18 @@ const CHAT = {
       if (prev && prev.via!==(m.via||'') && now-prev.t<90000){ this.note('Same '+label+' from '+uname+' via a second source: ignored'); return; }
       this.paidSeen.set(pk,{t:now, via:m.via||''});
     }
+    this.thank(m, uname);
     const layers = kind==='member' ? 2 : kind==='gift' ? Math.max(1,Math.min(5,m.count||1)) : 1;
     const type = src==='superchat' ? (chatIntent(clean)||'shield') : 'auto';
     this.note(label+' from '+uname+(kind==='gift'?' ×'+(m.count||1):'')+(m.amount?' · '+m.amount:''));
     let code = codes[0] || (clean ? chatCountriesAll(clean)[0] : null);   // named in the event's own text (any of 195)
     if (!code){ const l=this.last.get(uid) || this.last.get(this.names.get(lname)); if (l && BY_CODE.has(l)) code=l; }   // last supported
     if (!code){                                                                              // next message that names a country
-      const w={type,src,user:uname,layers,t:Date.now()}; this.await.set(uid,w); this.await.set('n:'+lname,w);
-      this.note(label+' from '+uname+': waiting for their next country message'); this.feed.unshift({txt:'★ '+uname+': name your country!', col:'#ffd34d', t:0}); if (this.feed.length>3) this.feed.length=3;
+      const w={type,src,user:uname,layers,label:kind==='superchat'?'':label,t:Date.now()}; const pw=this.await.get(uid)||this.await.get('n:'+lname); if (pw && pw.src===src && src!=='sub') w.layers=Math.min(5,(pw.layers||1)+layers); this.await.set(uid,w); this.await.set('n:'+lname,w);
+      this.note(label+' from '+uname+': waiting for their next country message'); askCountry(uname, src==='sub'); this.feed.unshift({txt:'★ '+uname+': name your country!', col:'#ffd34d', t:0}); if (this.feed.length>3) this.feed.length=3;
       return;
     }
-    this.request(code, type, src, uname, {layers, land:!this.ball(code), landShield: src==='superchat'});
+    this.request(code, type, src, uname, {layers, land:!this.ball(code), landShield: src==='superchat', label: kind==='superchat'?'':label});
   },
   request(code, type, src, user, opt){
     opt=opt||{};
@@ -4853,7 +4886,7 @@ const CHAT = {
         }
       }
       const withShield = opt.landShield!==undefined ? !!opt.landShield : orig==='shield';
-      this.pend.push({code, type:'land', withShield, src, user, layers});
+      this.pend.push({code, type:'land', withShield, src, user, layers, label:opt.label||'', noPop:!!opt.noPop});
       this.note(this.nameOf(code)+' is not in this round: '+who+' drops it into the arena'+(withShield?' with a shield':''));
       return true;
     }
@@ -4872,7 +4905,7 @@ const CHAT = {
         return false;
       }
     }
-    this.pend.push({code,type,src,user,saved:!!opt.saved,withShield:!!opt.withShield,layers});
+    this.pend.push({code,type,src,user,saved:!!opt.saved,withShield:!!opt.withShield,layers,label:opt.label||'',noPop:!!opt.noPop});
     if (type==='revive' && b.alive){ this.note(this.nameOf(code)+' revival ('+who+') waits for its elimination'); this.feed.unshift({txt:'⏳ '+this.nameOf(code)+' revive ready', col:'#ffd34d', t:0}); if (this.feed.length>3) this.feed.length=3; }
     else if (type==='shield' && b.shield) this.note(this.nameOf(code)+' already shielded: '+who+' shield waits', '#ffd34d');
     return true;
@@ -4882,9 +4915,9 @@ const CHAT = {
     const kind = p.src==='chat' ? 'chat' : p.src==='sub' ? 'sub' : 'sc';
     const key = kind==='chat' ? (type==='shield'?'rChatShield':'rChatRevive') : kind==='sub' ? 'rSub' : (type==='shield'?'rScShield':(p.withShield?'rScReviveShield':'rScRevive'));
     if (kind==='chat' && COMMENTARY.spBusy()) return;    // free chat reactions never stack up
-    LIVESCHED.react(kind); LIVEVOX.say(key, name);
+    LIVESCHED.react(kind); LIVEVOX.say(key, name, p.label);
   },
-  cardSub(p){ return p.saved ? 'Saved power · '+(p.user||'viewer') : p.src==='chat' ? 'Chat power' : p.src==='sub' ? 'New subscriber · '+(p.user||'') : 'Super Chat · '+(p.user||'')+((p.layers||1)>1?' · shield ×'+p.layers:''); },
+  cardSub(p){ return p.saved ? 'Saved power · '+(p.user||'viewer') : p.src==='chat' ? 'Chat power' : p.src==='sub' ? 'New subscriber · '+(p.user||'') : (p.label||'Super Chat')+' · '+(p.user||'')+((p.layers||1)>1?' · shield ×'+p.layers:''); },
   applySaved(){
     const keep=[];
     for (const s of SAVED.q){
@@ -4892,7 +4925,7 @@ const CHAT = {
       const t = (s.type==='auto' || s.src==='superchat') ? 'shield' : s.type;
       const pp=this.pend.filter(p=>p.src==='sub');
       if (s.src!=='superchat' && this.paid+pp.length>=CHAT_RULES.PAID_CAP || s.src!=='superchat' && pp.filter(p=>p.code===s.code).length>=CHAT_RULES.PAID_PER_COUNTRY || s.src!=='superchat' && this.pend.some(p=>p.code===s.code&&p.type===t)){ keep.push(s); continue; }
-      this.pend.push({code:s.code, type:t, src:s.src, user:s.user, saved:t==='shield'});
+      this.pend.push({code:s.code, type:t, src:s.src, user:s.user, saved:t==='shield', label:s.label||'', noPop:!!s.noPop});
       this.note('Saved power applied: '+t+' for '+this.nameOf(s.code)+' ('+(s.user||'viewer')+')');
       if (t==='revive') LIVEVOX.say('savedRevive', this.nameOf(s.code));
     }
@@ -4947,8 +4980,8 @@ const CHAT = {
         if (nb.shield){ nb.shieldCol='#ffcf3d'; nb.shieldHits=p.layers||1; }
         G.balls.push(nb); G.field=fieldN()+1;
         FACE.override(nb,'excited',1.8,0.24); G.comebackFx=1; SFX.comeback();
-        LIVECARD.push('🪂 '+c.name+' DROPS IN!', this.cardSub(p)+(nb.shield?' · with shield':''), p.code, '#ffcf3d'); if (p.src==='superchat' && typeof WINART!=='undefined' && WINART) WINART.scPop(p.code, p.user);
-        LIVESCHED.react(p.src==='sub'?'sub':'sc'); LIVEVOX.say(p.src==='sub'?'rSub':(nb.shield?'rLandShield':'rLand'), c.name);
+        LIVECARD.push('🪂 '+c.name+' DROPS IN!', this.cardSub(p)+(nb.shield?' · with shield':''), p.code, '#ffcf3d'); if (p.src==='superchat' && !p.noPop && typeof WINART!=='undefined' && WINART) WINART.scPop(p.code, p.user, false, p.label);
+        LIVESCHED.react(p.src==='sub'?'sub':'sc'); LIVEVOX.say(p.src==='sub'?'rSub':(nb.shield?'rLandShield':'rLand'), c.name, p.label);
         this.note('🪂 '+c.name+' dropped into the arena by '+(p.user||'viewer')+(nb.shield?' (shielded)':''));
         this.feed.unshift({txt:'🪂 '+c.name+' · '+(p.user||'viewer'), col:'#ffcf3d', t:0}); if (this.feed.length>3) this.feed.length=3;
         if (p.src==='sub'){ this.paid++; this.paidBy.set(p.code,(this.paidBy.get(p.code)||0)+1); }
@@ -4964,7 +4997,7 @@ const CHAT = {
         if (b.shield){ b.shieldHits=(b.shieldHits||1)+(p.layers||1); b.shieldCol='#ffcf3d'; }   // paid power stacks: more falls survived
         else { b.shield=true; b.shieldHits=(p.src==='superchat'?(p.layers||1):1); b.shieldCol = p.src==='chat' ? PAL.shield : '#ffcf3d'; }
         FACE.override(b,'proud',2.0,0.14);
-        SFX.shield(); LIVECARD.push((b.shieldHits>1?'🛡×'+b.shieldHits+' ':'🛡 ')+b.c.name+(b.shieldHits>1?' SHIELD ×'+b.shieldHits+'!':' SHIELDED'), this.cardSub(p), p.code, b.shieldCol); if (p.src==='superchat' && typeof WINART!=='undefined' && WINART) WINART.scPop(p.code, p.user); this.react(p,'shield',b.c.name);
+        SFX.shield(); LIVECARD.push((b.shieldHits>1?'🛡×'+b.shieldHits+' ':'🛡 ')+b.c.name+(b.shieldHits>1?' SHIELD ×'+b.shieldHits+'!':' SHIELDED'), this.cardSub(p), p.code, b.shieldCol); if (p.src==='superchat' && !p.noPop && typeof WINART!=='undefined' && WINART) WINART.scPop(p.code, p.user, false, p.label); this.react(p,'shield',b.c.name);
         this.note('🛡 '+b.c.name+' · '+(p.src==='chat'?'chat':p.user), b.shieldCol, true);
       } else {
         if (b.alive){ if (p.src==='superchat'){ p.type='shield'; i--; continue; } continue; }   // Super Chat never waits: alive -> shield
@@ -4974,7 +5007,7 @@ const CHAT = {
         b.alive=true; b.shield=!!p.withShield; b.shieldHits=p.withShield?(p.layers||1):0; b.shieldCol=p.withShield?'#ffcf3d':null; b.x=spot.x; b.y=spot.y;
         const a2=rnd(0,Math.PI*2), sp=curSpeed(); b.vx=Math.cos(a2)*sp; b.vy=Math.sin(a2)*sp;
         FACE.override(b,'excited',1.6,0.22); G.comebackFx=1;
-        SFX.comeback(); LIVECARD.push('♻ '+b.c.name+' IS BACK!', this.cardSub(p)+(p.withShield?' · with shield':''), p.code, p.withShield?'#ffcf3d':'#5ef2c8'); if (p.src==='superchat' && typeof WINART!=='undefined' && WINART) WINART.scPop(p.code, p.user); this.react(p,'revive',b.c.name);
+        SFX.comeback(); LIVECARD.push('♻ '+b.c.name+' IS BACK!', this.cardSub(p)+(p.withShield?' · with shield':''), p.code, p.withShield?'#ffcf3d':'#5ef2c8'); if (p.src==='superchat' && !p.noPop && typeof WINART!=='undefined' && WINART) WINART.scPop(p.code, p.user, false, p.label); this.react(p,'revive',b.c.name);
         this.note('♻ '+b.c.name+' · '+(p.src==='chat'?'chat':p.user), '#5ef2c8', true);
       }
       if (p.src==='sub'){ this.paid++; this.paidBy.set(p.code,(this.paidBy.get(p.code)||0)+1); }
@@ -5012,7 +5045,8 @@ function livePanelShape(x,y,w,h){                 // corner panel with the ring 
    Top panels start at y=348, just under every header style's prompt. */
 const LIVE_CORNERS=['tl','tr','bl','br'];
 function drawLivePanels(){
-  if (!LIVE.on || !G) return;
+  if (!G) return;
+  if (!LIVE.on){ LIVECARD.draw(); return; }
   if (LIVE.strip && G.phase!=='INTRO' && G.phase!=='WINNER'){ if (boxLayoutOn()) drawLiveBoxes(); else drawLiveCorner(); }
   LIVECARD.draw();
 }
@@ -5054,7 +5088,7 @@ function drawLiveCorner(){
     ctx.fillText((r.alive?'🛡':'♻')+' '+r.n+'/'+r.need, cx, PY+Y.lab);
   });
   const ev=CHAT.feed[0], show=ev && ev.t<12000;
-  const txt=show ? ev.txt : '⭐ Super Chat your country = 🛡 power!';
+  const txt=show ? ev.txt : (Math.floor(performance.now()/8000)%2 ? '💎 '+(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels = 🛡 power for your country!' : '⭐ Super Chat your country = 🛡 power!');
   ctx.textAlign=al; ctx.font=(show?'800 16px':'700 14px')+' "FR Poppins",system-ui,sans-serif'; ctx.fillStyle=show?ev.col:'#ffcf3d';
   let s2=txt, maxW=PW-24; if (ctx.measureText(s2).width>maxW){ while (s2.length>4 && ctx.measureText(s2+'…').width>maxW) s2=s2.slice(0,-1); s2+='…'; }
   ctx.fillText(s2, xo, PY+Y.tick);
@@ -5099,6 +5133,14 @@ const LIVE_LINES = {
          "Limit reached! Don't worry, your power carries over to the next round!"],
   savedShield:['Saved power activated! {c} starts this round shielded!'],
   savedRevive:["Carried-over power! {c}'s revival is ready and waiting!"],
+  scNoCountry:["Thank you {u}! Now type your country's name or flag in chat, and it jumps into the arena with a shield!",
+               "{u}, thanks for the support! Which country is yours? Type its name or flag, and it spawns in with a shield!",
+               "Thank you {u}! Your power is waiting. Type your country's name or flag to bring it into the arena!"],
+  subNoCountry:["Thanks for subscribing, {u}! Type your country's name or flag in chat to claim your free power!",
+                "Welcome, {u}! Type your country's name or flag in chat, and your free power goes to it!"],
+  jNeedCountry:["Thank you {u} for the Jewels! Type your country's name or flag in chat to claim its power!",
+                "Big thanks, {u}! Your Jewels earned a power. Type your country's name or flag to use it!"],
+  jThanks:['Thank you {u} for the Jewels!','Big thanks to {u} for the Jewels!','{u}, thank you so much for the Jewels!'],
   promoArt:['Every country here has its own champion art. Loved seeing yours? Support the stream with a Super Chat!',
             "Want your country's champion art even more epic? Every Super Chat helps bring new art to the arena!",
             "We're building a unique champion for every nation. Like where it's going? Support it with a Super Chat!",
@@ -5112,9 +5154,9 @@ const LIVEVOX = {
   last:{},
   pick(k){ const a=LIVE_LINES[k]; if (!a||!a.length) return ''; let i=Math.floor(Math.random()*a.length);
     if (a.length>1 && this.last[k]===i) i=(i+1)%a.length; this.last[k]=i; return a[i]; },
-  say(k, c){ if (!LIVE.on) return false; const cap=s=>s.charAt(0).toUpperCase()+s.slice(1), sw=numWords(CHAT_RULES.SHIELD), rw=numWords(CHAT_RULES.REVIVE);
+  say(k, c, label){ if (!LIVE.on) return false; const cap=s=>s.charAt(0).toUpperCase()+s.slice(1), sw=numWords(CHAT_RULES.SHIELD), rw=numWords(CHAT_RULES.REVIVE);
     let t0=this.pick(k); if (LIVE.countAll) t0=t0.replace(/ different messages/g,' messages');
-    const t=t0.replace('{c}', c||'').replace('{S}',cap(sw)).replace('{s}',sw).replace('{R}',cap(rw)).replace('{r}',rw); if (!t) return false; COMMENTARY.special(t); return true; },
+    const t=t0.replace('{c}', c||'').replace('{S}',cap(sw)).replace('{s}',sw).replace('{R}',cap(rw)).replace('{r}',rw); if (!t) return false; const vl={'Jewels':'Jewels','New member':'New member','Gifted memberships':'Gifted membership','Member milestone':'Member'}[label||'']; COMMENTARY.special(vl ? t.replace(/Super Chat/g, vl) : t); return true; },
 };
 
 /* the round's special type and its triggers */
@@ -5154,6 +5196,14 @@ const LIVESCHED = {
    - promoMember: every 3rd round, mid-round while 45..34 countries are left - the chat / Super Chat /
      subscribe promos only start at 32 left, so they never meet.
    Each one waits until no other special line is queued or speaking; a real event line drops a queued one. */
+/* a paid event with no country named (now or earlier): tell the viewer what to type - once per viewer per 2 min */
+function askCountry(uname, sub){
+  try{ if (!LIVE.on) return; const k=String(uname||'').toLowerCase().replace(/^@/,''), now=Date.now(); ASKED.set(k, ASKED.get(k)||0);
+    if (now-ASKED.get(k)<120000) return; ASKED.set(k, now);
+    const sp=String(uname||'viewer').replace(/^@+/,'').replace(/[_.]+/g,' ').trim()||'viewer', t=LIVEVOX.pick(sub?'subNoCountry':'scNoCountry').replace('{u}', sp);
+    if (t) COMMENTARY.special(t); }catch(e){}
+}
+const ASKED = new Map();
 const PROMO = {
   cfg:{ art:true, member:true }, artDue:false, memDue:false, t0:0,
   load(){ try{ Object.assign(this.cfg, JSON.parse(localStorage.getItem('flagsrumble-promo')||'{}')); }catch(e){} },
@@ -5171,6 +5221,79 @@ const PROMO = {
   say(k){ const t=LIVEVOX.pick(k); if (t) COMMENTARY.special(t, true); },
 };
 PROMO.load();
+
+/* Jewels: each viewer's total keeps adding up across rounds (and survives a reload; forgotten after 30 days idle).
+   - every gift: one thank-you card per viewer, updated in place while gifts keep coming (no voice)
+   - each time the total passes a multiple of POP (default 50): the champion card bursts with the handle + a spoken thank-you
+     (country = the one they typed most recently; nobody typed one -> a generic champion card with their handle)
+   - country power (shield / comeback / drop-in) at P0 (default 200), then every STEP more (300, 400 ...)
+   - one gift = at most one champion card and one power, however big it is */
+const JEWELS = {
+  cfg:{ pop:50, p0:200, step:100, prog:true }, tally:{}, later:[],
+  load(){ try{ const d=JSON.parse(localStorage.getItem('flagsrumble-jewels')||'{}'); Object.assign(this.cfg, d.cfg||{}); this.tally=d.tally||{};
+    const old=Date.now()-30*864e5; for (const k in this.tally) if (!this.tally[k] || (this.tally[k].t||0)<old) delete this.tally[k]; }catch(e){} },
+  save(){ try{ localStorage.setItem('flagsrumble-jewels', JSON.stringify({cfg:this.cfg, tally:this.tally})); }catch(e){} },
+  P(){ return Math.max(10, Math.min(500, this.cfg.pop|0 || 50)); },
+  A(){ return Math.max(10, this.cfg.p0|0 || 200); },
+  S(){ return Math.max(10, this.cfg.step|0 || 100); },
+  value(m){ const n=+m.count || parseInt(String(m.amount||'').replace(/[^0-9]/g,''),10) || 1; return Math.max(1, Math.min(1e6, Math.round(n))); },
+  powIdx(x){ const a=this.A(); return x<a ? 0 : 1+Math.floor((x-a)/this.S()); },
+  nextPow(x){ const a=this.A(); return x<a ? a : a+this.powIdx(x)*this.S(); },
+  spoken(u){ return String(u||'viewer').replace(/^@+/,'').replace(/[_.]+/g,' ').trim() || 'viewer'; },
+  ingest(m){
+    const C=CHAT, uid=(m.user&&m.user.id)||(m.user&&m.user.name)||'anon', uname=(m.user&&m.user.name)||'viewer', ln=uname.toLowerCase().replace(/^@/,'');
+    const pk='jewels|'+ln, prev=C.paidSeen.get(pk), now=Date.now();
+    if (prev && prev.via!==(m.via||'') && now-prev.t<90000){ C.note('Same Jewels from '+uname+' via a second source: ignored'); return; }
+    C.paidSeen.set(pk,{t:now, via:m.via||''});
+    if (m.user&&m.user.id&&m.user.name) C.names.set(ln, m.user.id);
+    const clean=chatClean(m.text||''), named=clean ? (chatCountries(clean)[0] || chatCountriesAll(clean)[0]) : null;
+    if (named) C.last.set(uid, named);
+    const r=this.tally[ln] || (this.tally[ln]={total:0, t:0}), before=r.total, v=this.value(m), P=this.P();
+    r.total+=v; r.t=now; this.save();
+    const pop = Math.floor(r.total/P) > Math.floor(before/P), power = this.powIdx(r.total) > this.powIdx(before);
+    this.card(uname, ln, v, r.total, pop);
+    C.note('Jewels from '+uname+': +'+v+' = '+r.total+(pop?' · champion card':'')+(power?' · country power':''));
+    if (!pop && !power) return;
+    let code=named || C.last.get(uid) || C.last.get(C.names.get(ln)) || null; if (code && !BY_CODE.has(code)) code=null;
+    if (power){
+      if (code){
+        if (G.phase==='WINNER' || G.phase==='INTRO') SAVED.add({code, type:'shield', src:'superchat', user:uname, label:'Jewels', noPop:true});
+        else C.request(code, chatIntent(clean)||'shield', 'superchat', uname, {layers:1, land:!C.ball(code), landShield:true, label:'Jewels', noPop:true});
+      } else {
+        const w={type:'shield', src:'superchat', user:uname, layers:1, label:'Jewels', noPop:true, t:now}; C.await.set(uid,w); C.await.set('n:'+ln,w);
+        C.feed.unshift({txt:'💎 '+uname+': name your country!', col:'#7fe3ff', t:0}); if (C.feed.length>3) C.feed.length=3;
+      }
+    }
+    if (pop){ const job={ code, uname, label:(Math.floor(r.total/P)*P)+' Jewels', needCountry: power && !code };
+      if (G.phase==='WINNER') this.later.push(job); else this.burst(job); }
+  },
+  burst(j){
+    if (typeof WINART==='undefined' || !WINART) return;
+    WINART.scPop(j.code, j.uname, false, j.label, { onStart:()=>{ if (!LIVE.on) return; const t=LIVEVOX.pick(j.needCountry?'jNeedCountry':'jThanks').replace('{u}', this.spoken(j.uname)); if (t) COMMENTARY.special(t); } });
+  },
+  onRound(){ const l=this.later.splice(0); l.forEach(j=>{ try{ this.burst(j); }catch(e){} }); },
+  card(uname, ln, v, total, pop){                    // one thank-you card per viewer, updated while gifts keep coming
+    if (!LIVE.thanks) return;
+    const P=this.P(), n=String(uname||'viewer').replace(/^@/,'');
+    const prog = !this.cfg.prog ? '' : pop ? ' · 🎉 champion card!' : ' · '+(total%P)+'/'+P+' to champion card';
+    const c=LIVECARD.list.find(x=>x.jw===ln && x.t<LIVECARD.DUR-400);
+    if (c){ c.jwSum+=v; c.sub='Jewels ×'+c.jwSum+prog; c.t=Math.min(c.t, 600); return; }
+    LIVECARD.push('THANK YOU '+n.toUpperCase()+'!', 'Jewels ×'+v+prog, null, '#7fe3ff', '💎', true);
+    const k=LIVECARD.list[LIVECARD.list.length-1]; if (k){ k.jw=ln; k.jwSum=v; }
+  },
+};
+JEWELS.load();
+setTimeout(()=>{ try{
+  const $=id=>document.getElementById(id), J=JEWELS;
+  const sl=(id, key, fmt)=>{ const el=$(id), lab=$(id+'V'); if (!el) return; const paint=()=>{ el.value=J.cfg[key]; if (lab) lab.textContent=fmt?fmt(J.cfg[key]):J.cfg[key]; };
+    el.addEventListener('input',()=>{ J.cfg[key]=parseInt(el.value,10); J.save(); paint(); }); paint(); };
+  sl('jwPop','pop'); sl('jwP0','p0'); sl('jwStep','step');
+  const pr=$('jwProg'); if (pr){ const paint=()=>[...pr.children].forEach(b=>b.classList.toggle('on', b.dataset.v===String(J.cfg.prog)));
+    pr.addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; J.cfg.prog=b.dataset.v==='true'; J.save(); paint(); }); paint(); }
+  const rs=$('jwReset'); if (rs) rs.addEventListener('click',()=>{ J.tally={}; J.save(); });
+  setInterval(()=>{ const el=$('jwTop'); if (!el) return; const top=Object.entries(J.tally).sort((a,b)=>b[1].total-a[1].total).slice(0,5);
+    el.textContent = top.length ? 'Top: '+top.map(([k,r])=>'@'+k+' '+r.total+' (next card '+(Math.floor(r.total/J.P())+1)*J.P()+', power '+J.nextPow(r.total)+')').join(' · ') : 'No Jewels yet.'; }, 2000);
+}catch(e){} }, 0);
 setTimeout(()=>{ try{
   for (const [id,key] of [['promoArt','art'],['promoMember','member']]){ const el=document.getElementById(id); if (!el) continue;
     const paint=()=>[...el.children].forEach(b=>b.classList.toggle('on', b.dataset.v===String(PROMO.cfg[key])));
@@ -5183,7 +5306,7 @@ const SAVED = {
   q:[],
   load(){ try{ const a=JSON.parse(localStorage.getItem(SAVED_KEY)||'[]'); if (Array.isArray(a)) this.q=a.filter(x=>x&&BY_CODE.has(x.code)); }catch(e){} },
   save(){ try{ localStorage.setItem(SAVED_KEY, JSON.stringify(this.q)); }catch(e){} },
-  add(p){ this.q.push({code:p.code,type:p.type,src:p.src,user:p.user||''}); if (this.q.length>30) this.q.length=30; this.save(); },
+  add(p){ this.q.push({code:p.code,type:p.type,src:p.src,user:p.user||'',label:p.label||'',noPop:!!p.noPop}); if (this.q.length>30) this.q.length=30; this.save(); },
   clear(){ this.q.length=0; this.save(); },
 };
 SAVED.load();
@@ -5191,11 +5314,11 @@ SAVED.load();
 /* ---- popup card in the question area (outside the ring, see-through) ---- */
 const LIVECARD = {
   list:[], DUR:3400,
-  push(title, sub, code, col){ if (!LIVE.on) return; this.list.push({title,sub,code,col:col||'#5ef2c8',t:0}); if (this.list.length>4) this.list.splice(1,1); },
-  tick(dt){ if (!this.list.length) return; this.list[0].t+=dt; if (this.list[0].t>this.DUR) this.list.shift(); },
+  push(title, sub, code, col, icon, always){ if (!LIVE.on && !always) return; this.list.push({title,sub,code,col:col||'#5ef2c8',icon,always,t:0}); if (this.list.length>6) this.list.splice(1,1); },
+  tick(dt){ if (!this.list.length) return; try{ if (typeof WINART!=='undefined' && WINART && WINART.scShowing()) return; }catch(e){} this.list[0].t+=dt; if (this.list[0].t>this.DUR) this.list.shift(); },
   alpha(){ const c=this.list[0]; if (!c) return 0; const t=c.t; return t<250 ? t/250 : t>this.DUR-300 ? Math.max(0,(this.DUR-t)/300) : 1; },
   draw(){
-    const c=this.list[0]; if (!c || !LIVE.on || !G) return;
+    const c=this.list[0]; if (!c || (!LIVE.on && !c.always) || !G) return;
     const a=this.alpha(); if (a<=0) return;
     const box = boxLayoutOn();
     const w = box ? 424 : 720, h=172, x=(W-w)/2, y=176;
@@ -5205,6 +5328,9 @@ const LIVECARD = {
     const sp=sprites.get(c.code);
     if (sp){ ctx.save(); ctx.shadowColor=c.col; ctx.shadowBlur=22; ctx.drawImage(sp,fx,fy,fd,fd); ctx.restore();
       ctx.lineWidth=4; ctx.strokeStyle=c.col; ctx.beginPath(); ctx.arc(fx+fd/2,fy+fd/2,fd/2+3,0,7); ctx.stroke(); }
+    else { ctx.save(); ctx.fillStyle='rgba(255,207,61,0.16)'; ctx.beginPath(); ctx.arc(fx+fd/2,fy+fd/2,fd/2,0,7); ctx.fill();
+      ctx.lineWidth=4; ctx.strokeStyle=c.col; ctx.stroke(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='44px system-ui,sans-serif';
+      ctx.fillText(c.icon||'💛', fx+fd/2, fy+fd/2+2); ctx.restore(); }
     const tx=fx+fd+22, tw=x+w-22-tx;
     ctx.textAlign='left'; ctx.textBaseline='middle';
     let fs=box?34:46; ctx.font='900 '+fs+'px "FR Oswald",system-ui,sans-serif';
@@ -5285,8 +5411,8 @@ function drawLiveBoxes(){
   // right: SAVE YOUR COUNTRY rules + live footer
   liveFrame(rx,BY,BW,BH,'#5ef2c8','#ffcf3d',0.55,'SAVE YOUR COUNTRY','#5ef2c8');
   ctx.save(); ctx.textAlign='left'; ctx.textBaseline='middle';
-  const rows=[['💬',CHAT_RULES.SHIELD+' chats','🛡 SHIELD','#5ef2c8'],['💬',CHAT_RULES.REVIVE+' if out','♻ REVIVE','#ff8da1'],['⭐','Super Chat','🛡 / ♻','#ffcf3d'],['🔔','Subscribe','FREE POWER','#b9a4ff']];
-  rows.forEach((r,i)=>{ const y=BY+58+i*27;
+  const rows=[['💬',CHAT_RULES.SHIELD+' chats','🛡 SHIELD','#5ef2c8'],['💬',CHAT_RULES.REVIVE+' if out','♻ REVIVE','#ff8da1'],['⭐','Super Chat','🛡 / ♻','#ffcf3d'],['🔔','Subscribe','FREE POWER','#b9a4ff'],['💎',(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels','🛡 / ♻','#7fe3ff']];
+  rows.forEach((r,i)=>{ const y=BY+54+i*23;
     ctx.font='700 17px "FR Poppins",system-ui,sans-serif'; ctx.fillStyle='#ffffff'; ctx.fillText(r[0]+' '+r[1], rx+16, y);
     ctx.textAlign='right'; ctx.fillStyle=r[3]; ctx.font='800 17px "FR Poppins",system-ui,sans-serif'; ctx.fillText(r[2], rx+BW-16, y); ctx.textAlign='left'; });
   const ev=CHAT.feed[0], show=ev && ev.t<8000;
@@ -5328,6 +5454,7 @@ function testSupport(code, n, member, untilFlag){
   const p2=seg('liveStrip', ()=>LIVE.strip, v=>{ LIVE.strip=(v==='true'); });
   const p3=seg('liveCap', ()=>LIVE.controlled, v=>{ LIVE.controlled=(v==='true'); });
   const p4=seg('liveCorner', ()=>LIVE.corner, v=>{ LIVE.corner=v; });
+  const p6=seg('liveThanks', ()=>LIVE.thanks, v=>{ LIVE.thanks=(v==='true'); });
   const p5=seg('liveCount', ()=>LIVE.countAll, v=>{ LIVE.countAll=(v==='true'); CHAT.note('Counting: '+(LIVE.countAll?'every message':'different messages only')); });
   const setTargets=(s,r)=>{ s=Math.max(3,Math.min(200,Math.round(+s||30))); r=Math.max(3,Math.min(300,Math.round(+r||60)));
     LIVE.shieldN=CHAT_RULES.SHIELD=s; LIVE.reviveN=CHAT_RULES.REVIVE=r; saveLive(); CHAT.note('Chat targets set: shield '+s+', revive '+r); livePaint(); };
@@ -5373,6 +5500,8 @@ function testSupport(code, n, member, untilFlag){
     CHAT.ingest({kind,count,user:u,text:'',t:Date.now()}); say((kind==='member'?'New member ':'Gifted ×'+count+' from ')+u.name+' (supports '+CHAT.nameOf(c)+')'); };
   $('tMem').addEventListener('click',()=>tEvt('member'));
   $('tGift').addEventListener('click',()=>tEvt('gift',5));
+  $('tJewel').addEventListener('click',()=>tEvt('jewels',2));
+  $('tJewel50').addEventListener('click',()=>tEvt('jewels',50));
   $('tSend').addEventListener('click',()=>{ if(!needOn())return;
     const h=($('tHandle').value||'@me').trim(), text=$('tText').value||'';
     CHAT.ingest({kind, user:{id:'h:'+h.toLowerCase(), name:h, member:$('tIsMember').checked}, text, t:Date.now(), amount:kind==='superchat'?100:0});
@@ -5382,7 +5511,7 @@ function testSupport(code, n, member, untilFlag){
   $('liveQuota').addEventListener('click',()=>{ CHAT.fallbackNext=true; CHAT.note('Quota marked as used up: next round switches to normal mode'); livePaint(); });
   $('liveQuotaCancel').addEventListener('click',()=>{ CHAT.fallbackNext=false; CHAT.note('Quota fallback cancelled'); livePaint(); });
   function livePaint(){
-    p1(); p2(); p3(); p4(); p5();
+    p1(); p2(); p3(); p4(); p5(); p6();
     if (document.activeElement!==$('liveSubCap')) $('liveSubCap').value=LIVE.subCap;
     if (document.activeElement!==$('liveSubPer')) $('liveSubPer').value=LIVE.subPer;
     if (document.activeElement!==$('liveShieldN')) $('liveShieldN').value=LIVE.shieldN;
@@ -5687,7 +5816,8 @@ const SE = {
     let id=dd.providerId||'';
     if (!id || (!CHAT.last.has(id) && CHAT.names.has(lname))) id=CHAT.names.get(lname)||id||('n:'+lname);
     const base={via:'se-act', user:{id, name}, t:Date.now(), id:a._id?'se:'+a._id:undefined};
-    if (type==='subscriber' || type==='follow' || type==='follower') CHAT.ingest(Object.assign(base,{kind:'subscribe', text:''}));
+    if (type==='subscriber' || type==='subscription' || type==='follow' || type==='follower') CHAT.ingest(Object.assign(base,{kind:'subscribe', text:''}));
+    else if (/jewel/i.test(type) || /^gift(s)?$/i.test(type) || /^(yt_?)?gift/i.test(type) && !/purchase|membership/i.test(type)) CHAT.ingest(Object.assign(base,{kind:'jewels', count:+dd.amount||+dd.count||+dd.quantity||1, amount:dd.displayString||'', text:dd.message||''}));
     else if (type==='superchat') CHAT.ingest(Object.assign(base,{kind:'superchat', text:dd.message||'', amount:dd.amount}));
     else if (type==='sponsor' && !dd.gifted && !dd.sender) CHAT.ingest(Object.assign(base,{kind:'member', text:dd.message||''}));
     else if (type==='communityGiftPurchase') CHAT.ingest(Object.assign(base,{kind:'gift', count:+dd.amount||+dd.count||1, text:''}));
@@ -5741,6 +5871,7 @@ const SL = {
       const base={via:'sl', user:{id, name}, t:Date.now(), id:m._id?'sl:'+m._id:undefined};
       if (type==='follow') CHAT.ingest(Object.assign(base,{kind:'subscribe', text:''}));
       else if (type==='superchat') CHAT.ingest(Object.assign(base,{kind:'superchat', text:m.comment||m.message||'', amount:m.displayString||m.amount}));
+      else if (/jewel|^gift/i.test(type)) CHAT.ingest(Object.assign(base,{kind:'jewels', count:+m.amount||+m.count||1, amount:m.displayString||'', text:m.message||''}));
       else if (type==='subscription'){ if (m.gifter || m.gifted) continue; CHAT.ingest(Object.assign(base,{kind:'member', text:m.message||''})); }
     }
   },
@@ -5793,7 +5924,9 @@ function ytToMsg(it, t){
     case 'memberMilestoneChatEvent': return {id:it.id, kind:'milestone', user:Object.assign(user,{member:true}), text:(s.memberMilestoneChatDetails&&s.memberMilestoneChatDetails.userComment)||'', t};
     case 'newSponsorEvent': return {id:it.id, kind:'member', user:Object.assign(user,{member:true}), text:'', t};
     case 'membershipGiftingEvent': { const d=s.membershipGiftingDetails||{}; return {id:it.id, kind:'gift', count:+d.giftMembershipsCount||1, user, text:'', t}; }
-    default: return null;                    // gift received, polls, deletions: no power
+    default:
+      if (/gift/i.test(type) && !/membership/i.test(type)){ const d=s.giftDetails||s.jewelsDetails||{}; return {id:it.id, kind:'jewels', count:+d.count||+d.quantity||1, user, text:'', t}; }
+      return null;                           // gift received, polls, deletions: no power
   }
 }
 
@@ -6008,7 +6141,7 @@ var WINART = (function(){
   const WAIT_MS = 1200;           // a winner whose art is still loading waits this long, else current card
   const REFRESH_MS = 10*60*1000;  // re-read the manifest so a new batch goes live without restarting OBS
   const KEY = 'flagsrumble-winart-v1', ROAR_KEY = 'flagsrumble-winart-roar';
-  const ST = { style:'art', roar:true, vol:0.9, anim:'full', scPop:true, scDur:1.0 };   // scPop: Super Chat burst on/off · scDur: its length, 1-3 s   // anim: 'full' build-up (10 s) | 'quick' pop + roar (5 s)
+  const ST = { style:'art', roar:true, vol:0.9, anim:'full', scPop:true, scDur:1.0, scTop:true };   // scPop: Super Chat burst on/off · scDur: its length, 1-3 s   // anim: 'full' build-up (10 s) | 'quick' pop + roar (5 s)
   try{ Object.assign(ST, JSON.parse(localStorage.getItem(KEY)||'{}')); }catch(e){}
   const save = () => { try{ localStorage.setItem(KEY, JSON.stringify(ST)); }catch(e){} };
   const up = c => String(c||'').toUpperCase();
@@ -6037,8 +6170,10 @@ var WINART = (function(){
   setInterval(()=>{ if (!preview && !(G && G.phase==='WINNER')) readManifest(false); }, REFRESH_MS);
 
   // what a country uses: its own poster, or kit + background (test-only kit entries play only from the Winner tab)
+  const genName = code => { code=String(code||''); return code.startsWith('~G:') ? code.split(':').slice(2).join(':') : null; };
   function entry(code, forTest){
     if (!M) return null; code=up(code);
+    if (code.startsWith('~G:')){ const kn=code.split(':')[1].toLowerCase(), k=M.kits[kn]; return k && k.layout==='B' ? { type:'kitB', e:k, kitName:kn, generic:true } : null; }
     const p=M.posters[code]; if (p) return { type:'poster', e:p };
     const k=M.kitCountries && M.kitCountries[code];
     if (k && (forTest || !k.testOnly) && M.kits[k.kit] && M.kits[k.kit].layout==='B') return { type:'kitB', e:M.kits[k.kit], kitName:k.kit, map:k };
@@ -6093,11 +6228,12 @@ var WINART = (function(){
     return toBitmap(c);
   }
   function flagSource(code){                // the country's real flag art (640x480), else the procedural painter
+    if (genName(code)!=null){ const w=canvas(640,480), g=w.getContext('2d'); g.fillStyle='#f4f4f2'; g.fillRect(0,0,640,480); return w; }   // generic card: plain white flag
     const fi=(typeof FLAG_IMG!=='undefined') && FLAG_IMG[code.toLowerCase()]; if (fi) return fi;
     const c=BY_CODE.get(code), cv=canvas(640,480); if (c && c.ops) paintFlag(cv.getContext('2d'), c.ops, 640, 480); return cv;
   }
-  function makeKitFlag(kit, shade, code){   // print the country flag onto the kit's cloth: follows the cloth top/bottom per column
-    const L=kit.layers.flag, st=kit.flagColStep||4, cols=kit.flagCols, src=flagSource(code), sw=src.width||640, sh=src.height||480;
+  function makeKitFlag(kit, shade, code, over){   // print the country flag (or the clan banner) onto the kit's cloth: follows the cloth top/bottom per column
+    const L=kit.layers.flag, st=kit.flagColStep||4, cols=kit.flagCols, src=over||flagSource(code), sw=src.width||640, sh=src.height||480;
     const c=canvas(L.w,L.h), g=c.getContext('2d'); g.imageSmoothingQuality='high';
     g.drawImage(src, 0,0,sw,sh, 0,0,L.w,L.h);
     for (let x=0;x<L.w;x+=1){                // 1 px columns, cloth edges interpolated between the samples (no stair-steps)
@@ -6202,9 +6338,9 @@ var WINART = (function(){
     cinzel = (window.FontFace ? srcP.then(s=>new FontFace('WA Cinzel', 'url('+s+')', { weight:'900' }).load()).then(f=>{ document.fonts.add(f); return true; }) : Promise.resolve(false)).catch(()=>false);
     return cinzel;
   }
-  function makeKitTitleB(kit, title, code){
+  function makeKitTitleB(kit, title, code, over){
     const L=kit.layers.title, c=canvas(L.w,L.h), g=c.getContext('2d'); g.drawImage(title,0,0,L.w,L.h);
-    const [bx,by,br]=kit.ball, cx=bx-L.x, cy=by-L.y, src=flagSource(code), sw=src.width||640, sh=src.height||480;
+    const [bx,by,br]=kit.ball, cx=bx-L.x, cy=by-L.y, src=over||flagSource(code), sw=src.width||640, sh=src.height||480;
     // ball: flag (cover-fit) multiplied onto the white glossy ball, then a soft highlight back on top
     const b=canvas(2*br+2,2*br+2), bg2=b.getContext('2d'), hh=2*br, ww=hh*sw/sh;
     bg2.save(); bg2.beginPath(); bg2.arc(br+1,br+1,br,0,7); bg2.clip();
@@ -6214,9 +6350,9 @@ var WINART = (function(){
     hl.addColorStop(0,'rgba(255,255,255,.55)'); hl.addColorStop(0.35,'rgba(255,255,255,.12)'); hl.addColorStop(1,'rgba(255,255,255,0)'); bg2.fillStyle=hl; bg2.fillRect(0,0,2*br+2,2*br+2);
     bg2.globalCompositeOperation='source-over'; const rim=bg2.createRadialGradient(br+1,br+1,br*0.72,br+1,br+1,br);
     rim.addColorStop(0,'rgba(0,0,0,0)'); rim.addColorStop(1,'rgba(0,0,0,.32)'); bg2.fillStyle=rim; bg2.fillRect(0,0,2*br+2,2*br+2);
-    bg2.restore(); g.drawImage(b, cx-br-1, cy-br-1);
+    bg2.restore(); if (genName(code)==null || over) g.drawImage(b, cx-br-1, cy-br-1);
     // name in the dark band
-    const [x0,y0,x1,y1]=kit.band, c0=BY_CODE.get(code), name=String((c0&&c0.name)||code).toUpperCase();
+    const [x0,y0,x1,y1]=kit.band, c0=BY_CODE.get(code), name=String(genName(code)!=null ? genName(code).replace(/^@+/,'') : ((c0&&c0.name)||code)).toUpperCase();   // Cinzel has no clean @
     const bw=(x1-x0)*0.9, bh=(y1-y0), mx=(x0+x1)/2-L.x, my=(y0+y1)/2-L.y+bh*0.04, FONT='"WA Cinzel","Cinzel",Georgia,serif';
     let size=bh*0.78; g.font='900 '+size+'px '+FONT; let w=g.measureText(name).width, sx=1;
     if (w>bw){ size=Math.max(bh*0.46, size*bw/w); g.font='900 '+size+'px '+FONT; w=g.measureText(name).width; if (w>bw) sx=bw/w; }
@@ -6246,9 +6382,10 @@ var WINART = (function(){
           .then(([bodyFade, beastFade])=>({ I:{bg,body,bodyFade,flag,beast,beastFade,title}, L:{...Ls, bodyFade:Ls.body, beastFade:Ls.beast} })))
         .then(pk=>(Ls.warp && Ls.wmap) ? Promise.all([file(Ls.warp.f), file(Ls.wmap.f)]).then(([warp,wmap])=>{ pk.I.warp=warp; pk.wgt=readWeights(wmap); return pk; }) : pk);
     } else if (en.type==='kitB'){
-      job=Promise.all(['bg','body','flag','beast','title','warp','wmap'].map(k=>file(Ls[k].f)).concat([nameFont()])).then(([bg,body,shade,beast,title,warp,wmap])=>
+      const clanP = en.generic && e.clan ? file(e.clan.f).catch(()=>null) : Promise.resolve(null);   // generic card: the kit's clan banner
+      job=Promise.all(['bg','body','flag','beast','title','warp','wmap'].map(k=>file(Ls[k].f)).concat([nameFont(), clanP])).then(([bg,body,shade,beast,title,warp,wmap,font,clan])=>
         Promise.all([ need(Ls.body.f+'#fade', ()=>makeFade(body, Ls.body, ...(fd.body||[720,832]))), need(Ls.beast.f+'#fade', ()=>makeFade(beast, Ls.beast, ...(fd.beast||[590,760]))),
-                      need('kitflag:'+code+':'+en.kitName, ()=>makeKitFlag(e, shade, code)), need('kittitle:'+code+':'+en.kitName, ()=>makeKitTitleB(e, title, code)) ])
+                      need('kitflag:'+code+':'+en.kitName, ()=>makeKitFlag(e, shade, code, clan)), need('kittitle:'+code+':'+en.kitName, ()=>makeKitTitleB(e, title, code, clan)) ])
           .then(([bodyFade, beastFade, flag, ttl])=>({ I:{bg,body,bodyFade,flag,beast,beastFade,title:ttl,warp}, wgt:readWeights(wmap), L:{...Ls, bodyFade:Ls.body, beastFade:Ls.beast} })));
     } else {
       const plateP = Ls.plate ? file(Ls.plate.f) : Promise.resolve(null);
@@ -6263,7 +6400,7 @@ var WINART = (function(){
     }
     job.then(p=>{ if (LOADED.get(code)!==rec) return;
         const B=e.layout==='B';
-        rec.pack={ ...p, w:e.w||941, h:e.h||1672, an:e.anchors, grid:B?null:(e.grid||M.layout.grid), text:e.text||M.layout.text, beast:e.beast||'bear',
+        rec.pack={ ...p, hb:e.hb||null, w:e.w||941, h:e.h||1672, an:e.anchors, grid:B?null:(e.grid||M.layout.grid), text:e.text||M.layout.text, beast:e.beast||'bear',
                    B, cls:e.cls||'cat', fx:e.fx||'mist', color:e.color||'#ffd27a', amb:e.amb||'embers', petal:e.petal||'#ffb6d0', dir:e.dir||-1 };
         rec.state='ready'; rec.warm=false; trim(); paintUi(); })
       .catch(err=>{ console.warn('winart', code, err); if (LOADED.get(code)!==rec) return; rec.keys.forEach(k=>releaseRes(k, code)); rec.keys=[]; rec.state='fail'; rec.at=now(); paintUi(); });
@@ -6543,7 +6680,7 @@ var WINART = (function(){
   function statsLine(info, P){
     const T=P.text; if (!T || !T.stats) return;
     if (info.sc!=null){                                  // Super Chat pop: the viewer's handle instead of the numbers
-      const h=info.sc, runs=[['★ SUPER CHAT','#ffd84a'],['     ','dia'],[h||'THANK YOU!','#ffffff']];
+      const h=info.sc, runs=[['★ '+(info.scLabel||'Super Chat').toUpperCase(),'#ffd84a'],['     ','dia'],[h||'THANK YOU!','#ffffff']];
       let size=(T.statsSize||24)*1.25; ctx.font='700 '+size+'px '+POP; const tot=runs.reduce((a,[x])=>a+ctx.measureText(x).width,0), lim=(T.statsW||700)*1.05;
       if (tot>lim) size*=lim/tot;
       ctx.save(); ctx.shadowColor='rgba(0,0,0,.8)'; ctx.shadowBlur=6; textRuns(runs, T.stats[0], T.stats[1], size, '700'); ctx.restore(); return;
@@ -6705,20 +6842,25 @@ var WINART = (function(){
      Opens as a gold-rimmed circle from the ring centre while the card grows, the beast roars (no sound),
      then the circle snaps shut. The round keeps running underneath. Art is loaded the moment the Super
      Chat arrives; if it isn't ready within SC_WAIT the pop is skipped (the normal popup card still shows). */
-  const SC_MS=1200, SC_WAIT=3000, SC_OPEN=0.22, SC_CLOSE=0.95;              // the burst is designed at 1.2 s and time-scaled to ST.scDur
+  const SC_MS=1200, SC_WAIT=4000, SC_DELAY=900, SC_OPEN=0.22, SC_CLOSE=0.95;   // SC_DELAY: the thank-you card shows first              // the burst is designed at 1.2 s and time-scaled to ST.scDur
   const scDur = () => Math.max(1, Math.min(3, +ST.scDur || 1));
   const scQ=[]; let scCur=null, scN=0, scSkip=0;
   const handle = u => { u=String(u||'').trim().replace(/^@+/,''); if (!u) return ''; u='@'+u; return u.length>24 ? u.slice(0,23)+'…' : u; };
-  function scPop(code, user, force){
+  let genI=0;
+  function scPop(code, user, force, label, opt){
+    opt=opt||{};
+    if (!code && M){ const ks=Object.keys(M.kits).filter(k=>M.kits[k].layout==='B'); if (!ks.length) return false;   // nobody named a country: generic champion card
+      const h=handle(user)||'@VIEWER'; code='~G:'+ks[(genI++)%ks.length]+':'+h; }
     code=up(code); if ((!ST.scPop && !force) || !M || !(force ? hasTest(code) : has(code))) return false;
-    if (scQ.length>=6) scQ.shift(); scQ.push({ code, user:handle(user), t:now() }); ensure(code, force); return true;
+    if (scQ.length>=6) scQ.shift(); scQ.push({ code, user:handle(user), label:String(label||''), t:now(), force:!!force, onStart:opt.onStart||null }); if (opt.onSkip) scQ[scQ.length-1].onSkip=opt.onSkip; ensure(code, force); return true;
   }
   function scDraw(){
     if (!scCur){
       while (scQ.length){ const q=scQ[0], r=LOADED.get(q.code);
-        if (r && r.state==='ready' && !(G && G.phase==='WINNER')){ scQ.shift();
-          scN++; scCur={ code:q.code, t0:now(), frozen:null, dur:scDur(), E:newState('sc'), info:{ code:q.code, sc:q.user, lasted:0, wins:Math.max(1,careers()[q.code]||0), left:0, dead:[], field:fieldN(), cycle:(G?G.roundNo:1), sound:false } }; break; }
-        if ((r && r.state==='fail') || now()-q.t>SC_WAIT || !r){ scQ.shift(); scSkip++; continue; }
+        if (r && r.state==='ready' && !(G && G.phase==='WINNER') && (q.force || now()-q.t>=SC_DELAY)){ scQ.shift();
+          if (q.onStart) try{ q.onStart(); }catch(e){ oops('pop start', e); }
+          scN++; scCur={ code:q.code, t0:now(), frozen:null, dur:scDur(), E:newState('sc'), info:{ code:q.code, sc:q.user, scLabel:q.label, lasted:0, wins:Math.max(1,careers()[q.code]||0), left:0, dead:[], field:fieldN(), cycle:(G?G.roundNo:1), sound:false } }; break; }
+        if ((r && r.state==='fail') || now()-q.t>SC_WAIT || !r){ scQ.shift(); scSkip++; if (q.onSkip) try{ q.onSkip(); }catch(e){} continue; }
         break; }
       if (!scCur) return;
     }
@@ -6731,12 +6873,27 @@ var WINART = (function(){
     ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.clip();
     ctx.translate(cx,cy); ctx.scale(k,k); ctx.translate(-cx,-cy);
     (P.B?drawB:draw)(vt, scCur.info, scCur.E, P);
+    if (ST.scTop && P.hb && scCur.info.sc) handleBanner(P, scCur.info, t);
     ctx.restore();
     if (R<D){ ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.strokeStyle='rgba(255,207,61,.95)'; ctx.lineWidth=12; ctx.shadowColor='#ffcf3d'; ctx.shadowBlur=36;
       ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.stroke(); ctx.restore(); }
     const fl=0.12*(1-seg(t,0.1,0.3)); if (t>0.1 && fl>0){ ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.clip(); ctx.fillStyle=`rgba(255,244,215,${fl})`; ctx.fillRect(0,0,W,H); ctx.restore(); }
   }
   const scBusy = () => !!scCur || scQ.length>0;
+  function handleBanner(P, info, t){              // the viewer's @handle in the card's upper half, at the spot picked by cut/handle_box.py
+    const [bx,by,bw,bh]=P.hb, s=W/P.w, Y0=(H-P.h*s)/2, u=eo(seg(t,0.08,0.3));
+    if (u<=0) return;
+    const lab='★ '+(info.scLabel||'Super Chat').toUpperCase(), h=info.sc||'';
+    ctx.save(); ctx.translate(0,Y0); ctx.scale(s,s); ctx.globalAlpha=u; ctx.translate(0,(1-u)*-14);
+    const r=bh*0.3; ctx.beginPath(); ctx.moveTo(bx+r,by); ctx.arcTo(bx+bw,by,bx+bw,by+bh,r); ctx.arcTo(bx+bw,by+bh,bx,by+bh,r); ctx.arcTo(bx,by+bh,bx,by,r); ctx.arcTo(bx,by,bx+bw,by,r); ctx.closePath();
+    const gr=ctx.createLinearGradient(0,by,0,by+bh); gr.addColorStop(0,'rgba(10,8,18,.80)'); gr.addColorStop(1,'rgba(4,4,10,.86)'); ctx.fillStyle=gr; ctx.fill();
+    ctx.shadowColor='rgba(255,200,70,.75)'; ctx.shadowBlur=18; ctx.lineWidth=4; ctx.strokeStyle='#e8b64a'; ctx.stroke(); ctx.shadowBlur=0;
+    ctx.textAlign='center'; ctx.textBaseline='middle'; const cx=bx+bw/2;
+    let f1=26; ctx.font='700 '+f1+'px '+POP; ctx.fillStyle='#ffd84a'; ctx.fillText(lab, cx, by+bh*0.28);
+    let f2=50; ctx.font='800 '+f2+'px '+POP; while (f2>26 && ctx.measureText(h).width>bw-36){ f2-=2; ctx.font='800 '+f2+'px '+POP; }
+    ctx.lineWidth=f2*0.12; ctx.strokeStyle='rgba(0,0,0,.85)'; ctx.lineJoin='round'; ctx.strokeText(h, cx, by+bh*0.66); ctx.fillStyle='#ffffff'; ctx.fillText(h, cx, by+bh*0.66);
+    ctx.restore();
+  }
 
   /* ---------------- hooks ---------------- */
   function drawReal(){                                  // called from drawWinner(); true = handled, false = draw the default card
@@ -6810,6 +6967,7 @@ var WINART = (function(){
     if (!$('waStyle')) return;
     [...$('waStyle').children].forEach(b=>b.classList.toggle('on', b.dataset.v===ST.style));
     if ($('waAnim')) [...$('waAnim').children].forEach(b=>b.classList.toggle('on', b.dataset.v===ST.anim));
+    if ($('waScTop')) [...$('waScTop').children].forEach(b=>b.classList.toggle('on', b.dataset.v===(ST.scTop?'top':'bottom')));
     if ($('waScDur')){ $('waScDur').value=scDur(); $('waScDurV').textContent=scDur().toFixed(1)+' s'; }
     if ($('waSc')) [...$('waSc').children].forEach(b=>{ if (b.dataset.v!=='test') b.classList.toggle('on', b.dataset.v===(ST.scPop?'on':'off')); });
     [...$('waRoar').children].forEach(b=>b.classList.toggle('on', b.dataset.v===(ST.roar?'on':'off')));
@@ -6842,6 +7000,7 @@ var WINART = (function(){
     if ($('waAnim')) $('waAnim').addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; ST.anim=b.dataset.v; save(); applyDuration(); paintUi(); });
     $('waRoar').addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; ST.roar=b.dataset.v==='on'; save(); paintUi(); });
     $('waVol').addEventListener('input',()=>{ ST.vol=+$('waVol').value; save(); paintUi(); });
+    if ($('waScTop')) $('waScTop').addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; ST.scTop=b.dataset.v==='top'; save(); paintUi(); });
     if ($('waScDur')) $('waScDur').addEventListener('input',()=>{ ST.scDur=Math.round(parseFloat($('waScDur').value)*10)/10; save(); paintUi(); });
     if ($('waSc')) $('waSc').addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return;
       if (b.dataset.v==='test'){ const code=$('waCountry').value, c=BY_CODE.get(code), u=($('waScUser')&&$('waScUser').value)||'@TestViewer';
@@ -6864,11 +7023,75 @@ var WINART = (function(){
     paintUi();
   }
   setTimeout(()=>{ try{ wire(); }catch(e){ console.warn('winart panel', e); } }, 300);
-  return { sfx: ()=>Object.fromEntries(Object.entries(SFXBUF).map(([k,v])=>[k, v.buf ? +v.buf.duration.toFixed(2) : (v.bad?'bad':'loading')])), SFX_DEF, scPop:safe(scPop,false,'super chat pop'), scBusy:safe(scBusy,false), shownLast:safe(()=>!!(show && show.start!=null && !show.fellBack),false), errors:()=>errN, scStats: ()=>({ started:scN, skipped:scSkip, queued:scQ.length, playing:scCur?scCur.code:null }), scSeek: t=>{ if (scCur){ scCur.frozen=t; scCur.E.last=null; } }, setAnim:m=>{ ST.anim=m; applyDuration(); }, use:safe(use,false), has:safe(has,false), hasTest:safe(hasTest,false), ready:safe(ready,false), ensure:safe(ensure,null,'loading'), drawReal, overlay, covers, play:safe(play,false,'test'), stop:safe(stop), seek, active:safe(active,false), roar, synthRoar, SYNTH, thunder, BEASTS, ST, status,
+  return { sfx: ()=>Object.fromEntries(Object.entries(SFXBUF).map(([k,v])=>[k, v.buf ? +v.buf.duration.toFixed(2) : (v.bad?'bad':'loading')])), SFX_DEF, scPop:safe(scPop,false,'super chat pop'), scBusy:safe(scBusy,false), scShowing:()=>!!scCur, shownLast:safe(()=>!!(show && show.start!=null && !show.fellBack),false), errors:()=>errN, scStats: ()=>({ started:scN, skipped:scSkip, queued:scQ.length, playing:scCur?scCur.code:null }), scSeek: t=>{ if (scCur){ scCur.frozen=t; scCur.E.last=null; } }, setAnim:m=>{ ST.anim=m; applyDuration(); }, use:safe(use,false), has:safe(has,false), hasTest:safe(hasTest,false), ready:safe(ready,false), ensure:safe(ensure,null,'loading'), drawReal, overlay, covers, play:safe(play,false,'test'), stop:safe(stop), seek, active:safe(active,false), roar, synthRoar, SYNTH, thunder, BEASTS, ST, status,
            get DATA(){ return M; }, get M(){ return M; }, PREFETCH_AT, KEEP };
 })();
 /* Expose for the headless verification harness (verify_sim.js). */
 window.__CBR__ = { get G(){return G;}, CFG, step, tick, newDraw, alive, spokeSegs, COUNTRIES, CHAT, LIVE, YT, SE, SL, SRC, SAVED, LIVESCHED, LIVECARD, POOL, TIERS, tieredField, ALL_COUNTRIES };
+</script>
+<script>
+/* OBS-safe pickers. OBS's "Interact" window can't open a native dropdown list, so every <select> in the panel
+   is shown as a type-to-search box with its own in-page list instead (the hidden <select> stays the source of truth,
+   so all existing code keeps working). Countries match by name, short code (IN, USA, UK), flag emoji or common spelling. */
+(function(){
+  try{
+    const st=document.createElement('style');
+    st.textContent='.pk{position:relative;margin-top:3px}.pk .tin{margin-top:0}.pk .pl{position:absolute;left:0;right:0;top:calc(100% + 2px);z-index:60;max-height:260px;overflow:auto;background:#0b1130;border:1px solid #4a5aa8;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.55);display:none}'+
+      '.pk .pl div{padding:8px 10px;cursor:pointer;color:#dfe6ff;font:600 13px system-ui,sans-serif;border-bottom:1px solid rgba(255,255,255,.05)}.pk .pl div.on,.pk .pl div:hover{background:#2a3a7e}.pk .pl .none{color:#8f9bc8;cursor:default}';
+    document.head.appendChild(st);
+    const norm=s=>String(s||'').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+    function enhance(sel){
+      if (!sel || sel.dataset.pk) return; sel.dataset.pk='1';
+      const box=document.createElement('div'), inp=document.createElement('input'), list=document.createElement('div');
+      box.className='pk'; if (sel.style.flex) box.style.flex=sel.style.flex; box.style.margin=sel.style.margin||'';
+      inp.className='tin'; inp.autocomplete='off'; inp.spellcheck=false; list.className='pl';
+      box.append(inp, list); sel.insertAdjacentElement('afterend', box); sel.style.display='none';
+      let items=[], hi=0, open=false;
+      const isCountry=()=>[...sel.options].slice(0,8).every(o=>/^[A-Z]{2}$/.test(o.value));
+      inp.placeholder = 'Type to search…';
+      const label=()=>{ const o=sel.selectedOptions && sel.selectedOptions[0]; return o ? o.textContent : ''; };
+      function refresh(){ try{ sel.dispatchEvent(new Event('focus')); }catch(e){} }
+      function find(q){
+        const opts=[...sel.options].filter(o=>!o.disabled && o.value!==''); if (!q) return opts;
+        const nq=norm(q), up=q.trim().toUpperCase(), seen=new Set(), out=[];
+        const add=o=>{ if (o && !seen.has(o.value)){ seen.add(o.value); out.push(o); } };
+        if (isCountry()){
+          let codes=[]; try{ codes=chatCountriesAll(chatClean(q)); }catch(e){}
+          codes.forEach(c=>add(opts.find(o=>o.value===c)));
+          add(opts.find(o=>o.value===up));
+          const al={UK:'GB',USA:'US',UAE:'AE',KSA:'SA',DRC:'CD'}[up]; if (al) add(opts.find(o=>o.value===al));
+        }
+        if (!nq) return out.length ? out : opts;                  // only a flag emoji / symbols typed
+        opts.filter(o=>norm(o.textContent).startsWith(nq)).forEach(add);
+        opts.filter(o=>norm(o.textContent).split(' ').some(w=>w.startsWith(nq))).forEach(add);
+        opts.filter(o=>norm(o.textContent).includes(nq)).forEach(add);
+        return out;
+      }
+      function render(){
+        list.innerHTML=''; items=find(inp.value===label()?'':inp.value).slice(0,80); if (hi>=items.length) hi=0;
+        if (!items.length){ const d=document.createElement('div'); d.className='none'; d.textContent='No match'; list.appendChild(d); }
+        items.forEach((o,i)=>{ const d=document.createElement('div'); d.textContent=o.textContent; if (i===hi) d.className='on';
+          d.addEventListener('mousedown',e=>{ e.preventDefault(); pick(o.value); }); list.appendChild(d); });
+        list.style.display='block'; open=true;
+        const on=list.querySelector('.on'); if (on) on.scrollIntoView({block:'nearest'});
+      }
+      function close(){ list.style.display='none'; open=false; inp.value=label(); }
+      function pick(v){ sel.value=v; sel.dispatchEvent(new Event('change',{bubbles:true})); sel.dispatchEvent(new Event('input',{bubbles:true})); close(); inp.blur(); }
+      inp.addEventListener('focus',()=>{ refresh(); hi=0; inp.select(); render(); });
+      inp.addEventListener('input',()=>{ hi=0; render(); });
+      inp.addEventListener('keydown',e=>{
+        if (e.key==='ArrowDown'){ hi=Math.min(items.length-1,hi+1); render(); e.preventDefault(); }
+        else if (e.key==='ArrowUp'){ hi=Math.max(0,hi-1); render(); e.preventDefault(); }
+        else if (e.key==='Enter'){ if (items[hi]) pick(items[hi].value); e.preventDefault(); }
+        else if (e.key==='Escape'){ close(); inp.blur(); } });
+      inp.addEventListener('blur',()=>setTimeout(()=>{ if (open) close(); },120));
+      setInterval(()=>{ if (document.activeElement!==inp) inp.value=label(); }, 600);
+      inp.value=label();
+    }
+    const run=()=>document.querySelectorAll('select').forEach(enhance);
+    run(); setTimeout(run, 800); setTimeout(run, 3000);
+  }catch(e){ try{ console.warn('pickers', e); }catch(_){} }
+})();
 </script>
 </body>
 </html>

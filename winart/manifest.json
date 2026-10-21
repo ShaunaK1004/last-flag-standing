@@ -127,7 +127,13 @@
    "color": "#9fd4ff",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    672,
+    600,
+    108
+   ]
   },
   "BD": {
    "beast": "tiger",
@@ -227,7 +233,13 @@
    "amb": "petals",
    "petal": "#ff8fc0",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    20,
+    600,
+    600,
+    108
+   ]
   },
   "BR": {
    "beast": "jaguar",
@@ -326,7 +338,13 @@
    "color": "#c8ff4a",
    "amb": "embers",
    "dir": -1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    600,
+    600,
+    108
+   ]
   },
   "CA": {
    "beast": "moose",
@@ -426,7 +444,13 @@
    "amb": "petals",
    "petal": "#e8323c",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    632,
+    600,
+    108
+   ]
   },
   "CD": {
    "beast": "leopard",
@@ -525,7 +549,13 @@
    "color": "#7fc8ff",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    688,
+    600,
+    108
+   ]
   },
   "CN": {
    "beast": "dragon",
@@ -624,7 +654,13 @@
    "color": "#ffb030",
    "amb": "embers",
    "dir": -1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    600,
+    600,
+    108
+   ]
   },
   "CO": {
    "beast": "condor",
@@ -723,7 +759,13 @@
    "color": "#ffd27a",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    664,
+    600,
+    108
+   ]
   },
   "DE": {
    "beast": "eagle",
@@ -822,7 +864,13 @@
    "color": "#ffb050",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    576,
+    600,
+    108
+   ]
   },
   "EG": {
    "beast": "falcon",
@@ -921,7 +969,13 @@
    "color": "#ffd27a",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    20,
+    720,
+    600,
+    108
+   ]
   },
   "ES": {
    "beast": "bull",
@@ -1020,7 +1074,13 @@
    "color": "#ff9a70",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    720,
+    600,
+    108
+   ]
   },
   "ET": {
    "beast": "lion",
@@ -1119,7 +1179,13 @@
    "color": "#ffd27a",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    20,
+    632,
+    600,
+    108
+   ]
   },
   "FR": {
    "beast": "lion",
@@ -1218,7 +1284,13 @@
    "color": "#cfe0ff",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    608,
+    600,
+    108
+   ]
   },
   "GB": {
    "beast": "lion",
@@ -1317,7 +1389,13 @@
    "color": "#d8e4ff",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    664,
+    600,
+    108
+   ]
   },
   "ID": {
    "beast": "garuda",
@@ -1416,7 +1494,13 @@
    "color": "#ffd0a0",
    "amb": "embers",
    "dir": -1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    616,
+    600,
+    108
+   ]
   },
   "IN": {
    "beast": "lion",
@@ -1515,7 +1599,13 @@
    "color": "#ffcf6a",
    "amb": "embers",
    "dir": -1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    576,
+    600,
+    108
+   ]
   },
   "IR": {
    "beast": "lion",
@@ -1614,7 +1704,13 @@
    "color": "#ffd27a",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    680,
+    600,
+    108
+   ]
   },
   "IT": {
    "beast": "wolf",
@@ -1713,7 +1809,13 @@
    "color": "#ffcf8a",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    568,
+    600,
+    108
+   ]
   },
   "JP": {
    "beast": "dragon",
@@ -1813,7 +1915,13 @@
    "amb": "petals",
    "petal": "#ffc6dc",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    20,
+    712,
+    600,
+    108
+   ]
   },
   "KE": {
    "beast": "lion",
@@ -1912,7 +2020,13 @@
    "color": "#ffb050",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    632,
+    600,
+    108
+   ]
   },
   "KR": {
    "beast": "haetae",
@@ -2012,7 +2126,13 @@
    "amb": "petals",
    "petal": "#ffc6dc",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    20,
+    720,
+    600,
+    108
+   ]
   },
   "MX": {
    "beast": "eagle",
@@ -2112,7 +2232,13 @@
    "amb": "petals",
    "petal": "#e8323c",
    "dir": -1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    720,
+    600,
+    108
+   ]
   },
   "NG": {
    "beast": "lion",
@@ -2211,7 +2337,13 @@
    "color": "#6dff7a",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    20,
+    424,
+    600,
+    108
+   ]
   },
   "PH": {
    "beast": "eagle",
@@ -2311,7 +2443,13 @@
    "amb": "petals",
    "petal": "#ffffff",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    20,
+    600,
+    600,
+    108
+   ]
   },
   "PK": {
    "beast": "leopard",
@@ -2410,7 +2548,13 @@
    "color": "#6dff8a",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    20,
+    640,
+    600,
+    108
+   ]
   },
   "PL": {
    "beast": "eagle",
@@ -2509,7 +2653,13 @@
    "color": "#ffffff",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    696,
+    600,
+    108
+   ]
   },
   "RU": {
    "beast": "bear",
@@ -2609,7 +2759,13 @@
    "amb": "petals",
    "petal": "#ffffff",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    720,
+    600,
+    108
+   ]
   },
   "TH": {
    "beast": "elephant",
@@ -2708,7 +2864,13 @@
    "color": "#ffd27a",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    688,
+    600,
+    108
+   ]
   },
   "TR": {
    "beast": "wolf",
@@ -2808,7 +2970,13 @@
    "amb": "petals",
    "petal": "#e8323c",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    648,
+    600,
+    108
+   ]
   },
   "TZ": {
    "beast": "elephant",
@@ -2907,7 +3075,13 @@
    "color": "#9fd8ff",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    720,
+    600,
+    108
+   ]
   },
   "US": {
    "beast": "eagle",
@@ -3006,7 +3180,13 @@
    "color": "#ffffff",
    "amb": "embers",
    "dir": -1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    608,
+    600,
+    108
+   ]
   },
   "VN": {
    "beast": "dragon",
@@ -3106,7 +3286,13 @@
    "amb": "petals",
    "petal": "#ff6a6a",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    20,
+    720,
+    600,
+    108
+   ]
   },
   "ZA": {
    "beast": "lion",
@@ -3205,7 +3391,13 @@
    "color": "#ffcf6a",
    "amb": "embers",
    "dir": 1,
-   "enter": "materialize"
+   "enter": "materialize",
+   "hb": [
+    320,
+    648,
+    600,
+    108
+   ]
   }
  },
  "kits": {
@@ -3651,7 +3843,18 @@
    "fx": "mist",
    "color": "#ffcf8a",
    "amb": "embers",
-   "dir": 1
+   "dir": 1,
+   "hb": [
+    320,
+    640,
+    600,
+    108
+   ],
+   "clan": {
+    "f": "kits/bear/clan-2799724f.webp",
+    "w": 640,
+    "h": 480
+   }
   },
   "dragon": {
    "layout": "B",
@@ -4095,7 +4298,18 @@
    "fx": "fire",
    "color": "#ffb030",
    "amb": "embers",
-   "dir": 1
+   "dir": 1,
+   "hb": [
+    320,
+    720,
+    600,
+    108
+   ],
+   "clan": {
+    "f": "kits/dragon/clan-8969024c.webp",
+    "w": 640,
+    "h": 480
+   }
   },
   "lion": {
    "layout": "B",
@@ -4539,7 +4753,18 @@
    "fx": "mist",
    "color": "#ffd27a",
    "amb": "embers",
-   "dir": 1
+   "dir": 1,
+   "hb": [
+    320,
+    616,
+    600,
+    108
+   ],
+   "clan": {
+    "f": "kits/lion/clan-925832aa.webp",
+    "w": 640,
+    "h": 480
+   }
   },
   "wolf": {
    "layout": "B",
@@ -4983,7 +5208,18 @@
    "fx": "mist",
    "color": "#cfe4ff",
    "amb": "embers",
-   "dir": 1
+   "dir": 1,
+   "hb": [
+    320,
+    648,
+    600,
+    108
+   ],
+   "clan": {
+    "f": "kits/wolf/clan-7aeba0af.webp",
+    "w": 640,
+    "h": 480
+   }
   }
  },
  "bgs": {},
@@ -5481,5 +5717,5 @@
    "kit": "lion"
   }
  },
- "updated": "2026-10-19T19:58:57Z"
+ "updated": "2026-10-21T11:29:24Z"
 }

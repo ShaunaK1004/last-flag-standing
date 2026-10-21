@@ -61,7 +61,11 @@ src = src.replace('<button class="wide" id="waReset">Back to the built-in sound<
 old_q = "    if (src==='superchat'){                               // Super Chat = spawn/revive WITH a shield, or shield if alive\n"
 if old_q in src and 'WINART.ST.scPop' not in src:
     src = src.replace(old_q, "    if (src==='superchat' && typeof WINART!=='undefined' && WINART && WINART.ST.scPop) WINART.ensure(code);   // art for the Super Chat pop\n" + old_q, 1)
-SCP = "if (p.src==='superchat' && typeof WINART!=='undefined' && WINART) WINART.scPop(p.code, p.user);"
+SCP_OLD = "WINART.scPop(p.code, p.user);"
+src = src.replace(SCP_OLD, "WINART.scPop(p.code, p.user, false, p.label);")
+src = src.replace("if (p.src==='superchat' && typeof WINART!=='undefined' && WINART) WINART.scPop(p.code, p.user, false, p.label);",
+                  "if (p.src==='superchat' && !p.noPop && typeof WINART!=='undefined' && WINART) WINART.scPop(p.code, p.user, false, p.label);")
+SCP = "if (p.src==='superchat' && !p.noPop && typeof WINART!=='undefined' && WINART) WINART.scPop(p.code, p.user, false, p.label);"
 for old in ["LIVECARD.push('🪂 '+c.name+' DROPS IN!', this.cardSub(p)+(nb.shield?' · with shield':''), p.code, '#ffcf3d');",
             "LIVECARD.push((b.shieldHits>1?'🛡×'+b.shieldHits+' ':'🛡 ')+b.c.name+(b.shieldHits>1?' SHIELD ×'+b.shieldHits+'!':' SHIELDED'), this.cardSub(p), p.code, b.shieldCol);",
             "LIVECARD.push('♻ '+b.c.name+' IS BACK!', this.cardSub(p)+(p.withShield?' · with shield':''), p.code, p.withShield?'#ffcf3d':'#5ef2c8');"]:
@@ -171,6 +175,261 @@ if 'id="promoArt"' not in src:
       <div class="hint">Lowest priority: they wait for every other line, a real Super Chat or subscriber always goes first, and a missed slot is simply skipped. Use the membership line only once channel memberships are switched on.</div>
     </div>
     ''' + k, 1)
+
+# ---- popup cards wait while the Super Chat pop covers the screen (so the thank-you card keeps its full time)
+old_lc = "  tick(dt){ if (!this.list.length) return; this.list[0].t+=dt;"
+if old_lc in src:
+    src = src.replace(old_lc, "  tick(dt){ if (!this.list.length) return; try{ if (typeof WINART!=='undefined' && WINART && WINART.scShowing()) return; }catch(e){} this.list[0].t+=dt;", 1)
+# ---- spoken reactions name the real event (Jewels / New member / Gift) instead of always "Super Chat"
+old_sy = "  say(k, c){ if (!LIVE.on) return false;"
+if old_sy in src:
+    src = src.replace(old_sy, "  say(k, c, label){ if (!LIVE.on) return false;", 1)
+old_sy2 = "if (!t) return false; COMMENTARY.special(t); return true; },"
+if old_sy2 in src:
+    src = src.replace(old_sy2, "if (!t) return false; const vl={'Jewels':'Jewels','New member':'New member','Gifted memberships':'Gifted membership','Member milestone':'Member'}[label||'']; COMMENTARY.special(vl ? t.replace(/Super Chat/g, vl) : t); return true; },", 1)
+old_rx = "    LIVESCHED.react(kind); LIVEVOX.say(key, name);\n"
+if old_rx in src:
+    src = src.replace(old_rx, "    LIVESCHED.react(kind); LIVEVOX.say(key, name, p.label);\n", 1)
+old_ld = "LIVEVOX.say(p.src==='sub'?'rSub':(nb.shield?'rLandShield':'rLand'), c.name);"
+if old_ld in src:
+    src = src.replace(old_ld, "LIVEVOX.say(p.src==='sub'?'rSub':(nb.shield?'rLandShield':'rLand'), c.name, p.label);", 1)
+
+# ======== Jewels v2: running totals, champion card at every N, country power at P0 / P0+step ... ========
+def _once(old, new, marker=None):
+    global src
+    if (marker or new) in src: return
+    assert src.count(old) == 1, ('patch anchor not found', old[:60]); src = src.replace(old, new, 1)
+
+# the champion-card pop is never fired twice for one Jewels gift: power requests from Jewels carry noPop
+src = src.replace("if (p.src==='superchat' && typeof WINART!=='undefined' && WINART) WINART.scPop(", "if (p.src==='superchat' && !p.noPop && typeof WINART!=='undefined' && WINART) WINART.scPop(")
+_once("      this.pend.push({code, type:'land', withShield, src, user, layers, label:opt.label||''});",
+      "      this.pend.push({code, type:'land', withShield, src, user, layers, label:opt.label||'', noPop:!!opt.noPop});")
+_once("    this.pend.push({code,type,src,user,saved:!!opt.saved,withShield:!!opt.withShield,layers,label:opt.label||''});",
+      "    this.pend.push({code,type,src,user,saved:!!opt.saved,withShield:!!opt.withShield,layers,label:opt.label||'',noPop:!!opt.noPop});")
+_once("      this.request(anyCode, w.type, w.src, w.user, {layers:w.layers, land:!this.ball(anyCode), landShield:w.src==='superchat', label:w.label});",
+      "      this.request(anyCode, w.type, w.src, w.user, {layers:w.layers, land:!this.ball(anyCode), landShield:w.src==='superchat', label:w.label, noPop:!!w.noPop});")
+_once("  add(p){ this.q.push({code:p.code,type:p.type,src:p.src,user:p.user||''});",
+      "  add(p){ this.q.push({code:p.code,type:p.type,src:p.src,user:p.user||'',label:p.label||'',noPop:!!p.noPop});")
+_once("      this.pend.push({code:s.code, type:t, src:s.src, user:s.user, saved:t==='shield'});",
+      "      this.pend.push({code:s.code, type:t, src:s.src, user:s.user, saved:t==='shield', label:s.label||'', noPop:!!s.noPop});")
+
+# Jewels go to their own counter (any phase - a gift during the winner screen still counts)
+_once("    this.stats.msgs++;\n    const t = m.t || Date.now();",
+      "    this.stats.msgs++;\n    if (m.kind==='jewels'){ try{ JEWELS.ingest(m); }catch(e){ try{ console.warn('jewels', e); }catch(_){} } return; }   // totals, champion card, power\n    const t = m.t || Date.now();")
+
+# spoken thank-you for the Jewels champion card (only ever with the card, never with the small thank-you card)
+_once('''  promoArt:[''', '''  jThanks:['Thank you {u} for the Jewels!','Big thanks to {u} for the Jewels!','{u}, thank you so much for the Jewels!'],
+  promoArt:[''', "jThanks:[")
+
+# the JEWELS engine, right after PROMO
+_once("PROMO.load();", """PROMO.load();
+
+/* Jewels: each viewer's total keeps adding up across rounds (and survives a reload; forgotten after 30 days idle).
+   - every gift: one thank-you card per viewer, updated in place while gifts keep coming (no voice)
+   - each time the total passes a multiple of POP (default 50): the champion card bursts with the handle + a spoken thank-you
+     (country = the one they typed most recently; nobody typed one -> a generic champion card with their handle)
+   - country power (shield / comeback / drop-in) at P0 (default 200), then every STEP more (300, 400 ...)
+   - one gift = at most one champion card and one power, however big it is */
+const JEWELS = {
+  cfg:{ pop:50, p0:200, step:100, prog:true }, tally:{}, later:[],
+  load(){ try{ const d=JSON.parse(localStorage.getItem('flagsrumble-jewels')||'{}'); Object.assign(this.cfg, d.cfg||{}); this.tally=d.tally||{};
+    const old=Date.now()-30*864e5; for (const k in this.tally) if (!this.tally[k] || (this.tally[k].t||0)<old) delete this.tally[k]; }catch(e){} },
+  save(){ try{ localStorage.setItem('flagsrumble-jewels', JSON.stringify({cfg:this.cfg, tally:this.tally})); }catch(e){} },
+  P(){ return Math.max(10, Math.min(500, this.cfg.pop|0 || 50)); },
+  A(){ return Math.max(10, this.cfg.p0|0 || 200); },
+  S(){ return Math.max(10, this.cfg.step|0 || 100); },
+  value(m){ const n=+m.count || parseInt(String(m.amount||'').replace(/[^0-9]/g,''),10) || 1; return Math.max(1, Math.min(1e6, Math.round(n))); },
+  powIdx(x){ const a=this.A(); return x<a ? 0 : 1+Math.floor((x-a)/this.S()); },
+  nextPow(x){ const a=this.A(); return x<a ? a : a+this.powIdx(x)*this.S(); },
+  spoken(u){ return String(u||'viewer').replace(/^@+/,'').replace(/[_.]+/g,' ').trim() || 'viewer'; },
+  ingest(m){
+    const C=CHAT, uid=(m.user&&m.user.id)||(m.user&&m.user.name)||'anon', uname=(m.user&&m.user.name)||'viewer', ln=uname.toLowerCase().replace(/^@/,'');
+    const pk='jewels|'+ln, prev=C.paidSeen.get(pk), now=Date.now();
+    if (prev && prev.via!==(m.via||'') && now-prev.t<90000){ C.note('Same Jewels from '+uname+' via a second source: ignored'); return; }
+    C.paidSeen.set(pk,{t:now, via:m.via||''});
+    if (m.user&&m.user.id&&m.user.name) C.names.set(ln, m.user.id);
+    const clean=chatClean(m.text||''), named=clean ? (chatCountries(clean)[0] || chatCountriesAll(clean)[0]) : null;
+    if (named) C.last.set(uid, named);
+    const r=this.tally[ln] || (this.tally[ln]={total:0, t:0}), before=r.total, v=this.value(m), P=this.P();
+    r.total+=v; r.t=now; this.save();
+    const pop = Math.floor(r.total/P) > Math.floor(before/P), power = this.powIdx(r.total) > this.powIdx(before);
+    this.card(uname, ln, v, r.total, pop);
+    C.note('Jewels from '+uname+': +'+v+' = '+r.total+(pop?' · champion card':'')+(power?' · country power':''));
+    if (!pop && !power) return;
+    let code=named || C.last.get(uid) || C.last.get(C.names.get(ln)) || null; if (code && !BY_CODE.has(code)) code=null;
+    if (power){
+      if (code){
+        if (G.phase==='WINNER' || G.phase==='INTRO') SAVED.add({code, type:'shield', src:'superchat', user:uname, label:'Jewels', noPop:true});
+        else C.request(code, chatIntent(clean)||'shield', 'superchat', uname, {layers:1, land:!C.ball(code), landShield:true, label:'Jewels', noPop:true});
+      } else {
+        const w={type:'shield', src:'superchat', user:uname, layers:1, label:'Jewels', noPop:true, t:now}; C.await.set(uid,w); C.await.set('n:'+ln,w);
+        C.feed.unshift({txt:'💎 '+uname+': name your country!', col:'#7fe3ff', t:0}); if (C.feed.length>3) C.feed.length=3;
+      }
+    }
+    if (pop){ const job={ code, uname, label:(Math.floor(r.total/P)*P)+' Jewels' };
+      if (G.phase==='WINNER') this.later.push(job); else this.burst(job); }
+  },
+  burst(j){
+    if (typeof WINART==='undefined' || !WINART) return;
+    WINART.scPop(j.code, j.uname, false, j.label, { onStart:()=>{ if (!LIVE.on) return; const t=LIVEVOX.pick('jThanks').replace('{u}', this.spoken(j.uname)); if (t) COMMENTARY.special(t); } });
+  },
+  onRound(){ const l=this.later.splice(0); l.forEach(j=>{ try{ this.burst(j); }catch(e){} }); },
+  card(uname, ln, v, total, pop){                    // one thank-you card per viewer, updated while gifts keep coming
+    if (!LIVE.thanks) return;
+    const P=this.P(), n=String(uname||'viewer').replace(/^@/,'');
+    const prog = !this.cfg.prog ? '' : pop ? ' · 🎉 champion card!' : ' · '+(total%P)+'/'+P+' to champion card';
+    const c=LIVECARD.list.find(x=>x.jw===ln && x.t<LIVECARD.DUR-400);
+    if (c){ c.jwSum+=v; c.sub='Jewels ×'+c.jwSum+prog; c.t=Math.min(c.t, 600); return; }
+    LIVECARD.push('THANK YOU '+n.toUpperCase()+'!', 'Jewels ×'+v+prog, null, '#7fe3ff', '💎', true);
+    const k=LIVECARD.list[LIVECARD.list.length-1]; if (k){ k.jw=ln; k.jwSum=v; }
+  },
+};
+JEWELS.load();
+setTimeout(()=>{ try{
+  const $=id=>document.getElementById(id), J=JEWELS;
+  const sl=(id, key, fmt)=>{ const el=$(id), lab=$(id+'V'); if (!el) return; const paint=()=>{ el.value=J.cfg[key]; if (lab) lab.textContent=fmt?fmt(J.cfg[key]):J.cfg[key]; };
+    el.addEventListener('input',()=>{ J.cfg[key]=parseInt(el.value,10); J.save(); paint(); }); paint(); };
+  sl('jwPop','pop'); sl('jwP0','p0'); sl('jwStep','step');
+  const pr=$('jwProg'); if (pr){ const paint=()=>[...pr.children].forEach(b=>b.classList.toggle('on', b.dataset.v===String(J.cfg.prog)));
+    pr.addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; J.cfg.prog=b.dataset.v==='true'; J.save(); paint(); }); paint(); }
+  const rs=$('jwReset'); if (rs) rs.addEventListener('click',()=>{ J.tally={}; J.save(); });
+  setInterval(()=>{ const el=$('jwTop'); if (!el) return; const top=Object.entries(J.tally).sort((a,b)=>b[1].total-a[1].total).slice(0,5);
+    el.textContent = top.length ? 'Top: '+top.map(([k,r])=>'@'+k+' '+r.total+' (next card '+(Math.floor(r.total/J.P())+1)*J.P()+', power '+J.nextPow(r.total)+')').join(' · ') : 'No Jewels yet.'; }, 2000);
+}catch(e){} }, 0);""", "const JEWELS = {")
+
+# round start: champion cards earned during the winner screen play now
+src = src.replace(" try{ PROMO.onRound(G?G.roundNo:1); }catch(e){}\n", " try{ PROMO.onRound(G?G.roundNo:1); }catch(e){} try{ JEWELS.onRound(); }catch(e){}\n", 1) if "JEWELS.onRound()" not in src else src
+
+# right info box: a 5th rule row for Jewels (rows moved closer together)
+_once("['🔔','Subscribe','FREE POWER','#b9a4ff']];\n  rows.forEach((r,i)=>{ const y=BY+58+i*27;",
+      "['🔔','Subscribe','FREE POWER','#b9a4ff'],['💎',(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels','🛡 / ♻','#7fe3ff']];\n  rows.forEach((r,i)=>{ const y=BY+54+i*23;")
+# corner layout footer: alternate the Super Chat tip with the Jewels tip
+_once("  const txt=show ? ev.txt : '⭐ Super Chat your country = 🛡 power!';",
+      "  const txt=show ? ev.txt : (Math.floor(performance.now()/8000)%2 ? '💎 '+(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels = 🛡 power for your country!' : '⭐ Super Chat your country = 🛡 power!');")
+
+# operator panel: Jewels settings (Live tab), handle position (Winner tab), a 50-Jewels test button
+_once('''    <div class="pgroup" data-page="live">
+      <h2>Support lines (spoken)</h2>''', '''    <div class="pgroup" data-page="live">
+      <h2>Jewels</h2>
+      <label class="blab">Champion card every <b id="jwPopV">50</b> Jewels<input type="range" id="jwPop" min="10" max="500" step="10" value="50" style="width:100%"></label>
+      <label class="blab">Country power (shield / comeback / drop-in) at <b id="jwP0V">200</b> Jewels<input type="range" id="jwP0" min="50" max="1000" step="10" value="200" style="width:100%"></label>
+      <label class="blab">…then again every <b id="jwStepV">100</b> more<input type="range" id="jwStep" min="50" max="500" step="10" value="100" style="width:100%"></label>
+      <div class="hrow"><span>Progress on the thank-you card</span><div class="seg" id="jwProg"><button data-v="true">Show</button><button data-v="false">Off</button></div></div>
+      <div class="hint">Each viewer's Jewels add up across rounds. One gift never gives more than one champion card and one power, however big. Small gifts get a thank-you card only (merged per viewer, no voice).</div>
+      <div class="hint" id="jwTop" style="color:#c9d3ff"></div>
+      <button class="wide" id="jwReset">Reset all Jewels totals</button>
+    </div>
+    <div class="pgroup" data-page="live">
+      <h2>Support lines (spoken)</h2>''', 'id="jwPop"')
+_once('<label class="blab" style="margin-top:8px">Pop length <b id="waScDurV">',
+      '<div class="hrow" style="margin-top:8px"><span>@handle position</span><div class="seg" id="waScTop"><button data-v="top">Upper banner + bottom bar</button><button data-v="bottom">Bottom bar only</button></div></div>\n      <label class="blab" style="margin-top:8px">Pop length <b id="waScDurV">', 'id="waScTop"')
+_once('<button id="tJewel">Jewels ×2</button>', '<button id="tJewel">Jewels ×2</button><button id="tJewel50">Jewels ×50</button>', 'id="tJewel50"')
+_once("  $('tJewel').addEventListener('click',()=>tEvt('jewels',2));", "  $('tJewel').addEventListener('click',()=>tEvt('jewels',2));\n  $('tJewel50').addEventListener('click',()=>tEvt('jewels',50));", "tEvt('jewels',50)")
+
+# ======== paid event without a country: say what to do (once per viewer per 2 min) ========
+_once('''  jThanks:[''', '''  scNoCountry:["Thank you {u}! Now type your country's name or flag in chat, and it jumps into the arena with a shield!",
+               "{u}, thanks for the support! Which country is yours? Type its name or flag, and it spawns in with a shield!",
+               "Thank you {u}! Your power is waiting. Type your country's name or flag to bring it into the arena!"],
+  subNoCountry:["Thanks for subscribing, {u}! Type your country's name or flag in chat to claim your free power!",
+                "Welcome, {u}! Type your country's name or flag in chat, and your free power goes to it!"],
+  jNeedCountry:["Thank you {u} for the Jewels! Type your country's name or flag in chat to claim its power!",
+                "Big thanks, {u}! Your Jewels earned a power. Type your country's name or flag to use it!"],
+  jThanks:[''', "scNoCountry:[")
+_once("const PROMO = {", """/* a paid event with no country named (now or earlier): tell the viewer what to type - once per viewer per 2 min */
+function askCountry(uname, sub){
+  try{ if (!LIVE.on) return; const k=String(uname||'').toLowerCase().replace(/^@/,''), now=Date.now(); ASKED.set(k, ASKED.get(k)||0);
+    if (now-ASKED.get(k)<120000) return; ASKED.set(k, now);
+    const sp=String(uname||'viewer').replace(/^@+/,'').replace(/[_.]+/g,' ').trim()||'viewer', t=LIVEVOX.pick(sub?'subNoCountry':'scNoCountry').replace('{u}', sp);
+    if (t) COMMENTARY.special(t); }catch(e){}
+}
+const ASKED = new Map();
+const PROMO = {""", "function askCountry(")
+_once("      this.note(label+' from '+uname+': waiting for their next country message');",
+      "      this.note(label+' from '+uname+': waiting for their next country message'); askCountry(uname, src==='sub');")
+# Super Chat between rounds without a country: keep it waiting into the next round instead of dropping it
+_once("    if (!code){ this.note('Super Chat from '+uname+' between rounds: no country found'); return; }",
+      "    if (!code){ const w={type:'shield', src:'superchat', user:uname, layers:1, label:'', t:Date.now()}, ln=uname.toLowerCase().replace(/^@/,'');\n      (this.lateAwait||(this.lateAwait=[])).push([uid, w], ['n:'+ln, w]); this.note('Super Chat from '+uname+' between rounds: waiting for their country (next round)'); askCountry(uname, false); return; }")
+_once("    this.st.clear(); this.pend.length=0; this.await.clear();",
+      "    this.st.clear(); this.pend.length=0; this.await.clear(); if (this.lateAwait){ for (const [k,w] of this.lateAwait) this.await.set(k,w); this.lateAwait=[]; }")
+# Jewels: when their champion card plays but the earned power still needs a country, the card's line says so
+_once("    if (pop){ const job={ code, uname, label:(Math.floor(r.total/P)*P)+' Jewels' };",
+      "    if (pop){ const job={ code, uname, label:(Math.floor(r.total/P)*P)+' Jewels', needCountry: power && !code };")
+_once("const t=LIVEVOX.pick('jThanks').replace('{u}', this.spoken(j.uname));",
+      "const t=LIVEVOX.pick(j.needCountry?'jNeedCountry':'jThanks').replace('{u}', this.spoken(j.uname));")
+
+# two Super Chats before the country is named: both count (shield layers add up)
+_once("      const w={type,src,user:uname,layers,label:kind==='superchat'?'':label,t:Date.now()}; this.await.set(uid,w);",
+      "      const w={type,src,user:uname,layers,label:kind==='superchat'?'':label,t:Date.now()}; const pw=this.await.get(uid)||this.await.get('n:'+lname); if (pw && pw.src===src && src!=='sub') w.layers=Math.min(5,(pw.layers||1)+layers); this.await.set(uid,w);")
+
+# ======== OBS-safe pickers: OBS's Interact window can't open native <select> lists ========
+PICK_JS = r'''<script>
+/* OBS-safe pickers. OBS's "Interact" window can't open a native dropdown list, so every <select> in the panel
+   is shown as a type-to-search box with its own in-page list instead (the hidden <select> stays the source of truth,
+   so all existing code keeps working). Countries match by name, short code (IN, USA, UK), flag emoji or common spelling. */
+(function(){
+  try{
+    const st=document.createElement('style');
+    st.textContent='.pk{position:relative;margin-top:3px}.pk .tin{margin-top:0}.pk .pl{position:absolute;left:0;right:0;top:calc(100% + 2px);z-index:60;max-height:260px;overflow:auto;background:#0b1130;border:1px solid #4a5aa8;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.55);display:none}'+
+      '.pk .pl div{padding:8px 10px;cursor:pointer;color:#dfe6ff;font:600 13px system-ui,sans-serif;border-bottom:1px solid rgba(255,255,255,.05)}.pk .pl div.on,.pk .pl div:hover{background:#2a3a7e}.pk .pl .none{color:#8f9bc8;cursor:default}';
+    document.head.appendChild(st);
+    const norm=s=>String(s||'').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+    function enhance(sel){
+      if (!sel || sel.dataset.pk) return; sel.dataset.pk='1';
+      const box=document.createElement('div'), inp=document.createElement('input'), list=document.createElement('div');
+      box.className='pk'; if (sel.style.flex) box.style.flex=sel.style.flex; box.style.margin=sel.style.margin||'';
+      inp.className='tin'; inp.autocomplete='off'; inp.spellcheck=false; list.className='pl';
+      box.append(inp, list); sel.insertAdjacentElement('afterend', box); sel.style.display='none';
+      let items=[], hi=0, open=false;
+      const isCountry=()=>[...sel.options].slice(0,8).every(o=>/^[A-Z]{2}$/.test(o.value));
+      inp.placeholder = 'Type to search…';
+      const label=()=>{ const o=sel.selectedOptions && sel.selectedOptions[0]; return o ? o.textContent : ''; };
+      function refresh(){ try{ sel.dispatchEvent(new Event('focus')); }catch(e){} }
+      function find(q){
+        const opts=[...sel.options].filter(o=>!o.disabled && o.value!==''); if (!q) return opts;
+        const nq=norm(q), up=q.trim().toUpperCase(), seen=new Set(), out=[];
+        const add=o=>{ if (o && !seen.has(o.value)){ seen.add(o.value); out.push(o); } };
+        if (isCountry()){
+          let codes=[]; try{ codes=chatCountriesAll(chatClean(q)); }catch(e){}
+          codes.forEach(c=>add(opts.find(o=>o.value===c)));
+          add(opts.find(o=>o.value===up));
+          const al={UK:'GB',USA:'US',UAE:'AE',KSA:'SA',DRC:'CD'}[up]; if (al) add(opts.find(o=>o.value===al));
+        }
+        if (!nq) return out.length ? out : opts;                  // only a flag emoji / symbols typed
+        opts.filter(o=>norm(o.textContent).startsWith(nq)).forEach(add);
+        opts.filter(o=>norm(o.textContent).split(' ').some(w=>w.startsWith(nq))).forEach(add);
+        opts.filter(o=>norm(o.textContent).includes(nq)).forEach(add);
+        return out;
+      }
+      function render(){
+        list.innerHTML=''; items=find(inp.value===label()?'':inp.value).slice(0,80); if (hi>=items.length) hi=0;
+        if (!items.length){ const d=document.createElement('div'); d.className='none'; d.textContent='No match'; list.appendChild(d); }
+        items.forEach((o,i)=>{ const d=document.createElement('div'); d.textContent=o.textContent; if (i===hi) d.className='on';
+          d.addEventListener('mousedown',e=>{ e.preventDefault(); pick(o.value); }); list.appendChild(d); });
+        list.style.display='block'; open=true;
+        const on=list.querySelector('.on'); if (on) on.scrollIntoView({block:'nearest'});
+      }
+      function close(){ list.style.display='none'; open=false; inp.value=label(); }
+      function pick(v){ sel.value=v; sel.dispatchEvent(new Event('change',{bubbles:true})); sel.dispatchEvent(new Event('input',{bubbles:true})); close(); inp.blur(); }
+      inp.addEventListener('focus',()=>{ refresh(); hi=0; inp.select(); render(); });
+      inp.addEventListener('input',()=>{ hi=0; render(); });
+      inp.addEventListener('keydown',e=>{
+        if (e.key==='ArrowDown'){ hi=Math.min(items.length-1,hi+1); render(); e.preventDefault(); }
+        else if (e.key==='ArrowUp'){ hi=Math.max(0,hi-1); render(); e.preventDefault(); }
+        else if (e.key==='Enter'){ if (items[hi]) pick(items[hi].value); e.preventDefault(); }
+        else if (e.key==='Escape'){ close(); inp.blur(); } });
+      inp.addEventListener('blur',()=>setTimeout(()=>{ if (open) close(); },120));
+      setInterval(()=>{ if (document.activeElement!==inp) inp.value=label(); }, 600);
+      inp.value=label();
+    }
+    const run=()=>document.querySelectorAll('select').forEach(enhance);
+    run(); setTimeout(run, 800); setTimeout(run, 3000);
+  }catch(e){ try{ console.warn('pickers', e); }catch(_){} }
+})();
+</script>
+'''
+if 'OBS-safe pickers.' in src:
+    a_ = src.index('<script>\n/* OBS-safe pickers.'); b_ = src.index('</script>\n', a_) + len('</script>\n'); src = src[:a_] + src[b_:]
+i = src.rindex('</body>'); src = src[:i] + PICK_JS + src[i:]
 
 # header note about the art files
 old_h = 'Drop in audio/loop.mp3 later for a music bed.'

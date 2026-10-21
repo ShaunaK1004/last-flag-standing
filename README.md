@@ -55,6 +55,53 @@ Real recordings in `winart/sfx/`, all at the same loudness:
 
 To change one beast: 🏆 Winner tab → **Beast sounds** → pick the beast → upload your mp3. It's saved in that browser. **Back to the default sound** undoes it.
 
+## Thank-you cards and Jewels (merged from your other build)
+- **Thank-you card** for every Super Chat, Super Sticker, Jewels, new member, gifted memberships, member milestone and new subscriber: "THANK YOU OYADEN!" with a matching subtitle and icon.
+  - It also shows when Interactive Mode is off; then no game power is given.
+  - Each event gets one card only, even if it arrives from two sources. A subscriber already thanked today isn't thanked again.
+  - Switch: Live tab → Thank-you cards.
+- **Jewels add up per viewer, across rounds** (kept after a reload; forgotten after 30 days without gifts). Settings are in Live tab → **Jewels**.
+  - **Every gift:** one thank-you card per viewer, updated in place while their gifts keep coming, for example "Jewels ×30 · 30/50 to champion card". No voice.
+  - **Every 50 Jewels** (slider, 10–500): their country's champion card bursts with "★ 50 JEWELS ◆ @handle", plus a spoken thank-you.
+    - The country is the one they typed most recently.
+    - If they never typed one, a generic **clan** champion card shows instead. It's one of the 4 shared warriors, rotating. Its war banner (and the crest ball) shows that card's own beast, engraved in gold. Their name is in the band.
+  - **At 200 Jewels, then 300, 400 and so on** (sliders): their country gets a power. Shield if alive; back with a shield if it's out or not playing. Spoken like a subscriber reaction: "Jewels shield for Kenya!"
+  - **One gift gives at most one champion card and one power**, however big it is. For example, a single 100-Jewels gift still bursts once.
+  - **During the winner screen:** a gift there still counts. Its champion card plays when the next round starts.
+  - The right-hand rules box shows "💎 200 Jewels 🛡 / ♻". The corner layout alternates that tip with the Super Chat tip.
+  - Test tab: **Jewels ×2** and **Jewels ×50**. Live tab: **Reset all Jewels totals**.
+- **@handle banner** on the champion card: Winner tab → Super Chat pop → **@handle position**.
+  - **Upper banner + bottom bar:** the banner sits in the card's upper half, in a spot picked per card so it never covers a face. YouTube's mobile chat overlay hides the bottom bar.
+  - **Bottom bar only:** the old look.
+- **StreamElements:** its `subscription` type counts as a new subscriber. Alert names containing "jewel" or "gift" (but not membership gifts) count as Jewels.
+- Test tab → **Jewels ×2** tries the card and the effect.
+- **Order on screen for a paid event:**
+  1. The thank-you card appears.
+  2. About 0.9 s later, the country's champion card bursts on screen with "★ JEWELS ◆ @handle" (or SUPER CHAT / NEW MEMBER / GIFTED MEMBERSHIPS). The popup cards pause while it covers the screen.
+  3. The power card follows: "🛡 KENYA SHIELDED · Jewels · @handle".
+- The spoken reaction names the real event: "Jewels shield for Kenya!", "New member comeback, Kenya is back!"
+
+## Dropdowns in OBS (fixed)
+OBS's Interact window can't open normal dropdown lists, so every dropdown in the panel is now a **type-to-search box**:
+- Manual country and pool
+- Test-tab country
+- Winner-tab country and beast
+
+To use one:
+1. Click the box.
+2. Type part of a name, a short code (IN, USA, UK, UAE), or a flag emoji (🇮🇳).
+3. Press **Enter** for the top match, or click one in the list. ↑/↓ moves through the list and Esc closes it.
+
+## Paid event with no country named
+If a viewer Super Chats (or joins as a member, gifts memberships or subscribes) and has never named a country, the game says what to do. It's spoken right away, with real-event priority:
+- **Super Chat:** "Thank you Rahul Gaming! Now type your country's name or flag in chat, and it jumps into the arena with a shield!" (3 rotating lines)
+- **Subscriber:** "Thanks for subscribing, NewSub! Type your country's name or flag in chat to claim your free power!"
+- **Jewels:** when a champion card plays but the earned power still needs a country, the card's thank-you line says so.
+- It plays once per viewer every 2 minutes, so it never nags.
+- When they type the country, the power lands as usual: card, burst and "Super Chat shield for China!"
+- Two Super Chats before naming a country both count: the shield gets 2 layers.
+- A Super Chat with no country sent during the winner screen now waits into the next round. Before, it was dropped.
+
 ## Super Chat pop
 When a Super Chat lands, that country's card bursts on screen with no sound. It lasts **1 s** by default; the **Pop length** slider sets anything from 1 to 3 s, and the whole animation plays slower or faster to fit:
 - It opens as a gold circle from the ring centre, the card grows and the beast roars, then the circle snaps shut.

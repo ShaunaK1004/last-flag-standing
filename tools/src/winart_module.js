@@ -32,7 +32,7 @@ var WINART = (function(){
   const WAIT_MS = 1200;           // a winner whose art is still loading waits this long, else current card
   const REFRESH_MS = 10*60*1000;  // re-read the manifest so a new batch goes live without restarting OBS
   const KEY = 'flagsrumble-winart-v1', ROAR_KEY = 'flagsrumble-winart-roar';
-  const ST = { style:'art', roar:true, vol:0.9, anim:'full', scPop:true, scDur:1.0 };   // scPop: Super Chat burst on/off · scDur: its length, 1-3 s   // anim: 'full' build-up (10 s) | 'quick' pop + roar (5 s)
+  const ST = { style:'art', roar:true, vol:0.9, anim:'full', scPop:true, scDur:1.0, scTop:true };   // scPop: Super Chat burst on/off · scDur: its length, 1-3 s   // anim: 'full' build-up (10 s) | 'quick' pop + roar (5 s)
   try{ Object.assign(ST, JSON.parse(localStorage.getItem(KEY)||'{}')); }catch(e){}
   const save = () => { try{ localStorage.setItem(KEY, JSON.stringify(ST)); }catch(e){} };
   const up = c => String(c||'').toUpperCase();
@@ -61,8 +61,10 @@ var WINART = (function(){
   setInterval(()=>{ if (!preview && !(G && G.phase==='WINNER')) readManifest(false); }, REFRESH_MS);
 
   // what a country uses: its own poster, or kit + background (test-only kit entries play only from the Winner tab)
+  const genName = code => { code=String(code||''); return code.startsWith('~G:') ? code.split(':').slice(2).join(':') : null; };
   function entry(code, forTest){
     if (!M) return null; code=up(code);
+    if (code.startsWith('~G:')){ const kn=code.split(':')[1].toLowerCase(), k=M.kits[kn]; return k && k.layout==='B' ? { type:'kitB', e:k, kitName:kn, generic:true } : null; }
     const p=M.posters[code]; if (p) return { type:'poster', e:p };
     const k=M.kitCountries && M.kitCountries[code];
     if (k && (forTest || !k.testOnly) && M.kits[k.kit] && M.kits[k.kit].layout==='B') return { type:'kitB', e:M.kits[k.kit], kitName:k.kit, map:k };
@@ -117,11 +119,12 @@ var WINART = (function(){
     return toBitmap(c);
   }
   function flagSource(code){                // the country's real flag art (640x480), else the procedural painter
+    if (genName(code)!=null){ const w=canvas(640,480), g=w.getContext('2d'); g.fillStyle='#f4f4f2'; g.fillRect(0,0,640,480); return w; }   // generic card: plain white flag
     const fi=(typeof FLAG_IMG!=='undefined') && FLAG_IMG[code.toLowerCase()]; if (fi) return fi;
     const c=BY_CODE.get(code), cv=canvas(640,480); if (c && c.ops) paintFlag(cv.getContext('2d'), c.ops, 640, 480); return cv;
   }
-  function makeKitFlag(kit, shade, code){   // print the country flag onto the kit's cloth: follows the cloth top/bottom per column
-    const L=kit.layers.flag, st=kit.flagColStep||4, cols=kit.flagCols, src=flagSource(code), sw=src.width||640, sh=src.height||480;
+  function makeKitFlag(kit, shade, code, over){   // print the country flag (or the clan banner) onto the kit's cloth: follows the cloth top/bottom per column
+    const L=kit.layers.flag, st=kit.flagColStep||4, cols=kit.flagCols, src=over||flagSource(code), sw=src.width||640, sh=src.height||480;
     const c=canvas(L.w,L.h), g=c.getContext('2d'); g.imageSmoothingQuality='high';
     g.drawImage(src, 0,0,sw,sh, 0,0,L.w,L.h);
     for (let x=0;x<L.w;x+=1){                // 1 px columns, cloth edges interpolated between the samples (no stair-steps)
@@ -226,9 +229,9 @@ var WINART = (function(){
     cinzel = (window.FontFace ? srcP.then(s=>new FontFace('WA Cinzel', 'url('+s+')', { weight:'900' }).load()).then(f=>{ document.fonts.add(f); return true; }) : Promise.resolve(false)).catch(()=>false);
     return cinzel;
   }
-  function makeKitTitleB(kit, title, code){
+  function makeKitTitleB(kit, title, code, over){
     const L=kit.layers.title, c=canvas(L.w,L.h), g=c.getContext('2d'); g.drawImage(title,0,0,L.w,L.h);
-    const [bx,by,br]=kit.ball, cx=bx-L.x, cy=by-L.y, src=flagSource(code), sw=src.width||640, sh=src.height||480;
+    const [bx,by,br]=kit.ball, cx=bx-L.x, cy=by-L.y, src=over||flagSource(code), sw=src.width||640, sh=src.height||480;
     // ball: flag (cover-fit) multiplied onto the white glossy ball, then a soft highlight back on top
     const b=canvas(2*br+2,2*br+2), bg2=b.getContext('2d'), hh=2*br, ww=hh*sw/sh;
     bg2.save(); bg2.beginPath(); bg2.arc(br+1,br+1,br,0,7); bg2.clip();
@@ -238,9 +241,9 @@ var WINART = (function(){
     hl.addColorStop(0,'rgba(255,255,255,.55)'); hl.addColorStop(0.35,'rgba(255,255,255,.12)'); hl.addColorStop(1,'rgba(255,255,255,0)'); bg2.fillStyle=hl; bg2.fillRect(0,0,2*br+2,2*br+2);
     bg2.globalCompositeOperation='source-over'; const rim=bg2.createRadialGradient(br+1,br+1,br*0.72,br+1,br+1,br);
     rim.addColorStop(0,'rgba(0,0,0,0)'); rim.addColorStop(1,'rgba(0,0,0,.32)'); bg2.fillStyle=rim; bg2.fillRect(0,0,2*br+2,2*br+2);
-    bg2.restore(); g.drawImage(b, cx-br-1, cy-br-1);
+    bg2.restore(); if (genName(code)==null || over) g.drawImage(b, cx-br-1, cy-br-1);
     // name in the dark band
-    const [x0,y0,x1,y1]=kit.band, c0=BY_CODE.get(code), name=String((c0&&c0.name)||code).toUpperCase();
+    const [x0,y0,x1,y1]=kit.band, c0=BY_CODE.get(code), name=String(genName(code)!=null ? genName(code).replace(/^@+/,'') : ((c0&&c0.name)||code)).toUpperCase();   // Cinzel has no clean @
     const bw=(x1-x0)*0.9, bh=(y1-y0), mx=(x0+x1)/2-L.x, my=(y0+y1)/2-L.y+bh*0.04, FONT='"WA Cinzel","Cinzel",Georgia,serif';
     let size=bh*0.78; g.font='900 '+size+'px '+FONT; let w=g.measureText(name).width, sx=1;
     if (w>bw){ size=Math.max(bh*0.46, size*bw/w); g.font='900 '+size+'px '+FONT; w=g.measureText(name).width; if (w>bw) sx=bw/w; }
@@ -270,9 +273,10 @@ var WINART = (function(){
           .then(([bodyFade, beastFade])=>({ I:{bg,body,bodyFade,flag,beast,beastFade,title}, L:{...Ls, bodyFade:Ls.body, beastFade:Ls.beast} })))
         .then(pk=>(Ls.warp && Ls.wmap) ? Promise.all([file(Ls.warp.f), file(Ls.wmap.f)]).then(([warp,wmap])=>{ pk.I.warp=warp; pk.wgt=readWeights(wmap); return pk; }) : pk);
     } else if (en.type==='kitB'){
-      job=Promise.all(['bg','body','flag','beast','title','warp','wmap'].map(k=>file(Ls[k].f)).concat([nameFont()])).then(([bg,body,shade,beast,title,warp,wmap])=>
+      const clanP = en.generic && e.clan ? file(e.clan.f).catch(()=>null) : Promise.resolve(null);   // generic card: the kit's clan banner
+      job=Promise.all(['bg','body','flag','beast','title','warp','wmap'].map(k=>file(Ls[k].f)).concat([nameFont(), clanP])).then(([bg,body,shade,beast,title,warp,wmap,font,clan])=>
         Promise.all([ need(Ls.body.f+'#fade', ()=>makeFade(body, Ls.body, ...(fd.body||[720,832]))), need(Ls.beast.f+'#fade', ()=>makeFade(beast, Ls.beast, ...(fd.beast||[590,760]))),
-                      need('kitflag:'+code+':'+en.kitName, ()=>makeKitFlag(e, shade, code)), need('kittitle:'+code+':'+en.kitName, ()=>makeKitTitleB(e, title, code)) ])
+                      need('kitflag:'+code+':'+en.kitName, ()=>makeKitFlag(e, shade, code, clan)), need('kittitle:'+code+':'+en.kitName, ()=>makeKitTitleB(e, title, code, clan)) ])
           .then(([bodyFade, beastFade, flag, ttl])=>({ I:{bg,body,bodyFade,flag,beast,beastFade,title:ttl,warp}, wgt:readWeights(wmap), L:{...Ls, bodyFade:Ls.body, beastFade:Ls.beast} })));
     } else {
       const plateP = Ls.plate ? file(Ls.plate.f) : Promise.resolve(null);
@@ -287,7 +291,7 @@ var WINART = (function(){
     }
     job.then(p=>{ if (LOADED.get(code)!==rec) return;
         const B=e.layout==='B';
-        rec.pack={ ...p, w:e.w||941, h:e.h||1672, an:e.anchors, grid:B?null:(e.grid||M.layout.grid), text:e.text||M.layout.text, beast:e.beast||'bear',
+        rec.pack={ ...p, hb:e.hb||null, w:e.w||941, h:e.h||1672, an:e.anchors, grid:B?null:(e.grid||M.layout.grid), text:e.text||M.layout.text, beast:e.beast||'bear',
                    B, cls:e.cls||'cat', fx:e.fx||'mist', color:e.color||'#ffd27a', amb:e.amb||'embers', petal:e.petal||'#ffb6d0', dir:e.dir||-1 };
         rec.state='ready'; rec.warm=false; trim(); paintUi(); })
       .catch(err=>{ console.warn('winart', code, err); if (LOADED.get(code)!==rec) return; rec.keys.forEach(k=>releaseRes(k, code)); rec.keys=[]; rec.state='fail'; rec.at=now(); paintUi(); });
@@ -567,7 +571,7 @@ var WINART = (function(){
   function statsLine(info, P){
     const T=P.text; if (!T || !T.stats) return;
     if (info.sc!=null){                                  // Super Chat pop: the viewer's handle instead of the numbers
-      const h=info.sc, runs=[['★ SUPER CHAT','#ffd84a'],['     ','dia'],[h||'THANK YOU!','#ffffff']];
+      const h=info.sc, runs=[['★ '+(info.scLabel||'Super Chat').toUpperCase(),'#ffd84a'],['     ','dia'],[h||'THANK YOU!','#ffffff']];
       let size=(T.statsSize||24)*1.25; ctx.font='700 '+size+'px '+POP; const tot=runs.reduce((a,[x])=>a+ctx.measureText(x).width,0), lim=(T.statsW||700)*1.05;
       if (tot>lim) size*=lim/tot;
       ctx.save(); ctx.shadowColor='rgba(0,0,0,.8)'; ctx.shadowBlur=6; textRuns(runs, T.stats[0], T.stats[1], size, '700'); ctx.restore(); return;
@@ -729,20 +733,25 @@ var WINART = (function(){
      Opens as a gold-rimmed circle from the ring centre while the card grows, the beast roars (no sound),
      then the circle snaps shut. The round keeps running underneath. Art is loaded the moment the Super
      Chat arrives; if it isn't ready within SC_WAIT the pop is skipped (the normal popup card still shows). */
-  const SC_MS=1200, SC_WAIT=3000, SC_OPEN=0.22, SC_CLOSE=0.95;              // the burst is designed at 1.2 s and time-scaled to ST.scDur
+  const SC_MS=1200, SC_WAIT=4000, SC_DELAY=900, SC_OPEN=0.22, SC_CLOSE=0.95;   // SC_DELAY: the thank-you card shows first              // the burst is designed at 1.2 s and time-scaled to ST.scDur
   const scDur = () => Math.max(1, Math.min(3, +ST.scDur || 1));
   const scQ=[]; let scCur=null, scN=0, scSkip=0;
   const handle = u => { u=String(u||'').trim().replace(/^@+/,''); if (!u) return ''; u='@'+u; return u.length>24 ? u.slice(0,23)+'…' : u; };
-  function scPop(code, user, force){
+  let genI=0;
+  function scPop(code, user, force, label, opt){
+    opt=opt||{};
+    if (!code && M){ const ks=Object.keys(M.kits).filter(k=>M.kits[k].layout==='B'); if (!ks.length) return false;   // nobody named a country: generic champion card
+      const h=handle(user)||'@VIEWER'; code='~G:'+ks[(genI++)%ks.length]+':'+h; }
     code=up(code); if ((!ST.scPop && !force) || !M || !(force ? hasTest(code) : has(code))) return false;
-    if (scQ.length>=6) scQ.shift(); scQ.push({ code, user:handle(user), t:now() }); ensure(code, force); return true;
+    if (scQ.length>=6) scQ.shift(); scQ.push({ code, user:handle(user), label:String(label||''), t:now(), force:!!force, onStart:opt.onStart||null }); if (opt.onSkip) scQ[scQ.length-1].onSkip=opt.onSkip; ensure(code, force); return true;
   }
   function scDraw(){
     if (!scCur){
       while (scQ.length){ const q=scQ[0], r=LOADED.get(q.code);
-        if (r && r.state==='ready' && !(G && G.phase==='WINNER')){ scQ.shift();
-          scN++; scCur={ code:q.code, t0:now(), frozen:null, dur:scDur(), E:newState('sc'), info:{ code:q.code, sc:q.user, lasted:0, wins:Math.max(1,careers()[q.code]||0), left:0, dead:[], field:fieldN(), cycle:(G?G.roundNo:1), sound:false } }; break; }
-        if ((r && r.state==='fail') || now()-q.t>SC_WAIT || !r){ scQ.shift(); scSkip++; continue; }
+        if (r && r.state==='ready' && !(G && G.phase==='WINNER') && (q.force || now()-q.t>=SC_DELAY)){ scQ.shift();
+          if (q.onStart) try{ q.onStart(); }catch(e){ oops('pop start', e); }
+          scN++; scCur={ code:q.code, t0:now(), frozen:null, dur:scDur(), E:newState('sc'), info:{ code:q.code, sc:q.user, scLabel:q.label, lasted:0, wins:Math.max(1,careers()[q.code]||0), left:0, dead:[], field:fieldN(), cycle:(G?G.roundNo:1), sound:false } }; break; }
+        if ((r && r.state==='fail') || now()-q.t>SC_WAIT || !r){ scQ.shift(); scSkip++; if (q.onSkip) try{ q.onSkip(); }catch(e){} continue; }
         break; }
       if (!scCur) return;
     }
@@ -755,12 +764,27 @@ var WINART = (function(){
     ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.clip();
     ctx.translate(cx,cy); ctx.scale(k,k); ctx.translate(-cx,-cy);
     (P.B?drawB:draw)(vt, scCur.info, scCur.E, P);
+    if (ST.scTop && P.hb && scCur.info.sc) handleBanner(P, scCur.info, t);
     ctx.restore();
     if (R<D){ ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.strokeStyle='rgba(255,207,61,.95)'; ctx.lineWidth=12; ctx.shadowColor='#ffcf3d'; ctx.shadowBlur=36;
       ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.stroke(); ctx.restore(); }
     const fl=0.12*(1-seg(t,0.1,0.3)); if (t>0.1 && fl>0){ ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.clip(); ctx.fillStyle=`rgba(255,244,215,${fl})`; ctx.fillRect(0,0,W,H); ctx.restore(); }
   }
   const scBusy = () => !!scCur || scQ.length>0;
+  function handleBanner(P, info, t){              // the viewer's @handle in the card's upper half, at the spot picked by cut/handle_box.py
+    const [bx,by,bw,bh]=P.hb, s=W/P.w, Y0=(H-P.h*s)/2, u=eo(seg(t,0.08,0.3));
+    if (u<=0) return;
+    const lab='★ '+(info.scLabel||'Super Chat').toUpperCase(), h=info.sc||'';
+    ctx.save(); ctx.translate(0,Y0); ctx.scale(s,s); ctx.globalAlpha=u; ctx.translate(0,(1-u)*-14);
+    const r=bh*0.3; ctx.beginPath(); ctx.moveTo(bx+r,by); ctx.arcTo(bx+bw,by,bx+bw,by+bh,r); ctx.arcTo(bx+bw,by+bh,bx,by+bh,r); ctx.arcTo(bx,by+bh,bx,by,r); ctx.arcTo(bx,by,bx+bw,by,r); ctx.closePath();
+    const gr=ctx.createLinearGradient(0,by,0,by+bh); gr.addColorStop(0,'rgba(10,8,18,.80)'); gr.addColorStop(1,'rgba(4,4,10,.86)'); ctx.fillStyle=gr; ctx.fill();
+    ctx.shadowColor='rgba(255,200,70,.75)'; ctx.shadowBlur=18; ctx.lineWidth=4; ctx.strokeStyle='#e8b64a'; ctx.stroke(); ctx.shadowBlur=0;
+    ctx.textAlign='center'; ctx.textBaseline='middle'; const cx=bx+bw/2;
+    let f1=26; ctx.font='700 '+f1+'px '+POP; ctx.fillStyle='#ffd84a'; ctx.fillText(lab, cx, by+bh*0.28);
+    let f2=50; ctx.font='800 '+f2+'px '+POP; while (f2>26 && ctx.measureText(h).width>bw-36){ f2-=2; ctx.font='800 '+f2+'px '+POP; }
+    ctx.lineWidth=f2*0.12; ctx.strokeStyle='rgba(0,0,0,.85)'; ctx.lineJoin='round'; ctx.strokeText(h, cx, by+bh*0.66); ctx.fillStyle='#ffffff'; ctx.fillText(h, cx, by+bh*0.66);
+    ctx.restore();
+  }
 
   /* ---------------- hooks ---------------- */
   function drawReal(){                                  // called from drawWinner(); true = handled, false = draw the default card
@@ -834,6 +858,7 @@ var WINART = (function(){
     if (!$('waStyle')) return;
     [...$('waStyle').children].forEach(b=>b.classList.toggle('on', b.dataset.v===ST.style));
     if ($('waAnim')) [...$('waAnim').children].forEach(b=>b.classList.toggle('on', b.dataset.v===ST.anim));
+    if ($('waScTop')) [...$('waScTop').children].forEach(b=>b.classList.toggle('on', b.dataset.v===(ST.scTop?'top':'bottom')));
     if ($('waScDur')){ $('waScDur').value=scDur(); $('waScDurV').textContent=scDur().toFixed(1)+' s'; }
     if ($('waSc')) [...$('waSc').children].forEach(b=>{ if (b.dataset.v!=='test') b.classList.toggle('on', b.dataset.v===(ST.scPop?'on':'off')); });
     [...$('waRoar').children].forEach(b=>b.classList.toggle('on', b.dataset.v===(ST.roar?'on':'off')));
@@ -866,6 +891,7 @@ var WINART = (function(){
     if ($('waAnim')) $('waAnim').addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; ST.anim=b.dataset.v; save(); applyDuration(); paintUi(); });
     $('waRoar').addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; ST.roar=b.dataset.v==='on'; save(); paintUi(); });
     $('waVol').addEventListener('input',()=>{ ST.vol=+$('waVol').value; save(); paintUi(); });
+    if ($('waScTop')) $('waScTop').addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; ST.scTop=b.dataset.v==='top'; save(); paintUi(); });
     if ($('waScDur')) $('waScDur').addEventListener('input',()=>{ ST.scDur=Math.round(parseFloat($('waScDur').value)*10)/10; save(); paintUi(); });
     if ($('waSc')) $('waSc').addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return;
       if (b.dataset.v==='test'){ const code=$('waCountry').value, c=BY_CODE.get(code), u=($('waScUser')&&$('waScUser').value)||'@TestViewer';
@@ -888,6 +914,6 @@ var WINART = (function(){
     paintUi();
   }
   setTimeout(()=>{ try{ wire(); }catch(e){ console.warn('winart panel', e); } }, 300);
-  return { sfx: ()=>Object.fromEntries(Object.entries(SFXBUF).map(([k,v])=>[k, v.buf ? +v.buf.duration.toFixed(2) : (v.bad?'bad':'loading')])), SFX_DEF, scPop:safe(scPop,false,'super chat pop'), scBusy:safe(scBusy,false), shownLast:safe(()=>!!(show && show.start!=null && !show.fellBack),false), errors:()=>errN, scStats: ()=>({ started:scN, skipped:scSkip, queued:scQ.length, playing:scCur?scCur.code:null }), scSeek: t=>{ if (scCur){ scCur.frozen=t; scCur.E.last=null; } }, setAnim:m=>{ ST.anim=m; applyDuration(); }, use:safe(use,false), has:safe(has,false), hasTest:safe(hasTest,false), ready:safe(ready,false), ensure:safe(ensure,null,'loading'), drawReal, overlay, covers, play:safe(play,false,'test'), stop:safe(stop), seek, active:safe(active,false), roar, synthRoar, SYNTH, thunder, BEASTS, ST, status,
+  return { sfx: ()=>Object.fromEntries(Object.entries(SFXBUF).map(([k,v])=>[k, v.buf ? +v.buf.duration.toFixed(2) : (v.bad?'bad':'loading')])), SFX_DEF, scPop:safe(scPop,false,'super chat pop'), scBusy:safe(scBusy,false), scShowing:()=>!!scCur, shownLast:safe(()=>!!(show && show.start!=null && !show.fellBack),false), errors:()=>errN, scStats: ()=>({ started:scN, skipped:scSkip, queued:scQ.length, playing:scCur?scCur.code:null }), scSeek: t=>{ if (scCur){ scCur.frozen=t; scCur.E.last=null; } }, setAnim:m=>{ ST.anim=m; applyDuration(); }, use:safe(use,false), has:safe(has,false), hasTest:safe(hasTest,false), ready:safe(ready,false), ensure:safe(ensure,null,'loading'), drawReal, overlay, covers, play:safe(play,false,'test'), stop:safe(stop), seek, active:safe(active,false), roar, synthRoar, SYNTH, thunder, BEASTS, ST, status,
            get DATA(){ return M; }, get M(){ return M; }, PREFETCH_AT, KEEP };
 })();

@@ -263,6 +263,47 @@ tools/art-src/demo_kit/     source PNGs + meta.json of the demo kit
 - **Tested:** HTTP 500 art → default card. Hung art → 1.2 s hold, then default card. Simulated GPU error mid-card → default card. Error in the pop → pop skipped. Crash in drawHUD → frames continue. No page errors. In 6 quick rounds, support lines played in rounds 2/4/6 at +3.5 s and membership in rounds 3/6 at 37 left, never overlapping the chat / Super Chat / subscribe promos.
 - **Fixed:** earlier rebuilds had duplicated the Full/Quick toggle row (the guard was missing). Removed; the build is now idempotent (`build_html.py index.html out` gives an identical file).
 
+## 2h. v10 — merged Shaunak's thank-you cards + Jewels build
+- His other build (thank-you cards, Jewels, StreamElements `subscription`) was based on `flags-rumble-original-before-winart.html`. It was merged with `git merge-file ours base theirs`: 74 lines and 1 conflict, at the CHAT round reset, where both `LIVECARD.list.filter(c=>c.always)` and `PROMO.onRound` were kept.
+- **Pop:** `scPop(code, user, force, label)` puts the label (Jewels / New member / Gifted memberships) in the bar. `SC_DELAY` = 0.9 s so the thank-you card is seen first; `SC_WAIT` = 4 s. `scShowing()` pauses `LIVECARD.tick` while the pop is up.
+- **Voice:** `LIVEVOX.say(k, c, label)` swaps "Super Chat" for the real event name in reaction lines.
+- All of this is in `build_html.py` and stays idempotent.
+
+## 2i. v11 — Jewels totals, generic champion card, upper handle banner
+- **Game, `JEWELS` (via build_html.py):**
+  - `CHAT.ingest` sends `kind==='jewels'` to `JEWELS.ingest` before the late / winner check.
+  - The total per lower-cased handle lives in localStorage `flagsrumble-jewels` ({cfg, tally}).
+  - pop = floor(total / P) went up; power = powIdx(total) went up, where powIdx(x) = x < A ? 0 : 1 + floor((x − A) / S). Defaults: P = 50, A = 200, S = 100. Changing a slider applies at once.
+  - Power is requested with `noPop: true`, so the apply hooks don't fire a second pop. `noPop` / `label` are carried through `request`, `await` and `SAVED`.
+  - Pops earned during WINNER wait in `JEWELS.later` and play from `onRound`.
+  - The voice line `jThanks` is spoken from `scPop`'s `onStart`, only when the card actually plays.
+  - The thank-you card merges per handle (`LIVECARD` item `.jw`).
+- **Module:**
+  - Generic card code `~G:<kit>:<@handle>`: `entry()` returns the kit, `flagSource` gives white, the ball is left as is, and the band shows the handle without the @.
+  - `scPop(code, user, force, label, {onStart, onSkip})`.
+  - `handleBanner()` draws at `P.hb` when `ST.scTop` is set.
+- **Banner spots:** `tools/cut/handle_box.py CARDS_DIR`.
+  - It writes `tools/cut/handlebox.json`, and `winart_pack.py` copies it into the manifest as `hb` on every save (`winart_pack.py resave`).
+  - Cost function: beast face disk (around the mouth) ×6, warrior head (first head-wide rows + 300 px) ×6, other beast / warrior pixels ×1, pole 0.6, flag 0.35.
+  - Search band: y 210 … 836 − h, keeping clear of the top ~12 % (YouTube's mobile header). Three x options.
+  - **Re-run it for every new card.**
+- **Tested:**
+  - 40 Jewels in small gifts: one merged card, no burst, no power. At 50: one burst plus voice.
+  - +150 (= 200): one burst plus a shield. +100 (= 300): one burst plus a shield.
+  - No country typed: generic card; at 200 the power waits until they type a country, then shields it.
+  - Gift on the winner screen: burst at the next round start.
+  - Totals survive a reload.
+  - Failure-injection and regression suites pass.
+
+- **v11.1 clan banners:** `tools/cut/clan_flag.py CARDS_DIR KCODE out.png` makes a 640×480 banner: the kit beast's head, engraved in gold (CLAHE plus Laplacian lines, then a gold gradient map), soft-cut, inside a gold ring, on a dark cloth (bear crimson, dragon black, wolf navy, lion purple). Pack it with `winart_pack.py clan <kit> out.png` (manifest `kits[k].clan`; `kitb` keeps it). The generic card prints it on the cloth and in the ball.
+
+- **v11.2 ask for a country:** `askCountry(uname, sub)` is spoken from paidEvent's no-country branch and from `lateSuper`, once per handle per 120 s. Lines: `LIVE_LINES.scNoCountry` / `subNoCountry`. Jewels use `jNeedCountry` on the champion card when power && !code. `lateSuper` with no country now parks the request in `CHAT.lateAwait`, which is re-added to `await` after the round reset. Repeated waiting Super Chats add shield layers (max 5).
+
+- **v11.3 OBS-safe pickers:** OBS's CEF Interact window doesn't open native `<select>` popups. A script before `</body>` (`PICK_JS` in build_html.py, replaced on each build) hides every `<select>` and adds an input plus an in-page list.
+  - It dispatches `focus` to the select so the existing fill functions refresh the options.
+  - On pick it sets `select.value` and dispatches `change` / `input`, so all existing code still reads the select.
+  - Country search uses `chatCountriesAll(chatClean(q))`, then the exact code, aliases (UK / USA / UAE / KSA / DRC), then prefix, word-prefix and substring matches.
+
 ## 3. Adding a poster country (old layout, Russia-style) (repeat per country)
 1. **Normalize** the poster to 941×1672 (resize any 9:16).
 2. **Cut** with `tools/cut/`, as in v1:

@@ -14,6 +14,7 @@ def build():
     paths = {'fonts/cinzel-900.woff2'}
     for e in list(m['posters'].values()) + list(m['kits'].values()):
         paths |= {L['f'] for L in e['layers'].values()}
+        if e.get('clan'): paths.add(e['clan']['f'])
     paths |= {e['f'] for e in m.get('bgs', {}).values()}
     sfx = os.path.join(WA, 'sfx')
     if os.path.isdir(sfx): paths |= {'sfx/' + f for f in os.listdir(sfx) if f.endswith('.mp3')}
