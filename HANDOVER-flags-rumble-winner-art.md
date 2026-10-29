@@ -312,6 +312,23 @@ tools/art-src/demo_kit/     source PNGs + meta.json of the demo kit
   - Slot rule: speak when no special line is busy and the voice is idle, or when the force point is reached (n ≤ 35 / 20 / 12, art at +12 s). A gone slot is skipped.
   - Spoken lines never contain handles: `scNoCountry` / `jThanks` / `jNeedCountry` were rewritten, and subscribers aren't asked aloud.
 
+- **v12.1 round timer:** `TIMER {normal:5, final:8, at:10}` (localStorage `flagsrumble-timer`). `pickClosedMs()` is latched into `G.closedDur` when the CLOSED phase starts (in closeHub and INTRO→CLOSED); `closedMs()` replaces every `CFG.CLOSED_MS` read (phase switch, both HUD status texts, countdown ring). Rapid Fire still uses `RAPID_CLOSED`. Arena tab sliders `#tmNormal` (3–10) and `#tmFinal` (5–10). The old measured value was 4.13 s.
+
+- **v13 channels:**
+  - `CHANNEL {id, name, money, left, right}` lives in localStorage `flagsrumble-channel`.
+  - `PRESET_BUILTIN` has war / rumble / ice / lava / desert / cosmic, each with `channel`, `live {shieldN, reviveN, corner}` and `promo`. `applyChannelExtras()` is called from `applyPreset`; slots save these too.
+  - New layout `LIVE.corner = 'sides'`; 'box' with a non-original HUD falls back to it.
+  - `drawLiveSides()` uses `SIDE_THEME` keyed by `HUD.prompt`: royal / neon / tv / arcade / glass / original.
+  - `liveRuleRows()` and `liveTip()` depend on `CHANNEL.money`.
+  - With money false: PROMO uses `promoArtFree`, `smartLike` replaces the Super Chat slot, membership is skipped, and `LIVESCHED` turns 'sc' into 'sub'.
+  - `_once()` in build_html.py now takes a list of skip markers.
+- **v13.1 layouts above the ring:**
+  - `SIDE_LAYOUT` per HUD style holds the support, rules and prompt rects plus the card mode. The kinds are flank / stack / stackInv / tower, all within y 180–360.
+  - `sidesOn()` decides when they're used. `drawSidesPrompt()` replaces `HUD_DRAW.prompt` while it's on. `LIVECARD.draw` uses `sideCardRect()`.
+  - For card='all', the boxes fade while a card shows.
+  - The SIDES_JS block runs between the markers `/* ===== Interactive panels for every channel =====` and `/* ===== end interactive panels ===== */`.
+- **Known gap:** the winner-card posters have "FLAGS WAR ARENA" painted into the art (under SURVIVES). The other channels show it too.
+
 ## 3. Adding a poster country (old layout, Russia-style) (repeat per country)
 1. **Normalize** the poster to 941×1672 (resize any 9:16).
 2. **Cut** with `tools/cut/`, as in v1:

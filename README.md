@@ -81,6 +81,43 @@ To change one beast: 🏆 Winner tab → **Beast sounds** → pick the beast →
   3. The power card follows: "🛡 KENYA SHIELDED · Jewels · @handle".
 - The spoken reaction names the real event: "Jewels shield for Kenya!", "New member comeback, Kenya is back!"
 
+## Channels (Channel tab → Channel preset)
+One preset per arena theme; each is its own channel. Pressing one applies everything at once: arena, background, HUD, texts, ball look, commentary, chat targets, panel layout and monetization.
+
+| Channel | Arena | HUD | Chat shield / revive | Monetized |
+|---|---|---|---|---|
+| **Flags War Arena** (original) | Original | Original, boxes beside the question | 20 / 40 | ✅ Super Chat, Jewels, membership |
+| **Flags Rumble** | Grass | Royal | 15 / 30 | Not yet |
+| Frozen Flags (new) | Ice | Glass | 12 / 24 | Not yet |
+| Inferno Flags (new) | Lava | Arcade | 18 / 36 | Not yet |
+| Dune Nations (new) | Desert | TV | 10 / 20 | Not yet |
+| Galaxy Flags (new) | Cosmic | Neon | 14 / 28 | Not yet |
+
+- **Every HUD has the two interactive boxes above the ring**, like Flags War Arena: chat support, and how to save your country. Each channel arranges them differently, styled to its HUD, and nothing touches the ring:
+  - **Royal (Rumble):** [support] [question] [powers]
+  - **Arcade (Inferno):** [powers] [tilted question] [support]
+  - **Glass (Frozen):** a one-line question band, with the two boxes side by side under it
+  - **TV (Dune):** the two boxes first, then a lower-third question just above the ring
+  - **Neon (Galaxy):** the question on the left, the two boxes stacked on the right
+- The question is redrawn compact for these layouts. A popup card (shield, revive, thank-you) takes the question's place, or the whole band for the stacked layouts, then the boxes come back.
+- **Not monetized:**
+  - The panels show only chat power and Subscribe.
+  - The commentary only asks for free things: chat power, subscribe, like.
+  - The Super Chat slot becomes a Like line, the art line asks for a like/subscribe, and there's no membership line.
+  - The Classic plan's Super Chat rounds become subscribe rounds.
+- **Channel tab → This channel:**
+  - **Monetized: Yes / Not yet.** Flip it the day a channel is monetized.
+  - The two panel titles.
+- **OBS URL:** `?preset=war`, `rumble`, `ice`, `lava`, `desert` or `cosmic`.
+- The new channel names, taglines and questions are suggestions. Change them in the Text tab before launch, and check that the YouTube handle is free.
+
+## Round timer (Arena tab)
+The countdown before each draw ("OPENS IN 5s") has two sliders:
+- **Normal draws:** default **5 s**, range 3–10 s.
+- **Final 10 countries:** default **8 s**, range 5–10 s. More time for viewers to chat, Super Chat and save their country when it matters most.
+- Changes apply from the next draw and are saved in that browser.
+- Rapid Fire keeps its own short timer.
+
 ## Dropdowns in OBS (fixed)
 OBS's Interact window can't open normal dropdown lists, so every dropdown in the panel is now a **type-to-search box**:
 - Manual country and pool

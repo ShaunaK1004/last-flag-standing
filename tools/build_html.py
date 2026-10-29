@@ -197,7 +197,8 @@ if old_ld in src:
 # ======== Jewels v2: running totals, champion card at every N, country power at P0 / P0+step ... ========
 def _once(old, new, marker=None):
     global src
-    if (marker or new) in src: return
+    marks = marker if isinstance(marker, (list, tuple)) else [marker or new]
+    if any(m_ in src for m_ in marks): return
     assert src.count(old) == 1, ('patch anchor not found', old[:60]); src = src.replace(old, new, 1)
 
 # the champion-card pop is never fired twice for one Jewels gift: power requests from Jewels carry noPop
@@ -302,10 +303,10 @@ src = src.replace(" try{ PROMO.onRound(G?G.roundNo:1); }catch(e){}\n", " try{ PR
 
 # right info box: a 5th rule row for Jewels (rows moved closer together)
 _once("['🔔','Subscribe','FREE POWER','#b9a4ff']];\n  rows.forEach((r,i)=>{ const y=BY+58+i*27;",
-      "['🔔','Subscribe','FREE POWER','#b9a4ff'],['💎',(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels','🛡 / ♻','#7fe3ff']];\n  rows.forEach((r,i)=>{ const y=BY+54+i*23;")
+      "['🔔','Subscribe','FREE POWER','#b9a4ff'],['💎',(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels','🛡 / ♻','#7fe3ff']];\n  rows.forEach((r,i)=>{ const y=BY+54+i*23;", ["liveRuleRows().map(", "Jewels','🛡 / ♻','#7fe3ff']];"])
 # corner layout footer: alternate the Super Chat tip with the Jewels tip
 _once("  const txt=show ? ev.txt : '⭐ Super Chat your country = 🛡 power!';",
-      "  const txt=show ? ev.txt : (Math.floor(performance.now()/8000)%2 ? '💎 '+(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels = 🛡 power for your country!' : '⭐ Super Chat your country = 🛡 power!');")
+      "  const txt=show ? ev.txt : (Math.floor(performance.now()/8000)%2 ? '💎 '+(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels = 🛡 power for your country!' : '⭐ Super Chat your country = 🛡 power!');", ["liveTip()", "Jewels = 🛡 power for your country!' : '⭐"])
 
 # operator panel: Jewels settings (Live tab), handle position (Winner tab), a 50-Jewels test button
 _once('''    <div class="pgroup" data-page="live">
@@ -469,6 +470,13 @@ Object.assign(LIVE_LINES, {
            'No limit on Super Chats! Every one powers your country and puts your name on its champion card!',
            "Sending Jewels? Every {J} puts your name on your country's champion card, and {P} Jewels give it a power!"],
   smartScAnother:['Another supporter! Back your country the same way: Super Chat it, and your name goes on its champion card!'],
+  // channels that are not monetized yet: free asks only
+  promoArtFree:["Every country here has its own champion art. Loved seeing yours? Hit like and subscribe for more!",
+                "Enjoyed the winner animation? Drop a like, and subscribe so you never miss your country's big moment!",
+                "We're building a unique champion for every nation. Subscribe and watch yours come to life!"],
+  smartLike:['{N} left! Is your country still alive? Hit like and cheer it on in chat!',
+             'Hit like if your country is still in the fight! Every like keeps the battle going!',
+             'Still standing? Smash that like, and type your country to support it!'],
 });
 /* a handle as a speakable name for the English voices: "@SamiraJahangir-v9f" -> "Samira Jahangir", "@Rahul_Gaming_99" ->
    "Rahul Gaming 99", "@Tanaka田中" -> "Tanaka". Only Latin letters and digits are kept; nothing readable left
@@ -507,7 +515,7 @@ const PROMO = {
   plan(){                                            // re-planned whenever a switch changes; slots already used stay used
     const n=this.round||1, S=this.smart(), dn=this.done||(this.done={});
     this.due={ art: !dn.art && this.cfg.art && n%2===0 && !!this.artOK,
-               mid: dn.mid ? null : S ? ((this.cfg.member && n%3===0) ? 'smartMember' : (this.cfg.free && n%2===1 ? 'chat1' : null)) : (this.cfg.member && n%3===0 ? 'promoMember' : null),
+               mid: dn.mid ? null : S ? ((this.cfg.member && CHANNEL.money && n%3===0) ? 'smartMember' : (this.cfg.free && n%2===1 ? 'chat1' : null)) : (this.cfg.member && CHANNEL.money && n%3===0 ? 'promoMember' : null),
                sub: !dn.sub && S && this.cfg.sub, sc: !dn.sc && S && this.cfg.sc };
     this.sig=JSON.stringify(this.cfg); },
   event(kind){ if (kind==='subscribe') this.ev.sub++; else this.ev.paid++; },
@@ -519,7 +527,7 @@ const PROMO = {
     const age=performance.now()-this.t0, d=this.due, S=this.smart(), dn=this.done;
     const slot=(key, open, gone, force, speak)=>{ if (!d[key] || !open) return; if (gone){ d[key]=false; dn[key]=true; return; }
       if (this.free() && (!S || this.idle() || force)){ const k=d[key]; d[key]=false; dn[key]=true; speak(k); } };
-    slot('art', age>3500, age>25000 || n<50, age>12000, ()=>this.say('promoArt'));
+    slot('art', age>3500, age>25000 || n<50, age>12000, ()=>this.say(CHANNEL.money ? 'promoArt' : 'promoArtFree'));
     if (S) slot('mid', n<=45, n<33, n<=35, k=>this.say(k));
     else slot('mid', n<=45, n<34, true, k=>this.say(k));
     slot('sub', n<=30, n<18, n<=20, ()=>this.saySub());
@@ -528,7 +536,8 @@ const PROMO = {
   saySub(){ if (this.ev.sub>=2) return; if (this.ev.sub===1) return this.say('smartSubThanks');
     let left=1; try{ left=CHAT_RULES.PAID_CAP-CHAT.paid-CHAT.pend.filter(p=>p.src==='sub').length; }catch(e){}
     this.say(left<=0 ? 'smartSubSaved' : 'smartSub', true); },
-  saySc(){ if (this.ev.paid>=2) return; this.say(this.ev.paid===1 ? 'smartScAnother' : 'smartSc', true); },
+  saySc(){ if (!CHANNEL.money) return this.say('smartLike', true);                 // not monetized: a like ask instead
+    if (this.ev.paid>=2) return; this.say(this.ev.paid===1 ? 'smartScAnother' : 'smartSc', true); },
   pick(k, seq){ const a=LIVE_LINES[k]; if (!a||!a.length) return ''; if (!seq) return LIVEVOX.pick(k);
     const i=(this.rot[k]||0)%a.length; this.rot[k]=i+1; this.save(); return a[i]; },
   fill(t){ const cap=s=>s.charAt(0).toUpperCase()+s.slice(1); let sw='thirty'; try{ sw=numWords(CHAT_RULES.SHIELD); }catch(e){}
@@ -566,6 +575,318 @@ if 'id="promoMode"' not in src:
 src = src.replace("askCountry(uname, src==='sub');", "askCountry(uname, src==='sub', label);")
 src = src.replace("  spoken(u){ return String(u||'viewer').replace(/^@+/,'').replace(/[_.]+/g,' ').trim() || 'viewer'; },", "  spoken(u){ return spokenName(u); },")
 src = src.replace("const t=LIVEVOX.pick(j.needCountry?'jNeedCountry':'jThanks').replace('{u}', this.spoken(j.uname));", "const t=fillName(LIVEVOX.pick(j.needCountry?'jNeedCountry':'jThanks'), this.spoken(j.uname));")
+
+# ======== Round timer: normal draws + final-10 draws, adjustable (Arena tab) ========
+_once("function closeHub(){\n  G.phase='CLOSED'; G.tPhase=0; G.holeT=0; G.openKills=0; G.killQuota=1; G.closing=false;",
+"""/* Round timer = the countdown before each draw ("OPENS IN 5s"). Normal draws and the final 10 countries have their own
+   length (Arena tab sliders, kept in this browser). The length is fixed when the countdown starts, so a revive or
+   drop-in during the countdown never makes the number jump. Rapid Fire keeps its own short timer. */
+const TIMER = { normal:5, final:8, at:10 };
+try{ const t=JSON.parse(localStorage.getItem('flagsrumble-timer')||'{}'); if (t.normal>=3 && t.normal<=10) TIMER.normal=+t.normal; if (t.final>=5 && t.final<=10) TIMER.final=+t.final; }catch(e){}
+function saveTimer(){ try{ localStorage.setItem('flagsrumble-timer', JSON.stringify({normal:TIMER.normal, final:TIMER.final})); }catch(e){} }
+function pickClosedMs(){ let n=99; try{ n=alive().length; }catch(e){} return Math.round(1000*(n<=TIMER.at ? TIMER.final : TIMER.normal)); }
+function closedMs(){ if (!G) return 5000; if (G.rapidLeft>0) return CFG.RAPID_CLOSED; return G.closedDur || pickClosedMs(); }
+setTimeout(()=>{ try{
+  for (const [id,key] of [['tmNormal','normal'],['tmFinal','final']]){ const el=document.getElementById(id), lab=document.getElementById(id+'V'); if (!el) continue;
+    const paint=()=>{ el.value=TIMER[key]; if (lab) lab.textContent=(+TIMER[key]).toFixed(1)+' s'; };
+    el.addEventListener('input',()=>{ TIMER[key]=Math.round(parseFloat(el.value)*2)/2; saveTimer(); paint(); }); paint(); }
+}catch(e){} }, 0);
+
+function closeHub(){
+  G.phase='CLOSED'; G.tPhase=0; G.holeT=0; G.openKills=0; G.killQuota=1; G.closing=false; G.closedDur=pickClosedMs();""", "const TIMER = { normal:5")
+_once("    if (G.tPhase>=CFG.INTRO_MS){ G.phase='CLOSED'; G.tPhase=0; G.drawStart=performance.now(); }",
+      "    if (G.tPhase>=CFG.INTRO_MS){ G.phase='CLOSED'; G.tPhase=0; G.drawStart=performance.now(); G.closedDur=pickClosedMs(); }")
+src = src.replace("    const dur = G.rapidLeft>0 ? CFG.RAPID_CLOSED : CFG.CLOSED_MS;\n    if (G.tPhase>=dur) openHub();", "    const dur = closedMs();\n    if (G.tPhase>=dur) openHub();")
+src = src.replace("  const s=Math.ceil(Math.max(0,CFG.CLOSED_MS-G.tPhase)/1000);", "  const s=Math.ceil(Math.max(0,closedMs()-G.tPhase)/1000);")
+src = src.replace("    const dur = CFG.CLOSED_MS, left = Math.max(0, dur-G.tPhase);", "    const dur = closedMs(), left = Math.max(0, dur-G.tPhase);")
+src = src.replace("    const dur=G.rapidLeft>0?CFG.RAPID_CLOSED:CFG.CLOSED_MS;", "    const dur=closedMs();")
+_once('''    <div class="pgroup" data-page="arena">
+      <h2>Arena Theme</h2>''', '''    <div class="pgroup" data-page="arena">
+      <h2>Round timer (countdown before each draw)</h2>
+      <label class="blab">Normal draws <b id="tmNormalV">5.0 s</b><input type="range" id="tmNormal" min="3" max="10" step="0.5" value="5" style="width:100%"></label>
+      <label class="blab">Final 10 countries <b id="tmFinalV">8.0 s</b><input type="range" id="tmFinal" min="5" max="10" step="0.5" value="8" style="width:100%"></label>
+      <div class="hint">From 10 countries left the final timer is used, so viewers get more time to chat, Super Chat and save their country. Changes apply from the next draw. Rapid Fire keeps its own short timer.</div>
+    </div>
+    <div class="pgroup" data-page="arena">
+      <h2>Arena Theme</h2>''', 'id="tmNormal"')
+
+# ======== CHANNELS: one profile per arena theme (monetized or not), themed left + right interactive panels ========
+_once("const LIVE = { on:false,", """/* The channel this stream is (Channel tab). money = the channel is monetized: only then do Super Chat, Jewels and
+   membership rows and spoken asks appear. left / right = the titles of the two interactive panels. */
+const CHANNEL = { id:'war', name:'Flags War Arena', money:true, left:'CHAT SUPPORT', right:'SAVE YOUR COUNTRY' };
+try{ Object.assign(CHANNEL, JSON.parse(localStorage.getItem('flagsrumble-channel')||'{}')); }catch(e){}
+function saveChannel(){ try{ localStorage.setItem('flagsrumble-channel', JSON.stringify(CHANNEL)); }catch(e){} }
+const LIVE = { on:false,""", "const CHANNEL = {")
+src = src.replace("  if (['tl','tr','bl','br','box'].includes(s.corner)) LIVE.corner=s.corner;", "  if (['tl','tr','bl','br','box','sides'].includes(s.corner)) LIVE.corner=s.corner;")
+src = src.replace('<button data-v="box">▣ Boxes beside question</button></div>', '<button data-v="box">▣ Boxes beside question</button><button data-v="sides">◧◨ Left + right panels</button></div>')
+src = src.replace("$('liveCornerNote').textContent = LIVE.corner==='box' && !boxLayoutOn() ? 'Boxes need the Original header & question style (HUD tab). Showing the top-left corner panel instead.' : '';",
+                  "$('liveCornerNote').textContent = LIVE.corner==='box' && !boxLayoutOn() ? 'Boxes beside the question need the Original header & question style. With this HUD the two panels sit left and right of the ring instead.' : '';")
+_once("{ if (boxLayoutOn()) drawLiveBoxes(); else drawLiveCorner(); }", "{ if (boxLayoutOn()) drawLiveBoxes(); else if (LIVE.corner==='sides' || LIVE.corner==='box') drawLiveSides(); else drawLiveCorner(); }", "drawLiveSides(); else drawLiveCorner")
+# Classic plan: an unmonetized channel never gets a Super Chat round (it becomes a subscribe round)
+_once("    this.kind=this.plan[k%10]; this.done={};", "    this.kind=this.plan[k%10]; if (this.kind==='sc' && !CHANNEL.money) this.kind='sub'; this.done={};", "!CHANNEL.money) this.kind='sub'")
+# Original box layout: rows + titles follow the channel
+_once("  liveFrame(lx,BY,BW,BH,'#ffcf3d','#5ef2c8',0.55,'CHAT SUPPORT','#ffcf3d');", "  liveFrame(lx,BY,BW,BH,'#ffcf3d','#5ef2c8',0.55,CHANNEL.left||'CHAT SUPPORT','#ffcf3d');")
+_once("  liveFrame(rx,BY,BW,BH,'#5ef2c8','#ffcf3d',0.55,'SAVE YOUR COUNTRY','#5ef2c8');", "  liveFrame(rx,BY,BW,BH,'#5ef2c8','#ffcf3d',0.55,CHANNEL.right||'SAVE YOUR COUNTRY','#5ef2c8');")
+_once("  const rows=[['💬',CHAT_RULES.SHIELD+' chats','🛡 SHIELD','#5ef2c8'],['💬',CHAT_RULES.REVIVE+' if out','♻ REVIVE','#ff8da1'],['⭐','Super Chat','🛡 / ♻','#ffcf3d'],['🔔','Subscribe','FREE POWER','#b9a4ff'],['💎',(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels','🛡 / ♻','#7fe3ff']];\n  rows.forEach((r,i)=>{ const y=BY+54+i*23;",
+      "  const RC={good:'#5ef2c8',bad:'#ff8da1',gold:'#ffcf3d',sub:'#b9a4ff',jw:'#7fe3ff',like:'#ff8fb1'}, rows=liveRuleRows().map(r=>[r[0],r[1],r[2],RC[r[3]]]);\n  const RY=rows.length>4?[54,23]:rows.length>3?[58,27]:[62,34];\n  rows.forEach((r,i)=>{ const y=BY+RY[0]+i*RY[1];", "liveRuleRows().map(")
+_once("  let ft = show ? ev.txt : '⭐ no limit · 🔔 left '+left+'/'+CHAT_RULES.PAID_CAP+(SAVED.q.length?'   ·   ⏳ '+SAVED.q.length+' saved':'');",
+      "  let ft = show ? ev.txt : (CHANNEL.money?'⭐ no limit · ':'')+'🔔 left '+left+'/'+CHAT_RULES.PAID_CAP+(SAVED.q.length?'   ·   ⏳ '+SAVED.q.length+' saved':'');")
+_once("  const txt=show ? ev.txt : (Math.floor(performance.now()/8000)%2 ? '💎 '+(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels = 🛡 power for your country!' : '⭐ Super Chat your country = 🛡 power!');",
+      "  const txt=show ? ev.txt : liveTip();")
+
+SIDES_JS = r'''/* ===== Interactive panels for every channel =====
+   rows of the "how to save your country" panel: Super Chat and Jewels only on a monetized channel */
+function liveRuleRows(){
+  const r=[['💬', CHAT_RULES.SHIELD+' chats', '🛡 SHIELD', 'good'], ['💬', CHAT_RULES.REVIVE+' if out', '♻ REVIVE', 'bad']];
+  if (CHANNEL.money) r.push(['⭐','Super Chat','🛡 / ♻','gold']);
+  r.push(['🔔','Subscribe','FREE POWER','sub']);
+  if (CHANNEL.money) r.push(['💎', (typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels','🛡 / ♻','jw']);
+  return r;
+}
+function liveTip(){                                  // rotating footer tip
+  const i=Math.floor(performance.now()/8000);
+  const tips = CHANNEL.money ? ['⭐ Super Chat your country = 🛡 power!', '💎 '+(typeof JEWELS!=='undefined'?JEWELS.A():200)+' Jewels = 🛡 power for your country!']
+                             : ['🔔 Subscribe + type your country = free power!', '👍 Like if your country is still alive!'];
+  return tips[i%tips.length];
+}
+const SIDE_THEME={
+  royal:{ fill:'rgba(30,10,6,0.88)', line:'#e8b64a', b1:'#ffd56a', b2:'#c0392b', title:'#ffd56a', text:'#fff3d6', dim:'#e7c98c', good:'#8ff0a4', bad:'#ff8d7a', gold:'#ffd56a', sub:'#e7b8ff', jw:'#8fe8ff', st:'royal', tw:'900' },
+  neon:{ fill:'rgba(6,8,24,0.86)', line:'#5ff4ff', b1:'#5ff4ff', b2:'#ff3bd4', title:'#5ff4ff', text:'#e9fbff', dim:'#9fdcff', good:'#5ff4ff', bad:'#ff3bd4', gold:'#ffe66b', sub:'#c49bff', jw:'#7fe3ff', st:'neon', tw:'700', scan:true },
+  tv:{ fill:'rgba(11,31,77,0.93)', line:'#ffffff', b1:'#d7192a', b2:'#ffffff', title:'#ffffff', text:'#ffffff', dim:'#c9d6f2', good:'#7fe3a8', bad:'#ff6b7a', gold:'#ffd34d', sub:'#bfb0ff', jw:'#8fe8ff', st:'tv', tw:'700', bar:'#d7192a' },
+  arcade:{ fill:'rgba(0,0,0,0.9)', line:'#ffd23f', b1:'#ffd23f', b2:'#e8202a', title:'#ffd23f', text:'#ffffff', dim:'#ffe58a', good:'#7dff8a', bad:'#ff5a5a', gold:'#ffd23f', sub:'#c8a8ff', jw:'#7fe3ff', st:'arcade', tw:'400', shadow:true },
+  glass:{ fill:'rgba(18,24,48,0.6)', line:'rgba(255,255,255,0.65)', b1:'#ffffff', b2:'#57e39a', title:'#ffffff', text:'#ffffff', dim:'#d6e2ff', good:'#57e39a', bad:'#ff7b8a', gold:'#ffd86b', sub:'#d0bcff', jw:'#9feaff', st:'glass', tw:'700', frost:true },
+  original:{ fill:'rgba(6,10,26,0.84)', line:'rgba(94,242,200,0.8)', b1:'#ffcf3d', b2:'#5ef2c8', title:'#5ef2c8', text:'#e6ecff', dim:'#9fb0d8', good:'#5ef2c8', bad:'#ff6b8a', gold:'#ffcf3d', sub:'#b9a4ff', jw:'#7fe3ff', st:'original', tw:'700' },
+};
+/* Panel layouts above the ring, one arrangement per HUD style so every channel has its own look.
+   All of it lives between the header and the ring (y 180..360); nothing touches the ring.
+   rect = [x, y, w, h]; card = where the popup card goes ('prompt' = in the question's place, 'all' = over the whole band) */
+const SIDE_LAYOUT={
+  royal:  { kind:'flank',    sup:[16,182,296,176],  rul:[768,182,296,176], prm:[324,182,432,176], card:'prompt' },  // [support][question][powers]
+  arcade: { kind:'flank',    sup:[768,184,296,174], rul:[16,184,296,174],  prm:[322,186,436,168], card:'prompt' },  // [powers][question][support]
+  glass:  { kind:'stack',    prm:[50,180,980,66],   sup:[50,256,480,102],  rul:[550,256,480,102], card:'all' },     // question band, two boxes under it
+  tv:     { kind:'stackInv', sup:[30,182,500,102],  rul:[550,182,500,102], prm:[30,294,1020,64],  card:'all' },     // two boxes, lower-third question above the ring
+  neon:   { kind:'tower',    prm:[20,182,590,176],  sup:[626,182,438,84],  rul:[626,276,438,82],  card:'all' },     // question left, two boxes stacked right
+  original:{ kind:'flank',   sup:[16,182,296,176],  rul:[768,182,296,176], prm:[324,182,432,176], card:'prompt' },
+};
+function sidesOn(){ return !!(LIVE.on && LIVE.strip && (LIVE.corner==='sides' || LIVE.corner==='box') && !boxLayoutOn() && G && G.phase!=='WINNER'); }
+function sideLayout(){ return SIDE_LAYOUT[HUD.prompt] || SIDE_LAYOUT.royal; }
+function sideCardRect(){ const L=sideLayout(); return L.card==='prompt' ? L.prm : [30,178,1020,182]; }
+function sideBox(x,y,w,h,T,title){
+  const R=(T.st==='arcade'||T.st==='tv') ? 4 : 14;
+  ctx.save();
+  if (T.shadow){ ctx.fillStyle='rgba(0,0,0,0.92)'; roundRect(ctx,x+7,y+7,w,h,R); ctx.fill(); }
+  roundRect(ctx,x,y,w,h,R); ctx.fillStyle=T.fill; ctx.fill();
+  if (T.frost){ const g=ctx.createLinearGradient(0,y,0,y+h); g.addColorStop(0,'rgba(255,255,255,0.18)'); g.addColorStop(1,'rgba(255,255,255,0.05)'); ctx.fillStyle=g; ctx.fill(); }
+  if (T.scan || T.bar){ ctx.save(); roundRect(ctx,x,y,w,h,R); ctx.clip(); if (T.scan) scanlines(x,y,w,h); if (T.bar){ ctx.fillStyle=T.bar; ctx.fillRect(x,y,w,28); } ctx.restore(); }
+  ctx.lineWidth=T.st==='arcade'?4:2.5; ctx.strokeStyle=T.line; roundRect(ctx,x,y,w,h,R); ctx.stroke();
+  if (T.st!=='tv'){ const Lb=18, br=(cx,cy,dx,dy,col)=>{ ctx.save(); ctx.lineWidth=4; ctx.lineCap=T.st==='arcade'?'butt':'round'; ctx.strokeStyle=col; ctx.shadowColor=col; ctx.shadowBlur=T.st==='neon'?16:8;
+      ctx.beginPath(); ctx.moveTo(cx+dx*Lb,cy); ctx.lineTo(cx,cy); ctx.lineTo(cx,cy+dy*Lb); ctx.stroke(); ctx.restore(); };
+    br(x+2,y+2,1,1,T.b1); br(x+w-2,y+2,-1,1,T.b1); br(x+2,y+h-2,1,-1,T.b2); br(x+w-2,y+h-2,-1,-1,T.b2); }
+  const ttl=String(title||'').toUpperCase(); ctx.textAlign='left'; ctx.textBaseline='middle';
+  setF(ttl, w*0.62, 19, T.tw, T.st); ctx.fillStyle=T.title;
+  if (T.st==='arcade'){ ctx.lineWidth=4; ctx.strokeStyle='#000'; ctx.strokeText(ttl, x+14, y+16); }
+  ctx.fillText(ttl, x+14, y+15);
+  ctx.restore();
+}
+function sideSupport(x,y,w,h,T){
+  ctx.save(); ctx.textBaseline='middle';
+  const L=CHAT.leaders(), tall=h>=140, leg=CHAT_RULES.SHIELD+' msgs = 🛡  ·  '+CHAT_RULES.REVIVE+' = ♻';
+  ctx.font='600 13px "FR Poppins",system-ui,sans-serif'; ctx.fillStyle=T.dim;
+  if (tall){ ctx.textAlign='center'; ctx.fillText(leg, x+w/2, y+42); }
+  else { const lw=ctx.measureText(leg).width; ctx.font=fnt(T.tw,19,T.st); const tw_=ctx.measureText(String(CHANNEL.left||'').toUpperCase()).width;
+    if (tw_+lw+48<w){ ctx.font='600 13px "FR Poppins",system-ui,sans-serif'; ctx.textAlign='right'; ctx.fillStyle=T.st==='tv'?'#ffffff':T.dim; ctx.fillText(leg, x+w-14, y+15); } }
+  if (!L.length){
+    ctx.textAlign='center'; ctx.fillStyle=T.text; ctx.font=(T.st==='arcade'?'400 ':'800 ')+(tall?18:17)+'px '+FF[T.st];
+    if (tall){ ctx.fillText('Type your country', x+w/2, y+h/2+4); ctx.fillText('in chat to save it!', x+w/2, y+h/2+30); }
+    else ctx.fillText('Type your country in chat to save it!', x+w/2, y+h/2+10, w-28);
+  }
+  L.forEach((r,i)=>{
+    const col=r.alive?T.good:T.bad, f=Math.min(1,r.n/r.need), sp=sprites.get(r.code);
+    let cx, cy, R, lx, ly, la;
+    if (tall){ R=23; cx=x+w/2+(i-(L.length-1)/2)*94; cy=y+92; lx=cx; ly=y+134; la='center'; }
+    else { const sw=(w-20)/3; R=17; cx=x+10+sw*i+26; cy=y+(h+30)/2; lx=cx+R+12; ly=cy; la='left'; }
+    ctx.lineWidth=tall?6:5; ctx.strokeStyle='rgba(255,255,255,0.16)'; ctx.beginPath(); ctx.arc(cx,cy,R+5,0,7); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineCap='round'; ctx.beginPath(); ctx.arc(cx,cy,R+5,-Math.PI/2,-Math.PI/2+Math.max(0.02,f)*Math.PI*2); ctx.stroke();
+    if (sp){ if (!r.alive) ctx.globalAlpha=0.6; ctx.drawImage(sp,cx-R,cy-R,R*2,R*2); ctx.globalAlpha=1; }
+    ctx.textAlign=la; ctx.fillStyle=col; ctx.font='800 '+(tall?15:16)+'px "FR Poppins",system-ui,sans-serif';
+    ctx.fillText((r.alive?'🛡 ':'♻ ')+r.n+'/'+r.need, lx, ly);
+  });
+  if (tall){ const ev=CHAT.feed[0], show=ev && ev.t<12000, txt=show ? ev.txt : liveTip();
+    ctx.textAlign='center'; ctx.font=(show?'800 14px':'700 13px')+' "FR Poppins",system-ui,sans-serif'; ctx.fillStyle=show?ev.col:T.gold;
+    let s2=txt, maxW=w-24; if (ctx.measureText(s2).width>maxW){ while (s2.length>4 && ctx.measureText(s2+'…').width>maxW) s2=s2.slice(0,-1); s2+='…'; }
+    ctx.fillText(s2, x+w/2, y+h-15); }
+  ctx.restore();
+}
+function sideRules(x,y,w,h,T){
+  const rows=liveRuleRows(), n=rows.length, top=y+34, avail=h-40, cols=(avail/n>=22) ? 1 : 2, per=Math.ceil(n/cols), rh=Math.min(30, avail/per), cw=(w-28-(cols-1)*20)/cols;
+  const fs = rh>=26 ? 16 : 15;
+  ctx.save(); ctx.textBaseline='middle';
+  rows.forEach((r,i)=>{ const c=Math.floor(i/per), k=i%per, cx=x+14+c*(cw+20), cy=top+rh*k+rh/2;
+    ctx.textAlign='left'; ctx.font='700 '+fs+'px "FR Poppins",system-ui,sans-serif'; ctx.fillStyle=T.text; ctx.fillText(r[0]+' '+r[1], cx, cy);
+    ctx.textAlign='right'; ctx.font='800 '+fs+'px "FR Poppins",system-ui,sans-serif'; ctx.fillStyle=T[r[3]]||T.text; ctx.fillText(r[2], cx+cw, cy); });
+  if (cols===1 && h>=140 && CHANNEL.money){ const left=Math.max(0,CHAT_RULES.PAID_CAP-CHAT.paid-CHAT.pend.filter(p=>p.src==='sub').length);
+    ctx.textAlign='center'; ctx.font='700 13px "FR Poppins",system-ui,sans-serif'; ctx.fillStyle=T.gold; ctx.fillText('⭐ no limit · 🔔 left '+left+'/'+CHAT_RULES.PAID_CAP, x+w/2, y+h-14); }
+  ctx.restore();
+}
+/* the question, redrawn compact for the panel layouts, in each HUD style */
+function drawSidesPrompt(){
+  const L=sideLayout(), [x,y,w,h]=L.prm, st=hudStatus(), t=G.t/1000, sty=HUD.prompt, T=SIDE_THEME[sty]||SIDE_THEME.royal;
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  if (sty==='arcade'){
+    ctx.translate(x+w/2, y+h/2); ctx.rotate(-0.02);
+    ctx.fillStyle='#000'; ctx.fillRect(-w/2+8,-h/2+8,w,h); ctx.fillStyle='#ffd23f'; ctx.fillRect(-w/2,-h/2,w,h);
+    ctx.fillStyle='rgba(255,130,0,0.22)'; for (let yy=-h/2+7;yy<h/2;yy+=13) for (let xx=-w/2+7;xx<w/2;xx+=13) ctx.fillRect(xx,yy,4,4);
+    ctx.lineWidth=5; ctx.strokeStyle='#000'; ctx.strokeRect(-w/2,-h/2,w,h);
+    if (!st.hot || Math.floor(t*4)%2===0){ setF(st.t.toUpperCase(), w-40, 17, '400','arcade'); ctx.fillStyle=st.hot?'#e8202a':'#000'; ctx.fillText(st.t.toUpperCase(), 0, -h/2+30); }
+    setF(BRAND.q1, w-40, 26, '400','arcade'); ctx.fillStyle='#000'; ctx.fillText(BRAND.q1, 0, 6);
+    setF(BRAND.q2, w-40, 36, '400','arcade'); outlineText(BRAND.q2, 0, 52, '#e8202a', '#000', 6);
+  } else if (sty==='glass'){
+    frost(x,y,w,h,h/2);
+    ctx.font=fnt('600',17,'glass'); const pw=Math.min(300, ctx.measureText(st.t).width+56);
+    ctx.fillStyle='rgba(255,255,255,0.14)'; roundRect(ctx,x+14,y+h/2-19,pw,38,19); ctx.fill();
+    ctx.fillStyle=st.hot?`rgba(255,80,90,${0.5+0.5*Math.sin(t*8)})`:'#57e39a'; ctx.beginPath(); ctx.arc(x+36,y+h/2,6,0,7); ctx.fill();
+    ctx.textAlign='left'; ctx.fillStyle='#fff'; ctx.fillText(st.t, x+50, y+h/2+6, pw-46);
+    const qx=x+14+pw+20, qw=x+w-qx-24, q=BRAND.q1+' '+BRAND.q2; setF(q, qw, 34, '800','glass');
+    ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.fillText(q, qx+qw/2, y+h/2+12);
+  } else if (sty==='tv'){
+    ctx.fillStyle=st.hot?'#d7192a':'#0b1f4d'; trap([[x,y],[x+230,y],[x+212,y+h],[x,y+h]]); ctx.fill();
+    ctx.fillStyle='#f4f6fa'; trap([[x+236,y],[x+w,y],[x+w,y+h],[x+218,y+h]]); ctx.fill();
+    ctx.fillStyle='#d7192a'; ctx.fillRect(x+230,y+h-6,w-230,6);
+    ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font=fnt('500',16,'tv'); ctx.fillText('CYCLE '+G.roundNo, x+108, y+22);
+    ctx.fillStyle='#fff'; setF(st.big,190,34,'700','tv'); ctx.fillText(st.big, x+108, y+54);
+    const mx=x+236+(w-236)/2; setF(BRAND.q1, w-300, 20, '500','tv'); ctx.fillStyle='#0b1f4d'; ctx.fillText(BRAND.q1, mx, y+24);
+    setF(BRAND.q2, w-300, 32, '700','tv'); ctx.fillStyle='#d7192a'; ctx.fillText(BRAND.q2, mx, y+54);
+  } else if (sty==='neon'){
+    const c='#5ff4ff', m='#ff3bd4'; ctx.fillStyle='rgba(6,8,24,0.66)'; ctx.fillRect(x,y,w,h); scanlines(x,y,w,h);
+    const Lb=34; for (const [cx,cy,sx,sy] of [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]])
+      neonStroke(()=>{ ctx.beginPath(); ctx.moveTo(cx+sx*Lb,cy); ctx.lineTo(cx,cy); ctx.lineTo(cx,cy+sy*Lb); }, sx*sy>0?c:m, 3);
+    ctx.textAlign='left'; ctx.font=fnt('700',16,'neon'); ctx.letterSpacing='3px'; ctx.fillStyle=st.hot?m:c; ctx.fillText('▸ '+st.t.toUpperCase(), x+22, y+32); ctx.letterSpacing='0px';
+    const j=(Math.floor(t*7)%13===0)?6:2; ctx.textAlign='center';
+    setF(BRAND.q1, w-60, 32, '700','neon'); glitchText(BRAND.q1, x+w/2, y+92, '#fff', j);
+    setF(BRAND.q2, w-50, 44, '900','neon'); const g=ctx.createLinearGradient(x,0,x+w,0); g.addColorStop(0,c); g.addColorStop(1,m); glitchText(BRAND.q2, x+w/2, y+148, g, j);
+  } else {
+    const gold=sty==='royal';                                            // royal (and original) plaque
+    roundRect(ctx,x,y,w,h,16); ctx.fillStyle=gold?'rgba(26,10,6,0.86)':'rgba(6,10,26,0.84)'; ctx.fill();
+    ctx.lineWidth=3; ctx.strokeStyle=gold?'#e8b64a':'rgba(94,242,200,0.8)'; ctx.stroke();
+    roundRect(ctx,x+7,y+7,w-14,h-14,11); ctx.lineWidth=1.2; ctx.strokeStyle=gold?'rgba(255,214,106,0.45)':'rgba(255,255,255,0.15)'; ctx.stroke();
+    if (gold){ ctx.fillStyle='#e8b64a'; for (const [cx,d] of [[x+18,1],[x+w-18,-1]]){ ctx.beginPath(); ctx.moveTo(cx,y+h/2-12); ctx.lineTo(cx+d*10,y+h/2); ctx.lineTo(cx,y+h/2+12); ctx.closePath(); ctx.fill(); } }
+    ctx.font='700 17px system-ui,sans-serif'; ctx.fillStyle=st.hot?'#ff6b5a':(gold?'#e7c98c':'#9fb0d8'); ctx.fillText(st.t, x+w/2, y+32, w-60);
+    ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=10;
+    setF(BRAND.q1, w-70, 32, '800', 'royal'); ctx.fillStyle='#ffffff'; ctx.fillText(BRAND.q1, x+w/2, y+88);
+    setF(BRAND.q2, w-60, 40, '900', 'royal'); ctx.fillStyle=gold?'#ffd56a':'#ffcf3d'; ctx.fillText(BRAND.q2, x+w/2, y+140);
+  }
+  ctx.restore();
+}
+function drawLiveSides(){
+  const T=SIDE_THEME[HUD.prompt]||SIDE_THEME.royal, L=sideLayout();
+  const ca=(L.card==='all' && LIVECARD.list.length) ? LIVECARD.alpha() : 0; if (ca>=1) return;
+  ctx.save(); ctx.globalAlpha=1-ca;
+  sideBox(...L.sup, T, CHANNEL.left||'CHAT SUPPORT'); sideSupport(...L.sup, T);
+  sideBox(...L.rul, T, CHANNEL.right||'SAVE YOUR COUNTRY'); sideRules(...L.rul, T);
+  ctx.restore();
+}
+/* ===== end interactive panels ===== */'''
+if 'function drawLiveSides(' in src:
+    a_ = src.index('/* ===== Interactive panels for every channel =====')
+    if '/* ===== end interactive panels ===== */' in src: b_ = src.index('/* ===== end interactive panels ===== */') + len('/* ===== end interactive panels ===== */\n')
+    else: b_ = src.index("function drawLiveSides(){", a_); b_ = src.index('\n', b_) + 1
+    src = src[:a_] + SIDES_JS + '\n' + src[b_:]
+else:
+    k_ = '/* Corner layout. The bottom corners and the top corners are mirror images around the'
+    assert src.count(k_) == 1; src = src.replace(k_, SIDES_JS + '\n' + k_, 1)
+
+# ---- channel presets: one per arena theme
+PRESETS_JS = r'''const PRESET_BUILTIN={
+  war:   { name:'Flags War Arena', arena:'original', bgMode:'auto', bgDim:0.46,
+           hud:{header:'original',prompt:'original',elim:'original',cta:'original',ko:'original'},
+           brand:BRAND_ORIGINAL, pack:'auto', voiceMode:'pack', look:{face:'off',outfit:'off',motion:'lively',balls:'original'},
+           channel:{ id:'war', name:'Flags War Arena', money:true, left:'CHAT SUPPORT', right:'SAVE YOUR COUNTRY' },
+           live:{ shieldN:20, reviveN:40, corner:'box' }, promo:{ mode:'smart' } },
+  rumble:{ name:'Flags Rumble', arena:'grass', bgMode:'auto', bgDim:0.46,
+           hud:{header:'royal',prompt:'royal',elim:'royal',cta:'royal',ko:'royal'},
+           brand:BRAND_DEFAULT, pack:'auto', voiceMode:'pack', look:{face:'full',outfit:'off',motion:'lively',balls:'rumble'},
+           channel:{ id:'rumble', name:'Flags Rumble', money:false, left:'ROYAL SUPPORT', right:'ROYAL POWERS' },
+           live:{ shieldN:15, reviveN:30, corner:'sides' }, promo:{ mode:'smart' } },
+  ice:   { name:'Frozen Flags', arena:'ice', bgMode:'auto', bgDim:0.40,
+           hud:{header:'glass',prompt:'glass',elim:'glass',cta:'glass',ko:'glass'},
+           brand:{ t1:'FROZEN', t2:'FLAGS', tag:'ONLY THE COLDEST SURVIVE', q1:'WHO WILL', q2:'SURVIVE THE FREEZE?', elim:'FROZEN OUT', ko:'FROZEN SOLID!', cta:'LIKE & SUBSCRIBE', ctaSub:'TO STAY IN THE STORM!' },
+           pack:'auto', voiceMode:'pack', look:{face:'eyes',outfit:'basic',motion:'lively',balls:'rumble'},
+           channel:{ id:'ice', name:'Frozen Flags', money:false, left:'FROST SUPPORT', right:'ICE POWERS' },
+           live:{ shieldN:12, reviveN:24, corner:'sides' }, promo:{ mode:'smart' } },
+  lava:  { name:'Inferno Flags', arena:'lava', bgMode:'auto', bgDim:0.42,
+           hud:{header:'arcade',prompt:'arcade',elim:'arcade',cta:'arcade',ko:'arcade'},
+           brand:{ t1:'INFERNO', t2:'FLAGS', tag:'SURVIVE THE FIRE', q1:'WHO ESCAPES', q2:'THE INFERNO?', elim:'BURNED OUT', ko:'MELTED!', cta:'LIKE & SUBSCRIBE', ctaSub:'TO FUEL THE FIRE!' },
+           pack:'auto', voiceMode:'pack', look:{face:'full',outfit:'cultural',motion:'lively',balls:'rumble'},
+           channel:{ id:'lava', name:'Inferno Flags', money:false, left:'FIRE SUPPORT', right:'ESCAPE POWERS' },
+           live:{ shieldN:18, reviveN:36, corner:'sides' }, promo:{ mode:'smart' } },
+  desert:{ name:'Dune Nations', arena:'desert', bgMode:'auto', bgDim:0.44,
+           hud:{header:'tv',prompt:'tv',elim:'tv',cta:'tv',ko:'tv'},
+           brand:{ t1:'DUNE', t2:'NATIONS', tag:'LAST FLAG IN THE SAND', q1:'WHO OUTLASTS', q2:'THE SANDSTORM?', elim:'LOST IN THE SAND', ko:'BURIED!', cta:'LIKE & SUBSCRIBE', ctaSub:'FOR THE NEXT STORM!' },
+           pack:'auto', voiceMode:'pack', look:{face:'full',outfit:'basic',motion:'lively',balls:'rumble'},
+           channel:{ id:'desert', name:'Dune Nations', money:false, left:'CARAVAN CHAT', right:'OASIS POWERS' },
+           live:{ shieldN:10, reviveN:20, corner:'sides' }, promo:{ mode:'smart' } },
+  cosmic:{ name:'Galaxy Flags', arena:'cosmic', bgMode:'auto', bgDim:0.38,
+           hud:{header:'neon',prompt:'neon',elim:'neon',cta:'neon',ko:'neon'},
+           brand:{ t1:'GALAXY', t2:'FLAGS', tag:'BATTLE BEYOND THE STARS', q1:'WHICH NATION', q2:'RULES THE GALAXY?', elim:'LOST IN SPACE', ko:'INTO THE VOID!', cta:'LIKE & SUBSCRIBE', ctaSub:'TO JOIN THE GALAXY!' },
+           pack:'auto', voiceMode:'pack', look:{face:'eyes',outfit:'off',motion:'lively',balls:'rumble'},
+           channel:{ id:'cosmic', name:'Galaxy Flags', money:false, left:'STAR SUPPORT', right:'COSMIC POWERS' },
+           live:{ shieldN:14, reviveN:28, corner:'sides' }, promo:{ mode:'smart' } },
+};
+/* channel extras of a preset: monetization, panel titles, chat targets, panel layout, commentary sequence */
+function applyChannelExtras(p){
+  if (p.channel){ Object.assign(CHANNEL, p.channel); saveChannel(); }
+  if (p.live){ if (p.live.shieldN){ LIVE.shieldN=CHAT_RULES.SHIELD=p.live.shieldN; } if (p.live.reviveN){ LIVE.reviveN=CHAT_RULES.REVIVE=p.live.reviveN; }
+    if (p.live.corner) LIVE.corner=p.live.corner; saveLive(); }
+  if (p.promo && typeof PROMO!=='undefined'){ Object.assign(PROMO.cfg, p.promo); PROMO.save(); }
+  paintChannel();
+}
+function paintChannel(){
+  const m=document.getElementById('chMoney'); if (m) [...m.children].forEach(b=>b.classList.toggle('on', b.dataset.v===String(!!CHANNEL.money)));
+  for (const [id,k] of [['chLeft','left'],['chRight','right']]){ const el=document.getElementById(id); if (el && document.activeElement!==el) el.value=CHANNEL[k]||''; }
+  const s=document.getElementById('chState'); if (s) s.textContent='This stream is: '+(CHANNEL.name||'?')+' · '+(CHANNEL.money?'monetized: Super Chat, Jewels and membership asks are on':'not monetized: only free asks (chat power, subscribe, like)');
+}
+setTimeout(()=>{ try{
+  const m=document.getElementById('chMoney'); if (m) m.addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; CHANNEL.money=b.dataset.v==='true'; saveChannel(); paintChannel(); });
+  for (const [id,k] of [['chLeft','left'],['chRight','right']]){ const el=document.getElementById(id); if (el) el.addEventListener('input',()=>{ CHANNEL[k]=el.value.toUpperCase().slice(0,22); saveChannel(); paintChannel(); }); }
+  paintChannel();
+}catch(e){} }, 0);'''
+a_ = src.index('const PRESET_BUILTIN={'); b_ = src.index('function snapshotSettings(){')
+src = src[:a_] + PRESETS_JS + '\n' + src[b_:]
+_once("  try{ localStorage.setItem('flagsrumble-active-preset', label||p.name||''); }catch(e){}\n  paintPresets(); return true;",
+      "  try{ applyChannelExtras(p); }catch(e){}\n  try{ localStorage.setItem('flagsrumble-active-preset', label||p.name||''); }catch(e){}\n  paintPresets(); return true;", "try{ applyChannelExtras(p); }")
+_once("           pack:PACK_SEL, voiceMode:VOICE_MODE, voice:AZURE.voice, look:Object.assign({},LOOK) };",
+      "           pack:PACK_SEL, voiceMode:VOICE_MODE, voice:AZURE.voice, look:Object.assign({},LOOK),\n           channel:Object.assign({},CHANNEL), live:{shieldN:LIVE.shieldN, reviveN:LIVE.reviveN, corner:LIVE.corner}, promo:(typeof PROMO!=='undefined'?Object.assign({},PROMO.cfg):undefined) };", "channel:Object.assign({},CHANNEL)")
+# Channel tab: six channel buttons + this channel's monetization and panel titles
+if 'data-p="cosmic"' not in src:
+    a_ = src.index('<div class="seg" id="segPreset"'); b_ = src.index('</div>', a_) + 6
+    def btn(p, name, sub, money):
+        return '<button data-p="'+p+'" style="padding:10px">📺 '+name+(' <b style="color:#ffcf3d">💰 monetized</b>' if money else '')+'<br><small style="font-weight:400">'+sub+'</small></button>'
+    src = src[:a_] + '<div class="seg" id="segPreset" style="flex-direction:column">' + ''.join([
+        btn('war','Flags War Arena','Original arena + HUD, plain balls, original commentary · chat 20 / 40 · Super Chat, Jewels, membership', True),
+        btn('rumble','Flags Rumble','Grass arena, Royal HUD, faces · chat 15 / 30 · free asks only', False),
+        btn('ice','Frozen Flags (new)','Ice arena, Glass HUD, eyes + hats · chat 12 / 24 · free asks only', False),
+        btn('lava','Inferno Flags (new)','Lava arena, Arcade HUD, faces + cultural skins · chat 18 / 36 · free asks only', False),
+        btn('desert','Dune Nations (new)','Desert arena, TV HUD, faces + hats · chat 10 / 20 · free asks only', False),
+        btn('cosmic','Galaxy Flags (new)','Cosmic arena, Neon HUD, eyes · chat 14 / 28 · free asks only', False)]) + '</div>' + src[b_:]
+_once('''    <div class="pgroup" data-page="channel">
+      <h2>Country pool</h2>''', '''    <div class="pgroup" data-page="channel">
+      <h2>This channel</h2>
+      <div class="hrow"><span>Monetized (Super Chat, Jewels, membership)</span><div class="seg" id="chMoney"><button data-v="true">Yes</button><button data-v="false">Not yet</button></div></div>
+      <div style="display:flex;gap:6px"><label class="blab" style="flex:1;margin:0">Left panel title<input class="tin" id="chLeft" maxlength="22"></label><label class="blab" style="flex:1;margin:0">Right panel title<input class="tin" id="chRight" maxlength="22"></label></div>
+      <div class="hint" id="chState" style="color:#c9d3ff"></div>
+      <div class="hint">Not yet = no Super Chat or Jewels rows on screen and no paid asks in the commentary; the Super Chat slot becomes a "like" ask. Switch to Yes the day the channel gets monetized.</div>
+    </div>
+    <div class="pgroup" data-page="channel">
+      <h2>Country pool</h2>''', 'id="chMoney"')
+if "?preset=ice" not in src: src = src.replace("<code>index.html?preset=war</code> → Flags War Arena<br><code>index.html?preset=rumble</code> → Flags Rumble<br>",
+                  "<code>index.html?preset=war</code> → Flags War Arena<br><code>index.html?preset=rumble</code> → Flags Rumble<br><code>?preset=ice</code> · <code>lava</code> · <code>desert</code> · <code>cosmic</code> → the new channels<br>")
+src = src.replace('<span>Super Chat line · every round, 16→11 left (Smart)</span>', '<span>Super Chat line (a Like line if not monetized) · 16→11 left (Smart)</span>')
+
+# ---- panel layouts above the ring: compact question + popup card follow the layout
+_once("  if (ca<1){ ctx.save(); ctx.globalAlpha=1-ca; HUD_DRAW.prompt[HUD.prompt](); ctx.restore(); }",
+      "  if (ca<1){ ctx.save(); ctx.globalAlpha=1-ca; if (typeof sidesOn==='function' && sidesOn()) drawSidesPrompt(); else HUD_DRAW.prompt[HUD.prompt](); ctx.restore(); }", "drawSidesPrompt(); else HUD_DRAW.prompt")
+_once("    const box = boxLayoutOn();\n    const w = box ? 424 : 720, h=172, x=(W-w)/2, y=176;",
+      "    let box = boxLayoutOn(), w = box ? 424 : 720, h=172, x=(W-w)/2, y=176;\n    if (!box && typeof sidesOn==='function' && sidesOn()){ const r=sideCardRect(); x=r[0]; y=r[1]; w=r[2]; h=r[3]; box = w<600; }", "const r=sideCardRect();")
 
 # header note about the art files
 old_h = 'Drop in audio/loop.mp3 later for a music bed.'
