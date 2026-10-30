@@ -392,7 +392,7 @@ body.lite #bokeh,body.lite #amb,body.lite #petals,body.lite #speed{display:none}
 
 <aside id="panel" aria-label="Operator control panel">
   <h1>Stack Smash Live · Control</h1>
-  <p class="sub">v10.2 · panel hides itself in OBS / 9:16 windows · v10.1 rewards card (what each Super Chat / member / gift does, in USD) takes turns with the board · Phase 6 stream-ready: logo, channel presets, daily history + export, stream health (auto lite mode, safety reload), OBS link builder (18 skins · 24 breakers · 20 tunes · aura system · 2 mascots). The 9:16 game is on the left, this panel sits outside it. Crop the panel out in OBS.</p>
+  <p class="sub">v10.3 · event filler (auto by chat rate) · v10.2 · panel hides itself in OBS / 9:16 windows · v10.1 rewards card (what each Super Chat / member / gift does, in USD) takes turns with the board · Phase 6 stream-ready: logo, channel presets, daily history + export, stream health (auto lite mode, safety reload), OBS link builder (18 skins · 24 breakers · 20 tunes · aura system · 2 mascots). The 9:16 game is on the left, this panel sits outside it. Crop the panel out in OBS.</p>
   <div class="head btns"><button id="audioBtn" type="button">Start sound</button><button type="button" id="hideBtn">Hide panel (H)</button></div>
   <section><h2>Status</h2><div class="stat">
     <div><small>State</small><b id="stState">intro</b></div><div><small>Disks</small><b id="stDisks">0/0</b></div><div><small>FPS</small><b id="stFps">0</b></div><div><small>Aura</small><b id="stAura">-</b></div>
@@ -456,6 +456,10 @@ body.lite #bokeh,body.lite #amb,body.lite #petals,body.lite #speed{display:none}
     <div class="row"><label for="resetTime">Daily reset</label><input type="text" id="resetTime" maxlength="5" placeholder="HH:MM"></div>
     <div class="btns"><button type="button" id="boardReset">Reset board now</button><button type="button" id="boardTest">Clear test board</button></div>
     <p class="hint" id="boardInfo"></p>
+  </section>
+  <section><h2>Event filler (keeps the action going)</h2><div id="fillCtl"></div>
+    <div class="btns"><button type="button" id="fillBurst" class="hot">Combo burst now</button><button type="button" id="fillFireNow">Limit Break now</button></div>
+    <p class="hint" id="fillInfo"></p>
   </section>
   <section><h2>Rewards card (what each amount does)</h2><div id="rwCtl"></div><div id="rwPaidCtl" class="paidOnly"></div>
     <label class="fld paidOnly">Member prices, USD per month (same order as the member levels)<input id="memPrices" spellcheck="false" placeholder="0.62, 1.25, 2.51, 3.14"></label>
@@ -576,7 +580,9 @@ const DEF={gameName:'STACK SMASH LIVE',tag:'FLAGS RUMBLE',towerLen:80,gates:2,sp
   /* Phase 6 · stream-ready */
   logoOn:true,logoCards:true,logoBg:'white',autoLite:true,liteFps:0,liteSec:30,liteForce:false,reloadHours:0,obsBase:'',
   /* v10.1 rewards card */
-  rwOn:true,rwBoard:35,rwCard:12,rwSC:true,rwMem:true,rwChat:true,rwGoal:true,memPrices:'0.62, 1.25, 2.51, 3.14'};
+  rwOn:true,rwBoard:35,rwCard:12,rwSC:true,rwMem:true,rwChat:true,rwGoal:true,memPrices:'0.62, 1.25, 2.51, 3.14',
+  /* v10.3 event filler */
+  fillOn:true,fillMode:'auto',fillLow:10,fillHigh:40,fillPace:1,fillFire:4,fillGate:12};
 const S=Object.assign({},DEF,store.get('settings',{}));
 /* Phase 6: channel presets. A preset = the channel's identity settings (PRESET_KEYS) + logo. ?preset=<id> in the URL loads that preset on top
    of the saved settings every time the page loads. The preset stays the source of truth: on a ?preset= page, changes to these settings are written
@@ -2264,6 +2270,7 @@ function step(dt){
   FX.tick();                                                    // Phase 4: next support effect (one at a time)
   MASCOT.tick(dt);                                              // Phase 5: mascot prompts / thank-yous
   RW.tick(dt);                                                  // v10.1: rewards card takes turns with the board
+  FILL.tick(dt,t);                                              // v10.3: event filler (quiet / medium chat)
   const pw=G.power>0&&G.state==='play',smash=fire||pw;         // power smash = goes through black wedges and gates like fire
   // heat
   while(G.heat.length&&G.heat[0]<t-10)G.heat.shift();
@@ -2280,7 +2287,7 @@ function step(dt){
     if(demo&&Math.random()<dt/28)G.floodUntil=Math.max(G.floodUntil,t+rnd(2,4));
     if(demo){const rate=S.demoRate/60*(t<G.floodUntil?6:1)*(.55+.9*Math.abs(Math.sin(t*.21)));if(Math.random()<rate*dt)DEMO.one()}
     if(t<G.floodUntil&&Math.random()<9*dt){if(SRC.realOn())request(1,'chat');else DEMO.one()}
-    if(S.keepAlive&&t-G.lastReq>3.5&&t-G.lastAuto>1/S.keepAliveRate&&!G.gate){G.lastAuto=t;request(1,'auto')}
+    if(S.keepAlive&&!FILL.covering()&&t-G.lastReq>3.5&&t-G.lastAuto>1/S.keepAliveRate&&!G.gate){G.lastAuto=t;request(1,'auto')}
   }
   // the next queued smash names a country: its disk wears that flag before it breaks
   if(G.state==='play'&&!pw&&G.tags.length&&G.tags[0]&&G.tags[0].code&&(G.flagged!==G.cur||G.flagCode!==G.tags[0].code)&&G.cur<G.len)flagDisk(G.cur,G.tags[0].code);
@@ -2434,6 +2441,41 @@ const MASCOT={cur:'',mode:'',clock:0,until:0,nextAt:0,turn:0,el:{},shown:0,
     if(this.cur&&(G.state!=='play'||this.clock>=this.until)){this.hide();return}
     if(!this.cur&&S.mascotOn&&G.state==='play'&&G.cur>2&&this.clock>=this.nextAt){this.promptNow();this.nextAt=this.clock+S.mascotSec+Math.max(20,S.mascotGap)}}};
 MASCOT.init();
+
+/* ================= v10.3 · EVENT FILLER =================
+   Keeps the tower moving with varied, game-like action when chat is quiet. Filler smashes are anonymous (request(n,'auto')):
+   no names, no flags, no points, no tune guesses, no votes, no streaks, no Chat Heat, never a fake chat message (rule 13).
+   Level from the real chat rate (messages in the last minute): >= S.fillHigh = off (chat drives it) · S.fillLow..S.fillHigh = light
+   (fills only the gaps when chat pauses 2.5 s) · below S.fillLow = full (random clusters, combo bursts, trickles, quiet beats, a Limit
+   Break every ~S.fillFire min, cracks an iron gate after S.fillGate s). A level change must hold 5 s (no flicker). Mode 'always' = full. */
+const FILL={lvl:'off',want:'off',wantT:0,nextAt:0,trickle:0,trickleNext:0,lastFire:0,smashes:0,bursts:0,fires:0,
+  rate(){return CHAT.perMin()},
+  target(){if(!S.fillOn)return 'off';if(S.fillMode==='always')return 'full';const r=this.rate();return r>=S.fillHigh?'off':r>=S.fillLow?'light':'full'},
+  covering(){return this.lvl!=='off'},
+  ri(a,b){return a+Math.floor(Math.random()*(b-a+1))},
+  smash(n){request(n,'auto');this.smashes+=n;if(n>=8)this.bursts++},
+  fire(){startFire({main:'LIMIT BREAK!',sub:'power surge · fire mode',color:'#ff8a00'});this.fires++},
+  tick(dt,t){
+    const w=this.target();if(w!==this.want){this.want=w;this.wantT=t}
+    if(w!==this.lvl&&(t-this.wantT>=5||!S.fillOn||this.lvl==='off'&&w!=='off'&&this.smashes===0)){
+      this.lvl=w;this.nextAt=t+rnd(.8,2);this.trickle=0;
+      LOG('Event filler: '+({off:'OFF (chat is busy or filler switched off)',light:'LIGHT (medium chat: fills the gaps)',full:'FULL (quiet chat)'})[w]+' · chat '+this.rate()+'/min')}
+    if(G.state!=='play'||this.lvl==='off'){this.trickle=0;return}
+    /* iron gate: a quiet chat can't fill the bar, so the filler cracks it after S.fillGate s (light mode leaves it to chat + the timeout) */
+    if(G.gate){if(this.lvl==='full'&&S.gateTimeout-(G.gate.until-t)>=S.fillGate)crackGate();return}
+    if(this.trickle>0&&t>=this.trickleNext){this.trickle--;this.trickleNext=t+rnd(.35,.6);this.smash(1)}
+    if(t<this.nextAt)return;
+    if(G.pending>15){this.nextAt=t+1;return}                                  // don't pile up a backlog
+    if(this.lvl==='light'&&t-G.lastReq<2.5){this.nextAt=t+1;return}         // medium chat: only fill the pauses
+    const pace=Math.max(.3,S.fillPace),r=Math.random();
+    if(this.lvl==='full'){
+      if(S.fillFire>0&&!inFire()&&t-this.lastFire>S.fillFire*60&&G.cur>G.len*.15&&G.cur<G.len*.8){this.lastFire=t+rnd(-30,30);this.fire();this.nextAt=t+S.fireDur+rnd(2,4);return}
+      if(r<.42)this.smash(this.ri(2,5));                                    // small cluster
+      else if(r<.67)this.smash(this.ri(10,22));                             // combo burst (x10 / x20 pops)
+      else if(r<.8){}                                                       // quiet beat
+      else this.trickle=this.ri(5,9);                                       // steady trickle
+    }else{if(r<.75)this.smash(this.ri(1,4));else this.smash(this.ri(6,12))}
+    this.nextAt=t+rnd(2.4,5.5)/pace}};
 
 /* ================= v10.1 · REWARDS CARD =================
    Takes turns with the Country Top 5 board in the same spot (top-left, inside the top 60%): board S.rwBoard s → card S.rwCard s → board …
@@ -2714,10 +2756,10 @@ function srcPaint(){
   const st=CHAT.stats;$('stMsgs').textContent=CHAT.perMin();$('stFilt').textContent=st.dup+st.bot+st.cool+st.capped;$('stPts').textContent=st.pts;
   const nr=LB.nextReset(LB.since);$('boardInfo').innerHTML='Showing: <b>'+(LB.useReal()?'real (today)':'test')+'</b> · '+Object.keys(LB.real).length+' countries today · next reset '+new Date(nr).toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'})+'<br>Filtered: '+st.cool+' cooldown · '+st.dup+' duplicate · '+st.bot+' bots · '+st.capped+' over cap';
   if(logDirty){logDirty=false;$('evLog').textContent=LOGS.join('\n')||'No events yet.'}
-  p3Paint();p4Paint();healthPaint();histPaint();rwPaint();   // Phase 6 + v10.1
+  p3Paint();p4Paint();healthPaint();histPaint();rwPaint();fillPaint();   // Phase 6 + v10.1 + v10.3
 }
 setInterval(()=>{try{srcPaint()}catch(e){console.error('[SSL panel]',e)}},1000);
-LOG('Stack Smash Live v10.2 loaded · '+COUNTRY_LIST.length+' countries · '+(paidMode()?'Monetized':'Not monetized')+' mode'+(MODE_Q?' (from link)':''));
+LOG('Stack Smash Live v10.3 loaded · '+COUNTRY_LIST.length+' countries · '+(paidMode()?'Monetized':'Not monetized')+' mode'+(MODE_Q?' (from link)':''));
 
 const ACT={
   pause(){G.paused=!G.paused;$('pauseBtn').textContent=G.paused?'Resume':'Pause';if(ctx)G.paused?ctx.suspend():ctx.resume()},
@@ -2840,6 +2882,21 @@ function rwPaint(){const c=RW.cycle(),nm={sc:'Super Chat',mem:'Members',chat:'Ch
   $('rwInfo').innerHTML=(S.rwOn?'Now: <b>'+(RW.phase==='card'?nm[RW.cur]+' card':'board')+'</b> · next change in '+Math.max(0,Math.ceil(RW.until-RW.t))+' s<br>Cycle: '+(c.map(k=>nm[k]).join(' → ')||'nothing switched on'):'Off: the board stays up.')
     +'<br>All prices in USD (tiers from the Super Chat sliders). After a real Super Chat / member / gift / Jewels effect, its page comes next. Thank-you wording only, nothing says “pay to win”.'}
 
+/* ---------- v10.3 event filler panel ---------- */
+mkChk('fillCtl','fillOn','Event filler on (anonymous smashes only: no names, no points)',()=>{if(!S.fillOn)FILL.trickle=0});
+mkSel('fillCtl','fillMode','Mode',[['auto','Auto by chat rate'],['always','Always full (ignore chat rate)']]);
+mkRange('fillCtl','fillLow','Full below',2,60,1,v=>v+'/min');
+mkRange('fillCtl','fillHigh','Off from',10,200,5,v=>v+'/min');
+mkRange('fillCtl','fillPace','Pace',.5,2,.1,v=>'×'+(+v).toFixed(1));
+mkRange('fillCtl','fillFire','Limit Break every',0,15,1,v=>v?'~'+v+' min':'never');
+mkRange('fillCtl','fillGate','Crack gate after',5,30,1,v=>v+'s');
+$('fillBurst').onclick=()=>{if(G.state!=='play'){LOG('Combo burst: only while a tower is in play');return}FILL.smash(FILL.ri(14,22));LOG('Event filler: combo burst (panel)')};
+$('fillFireNow').onclick=()=>{if(G.state!=='play'){LOG('Limit Break: only while a tower is in play');return}FILL.fire();FILL.lastFire=G.gt};
+function fillPaint(){const nm={off:'OFF',light:'LIGHT',full:'FULL'};
+  $('fillInfo').innerHTML='Now: <b>'+nm[FILL.lvl]+'</b> · real chat <b>'+FILL.rate()+'/min</b>'+(FILL.want!==FILL.lvl?' → '+nm[FILL.want]+' in a few s':'')+' · this load: '+FILL.smashes+' filler smashes, '+FILL.bursts+' bursts, '+FILL.fires+' Limit Breaks'
+    +'<br><b>Auto:</b> under '+S.fillLow+'/min = full (random clusters, combo bursts, trickles, quiet beats'+(S.fillFire?', a Limit Break every ~'+S.fillFire+' min':'')+', cracks an iron gate after '+S.fillGate+' s) · '+S.fillLow+'–'+S.fillHigh+'/min = light (only fills pauses) · '+S.fillHigh+'/min and up = off.'
+    +'<br>Filler never shows names, flags or chat messages and never touches the board, guesses, votes, streaks or Chat Heat. Keep-alive steps aside while the filler is on.'}
+
 /* ---------- daily history panel ---------- */
 function histPaint(){if(!HIST.dirty&&HIST._p&&Date.now()-HIST._p<5000)return;HIST.dirty=false;HIST._p=Date.now();
   const fmtDay=t=>new Date(t).toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'});
@@ -2943,7 +3000,7 @@ window.SSL={debugAdvance:(sec,d=true)=>{for(let k=0;k<sec*60;k++)step(1/60);if(d
   _p3:{PH3,STREAK,TUNE_ALIAS,BREAKER_VOTE,newRound,finish,showResults},
   _p4:{SUP,FX,GOAL,LIKES,HOF,toUSD,scTier,memberTier,rates,paidMode,chanMode,power},
   _p5:{MASCOT,MCFG},
-  _p6:{RW,HIST,DAY,PRESET,LOGO,HEALTH,exportText,syncCtl,P6,obsPaint,gpu:()=>({geo:renderer.info.memory.geometries,tex:renderer.info.memory.textures,calls:renderer.info.render.calls,prog:(renderer.info.programs||[]).length})}};
+  _p6:{FILL,RW,HIST,DAY,PRESET,LOGO,HEALTH,exportText,syncCtl,P6,obsPaint,gpu:()=>({geo:renderer.info.memory.geometries,tex:renderer.info.memory.textures,calls:renderer.info.render.calls,prog:(renderer.info.programs||[]).length})}};
 
 try{audioInit()}catch(e){}
 HEALTH.resume();   // Phase 6: carry the next-round choices over a safety reload
