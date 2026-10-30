@@ -392,7 +392,7 @@ body.lite #bokeh,body.lite #amb,body.lite #petals,body.lite #speed{display:none}
 
 <aside id="panel" aria-label="Operator control panel">
   <h1>Stack Smash Live · Control</h1>
-  <p class="sub">v10.3 · event filler (auto by chat rate) · v10.2 · panel hides itself in OBS / 9:16 windows · v10.1 rewards card (what each Super Chat / member / gift does, in USD) takes turns with the board · Phase 6 stream-ready: logo, channel presets, daily history + export, stream health (auto lite mode, safety reload), OBS link builder (18 skins · 24 breakers · 20 tunes · aura system · 2 mascots). The 9:16 game is on the left, this panel sits outside it. Crop the panel out in OBS.</p>
+  <p class="sub">v10.4 · “New stream” button (back to round 1) · v10.3 · event filler (auto by chat rate) · v10.2 · panel hides itself in OBS / 9:16 windows · v10.1 rewards card (what each Super Chat / member / gift does, in USD) takes turns with the board · Phase 6 stream-ready: logo, channel presets, daily history + export, stream health (auto lite mode, safety reload), OBS link builder (18 skins · 24 breakers · 20 tunes · aura system · 2 mascots). The 9:16 game is on the left, this panel sits outside it. Crop the panel out in OBS.</p>
   <div class="head btns"><button id="audioBtn" type="button">Start sound</button><button type="button" id="hideBtn">Hide panel (H)</button></div>
   <section><h2>Status</h2><div class="stat">
     <div><small>State</small><b id="stState">intro</b></div><div><small>Disks</small><b id="stDisks">0/0</b></div><div><small>FPS</small><b id="stFps">0</b></div><div><small>Aura</small><b id="stAura">-</b></div>
@@ -518,7 +518,10 @@ body.lite #bokeh,body.lite #amb,body.lite #petals,body.lite #speed{display:none}
   <section><h2>Event log</h2><div id="evLog"></div></section>
   <section><h2>Loop</h2><div class="btns">
     <button type="button" data-act="pause" id="pauseBtn">Pause</button><button type="button" data-act="next">Next round</button><button type="button" data-act="restart">Restart round</button>
-  </div><div id="loopCtl"></div></section>
+  </div><div id="loopCtl"></div>
+    <div class="btns" style="margin-top:8px"><button type="button" id="freshStream" class="hot">New stream: start from round 1</button></div>
+    <label class="chk"><input type="checkbox" id="freshHof"> Also clear the Hall of Fame</label>
+    <p class="hint">Fresh start for a new stream: round number back to 1, Top 5 board (today's numbers are saved to Daily history first), streaks, sub / like goals, Sub Wall, effect queue, next-round picks and chat counters. Keeps settings, presets, logo, chat connections and history. Click twice to confirm.</p></section>
   <section><h2>Next round setup</h2><div id="setupCtl"></div><p class="sub" style="margin:6px 0 0">Changes apply when the next round starts.</p></section>
   <section><h2>Smash tests</h2><div class="btns">
     <button type="button" data-act="smash1">+1 smash</button><button type="button" data-act="smash10">+10 burst</button><button type="button" data-act="flood">Chat flood 10s</button><button type="button" data-act="fire" class="hot">Fire mode</button><button type="button" data-act="gate">Crack gate</button>
@@ -2759,7 +2762,7 @@ function srcPaint(){
   p3Paint();p4Paint();healthPaint();histPaint();rwPaint();fillPaint();   // Phase 6 + v10.1 + v10.3
 }
 setInterval(()=>{try{srcPaint()}catch(e){console.error('[SSL panel]',e)}},1000);
-LOG('Stack Smash Live v10.3 loaded · '+COUNTRY_LIST.length+' countries · '+(paidMode()?'Monetized':'Not monetized')+' mode'+(MODE_Q?' (from link)':''));
+LOG('Stack Smash Live v10.4 loaded · '+COUNTRY_LIST.length+' countries · '+(paidMode()?'Monetized':'Not monetized')+' mode'+(MODE_Q?' (from link)':''));
 
 const ACT={
   pause(){G.paused=!G.paused;$('pauseBtn').textContent=G.paused?'Resume':'Pause';if(ctx)G.paused?ctx.suspend():ctx.resume()},
@@ -2896,6 +2899,20 @@ function fillPaint(){const nm={off:'OFF',light:'LIGHT',full:'FULL'};
   $('fillInfo').innerHTML='Now: <b>'+nm[FILL.lvl]+'</b> · real chat <b>'+FILL.rate()+'/min</b>'+(FILL.want!==FILL.lvl?' → '+nm[FILL.want]+' in a few s':'')+' · this load: '+FILL.smashes+' filler smashes, '+FILL.bursts+' bursts, '+FILL.fires+' Limit Breaks'
     +'<br><b>Auto:</b> under '+S.fillLow+'/min = full (random clusters, combo bursts, trickles, quiet beats'+(S.fillFire?', a Limit Break every ~'+S.fillFire+' min':'')+', cracks an iron gate after '+S.fillGate+' s) · '+S.fillLow+'–'+S.fillHigh+'/min = light (only fills pauses) · '+S.fillHigh+'/min and up = off.'
     +'<br>Filler never shows names, flags or chat messages and never touches the board, guesses, votes, streaks or Chat Heat. Keep-alive steps aside while the filler is on.'}
+
+/* ---------- v10.4 fresh stream: one button back to round 1 ---------- */
+let freshArm=0;
+$('freshStream').onclick=()=>{const b=$('freshStream');
+  if(Date.now()-freshArm>3000){freshArm=Date.now();b.textContent='Click again to start fresh';setTimeout(()=>{b.textContent='New stream: start from round 1'},3000);return}
+  freshArm=0;b.textContent='New stream: start from round 1';
+  LB.reset('real');LB.reset('test');GOAL.since=LB.since;GOAL.reset();        // board (history row saved first), streaks, goals, Sub Wall, like baseline
+  if($('freshHof').checked)HOF.reset();
+  FX.q=[];G.power=0;G.forceNext=null;G.nextBreaker=null;G.chosenBy='';G.voteResult=null;G.rainbowNext=false;G.discoNext=false;
+  for(const k in seq)seq[k]=[];for(const k in recent)recent[k]=[];
+  CHAT.roundPts.clear();for(const k in CHAT.stats)CHAT.stats[k]=0;
+  HEALTH.reloadReq=false;RW.hide();MASCOT.hide();if(G.paused)ACT.pause();
+  G.round=1;store.set('round',1);newRound();
+  LOG('NEW STREAM: round 1 · board, streaks, goals and next-round picks cleared'+($('freshHof').checked?' · Hall of Fame cleared':'')+' (earlier numbers saved to Daily history)')};
 
 /* ---------- daily history panel ---------- */
 function histPaint(){if(!HIST.dirty&&HIST._p&&Date.now()-HIST._p<5000)return;HIST.dirty=false;HIST._p=Date.now();
