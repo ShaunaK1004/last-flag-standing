@@ -392,7 +392,7 @@ body.lite #bokeh,body.lite #amb,body.lite #petals,body.lite #speed{display:none}
 
 <aside id="panel" aria-label="Operator control panel">
   <h1>Stack Smash Live · Control</h1>
-  <p class="sub">v10.1 · rewards card (what each Super Chat / member / gift does, in USD) takes turns with the board · Phase 6 stream-ready: logo, channel presets, daily history + export, stream health (auto lite mode, safety reload), OBS link builder (18 skins · 24 breakers · 20 tunes · aura system · 2 mascots). The 9:16 game is on the left, this panel sits outside it. Crop the panel out in OBS.</p>
+  <p class="sub">v10.2 · panel hides itself in OBS / 9:16 windows · v10.1 rewards card (what each Super Chat / member / gift does, in USD) takes turns with the board · Phase 6 stream-ready: logo, channel presets, daily history + export, stream health (auto lite mode, safety reload), OBS link builder (18 skins · 24 breakers · 20 tunes · aura system · 2 mascots). The 9:16 game is on the left, this panel sits outside it. Crop the panel out in OBS.</p>
   <div class="head btns"><button id="audioBtn" type="button">Start sound</button><button type="button" id="hideBtn">Hide panel (H)</button></div>
   <section><h2>Status</h2><div class="stat">
     <div><small>State</small><b id="stState">intro</b></div><div><small>Disks</small><b id="stDisks">0/0</b></div><div><small>FPS</small><b id="stFps">0</b></div><div><small>Aura</small><b id="stAura">-</b></div>
@@ -536,7 +536,7 @@ body.lite #bokeh,body.lite #amb,body.lite #petals,body.lite #speed{display:none}
     <label class="chk"><input type="checkbox" id="obsHide" checked> Hide this control panel in OBS (obs=1)</label>
     <label class="fld">OBS link<input id="obsUrl" readonly></label>
     <div class="btns"><button type="button" id="obsCopy" class="hot">Copy OBS link</button></div>
-    <div class="keys" style="margin-top:6px">Browser source: width <kbd>1500</kbd>, height <kbd>1920</kbd>, crop right <kbd>420</kbd> (the game is exactly 1080 × 1920 at the left edge). Tick “Control audio via OBS”. The link's mode wins over the panel. <kbd>H</kbd> shows / hides the panel.</div>
+    <div class="keys" style="margin-top:6px">Browser source: width <kbd>1500</kbd>, height <kbd>1920</kbd>, crop right <kbd>420</kbd> (the game is exactly 1080 × 1920 at the left edge). Tick “Control audio via OBS”. The link's mode wins over the panel. Inside OBS the panel hides by itself: right-click the source → Interact → <kbd>H</kbd> to show it (with width 1500 + crop 420 it opens in the cropped strip, so viewers never see it). A 1080 × 1920 source with no crop also works, but then opening the panel shrinks the game on stream.</div>
   </section>
 </aside>
 
@@ -2717,7 +2717,7 @@ function srcPaint(){
   p3Paint();p4Paint();healthPaint();histPaint();rwPaint();   // Phase 6 + v10.1
 }
 setInterval(()=>{try{srcPaint()}catch(e){console.error('[SSL panel]',e)}},1000);
-LOG('Stack Smash Live v10.1 loaded · '+COUNTRY_LIST.length+' countries · '+(paidMode()?'Monetized':'Not monetized')+' mode'+(MODE_Q?' (from link)':''));
+LOG('Stack Smash Live v10.2 loaded · '+COUNTRY_LIST.length+' countries · '+(paidMode()?'Monetized':'Not monetized')+' mode'+(MODE_Q?' (from link)':''));
 
 const ACT={
   pause(){G.paused=!G.paused;$('pauseBtn').textContent=G.paused?'Resume':'Pause';if(ctx)G.paused?ctx.suspend():ctx.resume()},
@@ -2735,7 +2735,7 @@ $('audioBtn').onclick=()=>{audioInit();ctx&&ctx.resume().then(updAudioBtn)};
 addEventListener('pointerdown',()=>{if((!ctx||ctx.state!=='running')&&!G.paused)audioInit()},{once:false,passive:true});
 addEventListener('keydown',e=>{const tg=e.target.tagName;if((tg==='INPUT'&&!['checkbox','range'].includes(e.target.type))||tg==='SELECT'||tg==='TEXTAREA')return;
   const k=e.key.toLowerCase();audioInit();
-  if(k===' '){e.preventDefault();request(1,'chat')}else if(k==='b')ACT.smash10();else if(k==='c')ACT.flood();else if(k==='f')ACT.fire();else if(k==='g')ACT.gate();else if(k==='n')ACT.next();else if(k==='p')ACT.pause();else if(k==='m')ACT.mute();else if(k==='h'){hidePanel=!hidePanel;layout()}else if(k==='r')PH3.reveal(true);else if(k==='v')PH3.openVote(true)});
+  if(k===' '){e.preventDefault();request(1,'chat')}else if(k==='b')ACT.smash10();else if(k==='c')ACT.flood();else if(k==='f')ACT.fire();else if(k==='g')ACT.gate();else if(k==='n')ACT.next();else if(k==='p')ACT.pause();else if(k==='m')ACT.mute();else if(k==='h'){hidePanel=!hidePanel;panelManual=true;layout()}else if(k==='r')PH3.reveal(true);else if(k==='v')PH3.openVote(true)});
 
 /* =====================================================================
    PHASE 6 · panel: export helpers, logo, channel presets, stream health, OBS link builder
@@ -2914,8 +2914,13 @@ psPaint();LOGO.apply();HEALTH.apply();
 if(P6.lock)LOG(P6.lock.missing?'Preset "'+PRESET_Q+'" (from the link) was not found in this browser: using the normal settings':'Preset loaded from the link: '+PRESET_Q);
 
 /* ---------- layout ---------- */
-let hidePanel=QS.get('obs')==='1'||QS.get('panel')==='0';
-function layout(){const st=$('stage'),pn=$('panel'),iw=innerWidth,ih=innerHeight;
+/* v10.2: the panel hides by itself inside OBS (window.obsstudio) and in any exact 9:16 window, so a 1080×1920 source never shows it.
+   ?obs=1 / ?stream=1 / ?panel=0 force it hidden, ?panel=1 forces it shown, H toggles it (after H the automatic rule stops). */
+const IN_OBS=!!window.obsstudio,PANEL_Q=QS.get('panel'),FORCE_HIDE=QS.get('obs')==='1'||QS.get('stream')==='1'||PANEL_Q==='0';
+const is916=()=>innerHeight>0&&Math.abs(innerWidth/innerHeight-W/H)<.015;
+const autoHide=()=>PANEL_Q==='1'?false:FORCE_HIDE||IN_OBS||is916();
+let hidePanel=autoHide(),panelManual=false;
+function layout(){const st=$('stage'),pn=$('panel'),iw=innerWidth,ih=innerHeight;if(!panelManual)hidePanel=autoHide();
   pn.hidden=hidePanel;
   if(hidePanel){document.body.classList.remove('narrow');const s=Math.min(iw/W,ih/H);st.style.left='0';st.style.top='0';st.style.transform=`scale(${s})`;return}   // pinned left: works with OBS width 1500 + crop right 420, or width 1080
   // 9:16 game fills the full window height at the left edge; panel takes all remaining width beside it
@@ -2923,7 +2928,7 @@ function layout(){const st=$('stage'),pn=$('panel'),iw=innerWidth,ih=innerHeight
   if(iw-W*s<330||W*s<200){document.body.classList.add('narrow');s=Math.min((iw-32)/W,ih*.92/H);st.style.left=((iw-W*s)/2)+'px';st.style.top='16px';st.style.transform=`scale(${s})`;pn.style.left='16px';pn.style.width=(iw-32)+'px';pn.style.top=(H*s+32)+'px';return}
   document.body.classList.remove('narrow');st.style.left='0';st.style.top='0';st.style.transform=`scale(${s})`;pn.style.left=(W*s)+'px';pn.style.width=(iw-W*s)+'px';pn.style.top='0'}
 addEventListener('resize',layout);layout();
-$('hideBtn').onclick=()=>{hidePanel=true;layout()};
+$('hideBtn').onclick=()=>{hidePanel=true;panelManual=true;layout()};
 
 /* ---------- public hook ---------- */
 window.SSL={debugAdvance:(sec,d=true)=>{for(let k=0;k<sec*60;k++)step(1/60);if(d)draw()},smash:(n=1)=>request(n,'chat'),fire:startFire,next:ACT.next,
