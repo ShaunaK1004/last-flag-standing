@@ -5131,20 +5131,16 @@ function sideBox(x,y,w,h,T,title){
 }
 function sideSupport(x,y,w,h,T){
   ctx.save(); ctx.textBaseline='middle';
-  const L=CHAT.leaders(), tall=h>=140, leg=CHAT_RULES.SHIELD+' msgs = 🛡  ·  '+CHAT_RULES.REVIVE+' = ♻';
-  ctx.font='600 13px "FR Poppins",system-ui,sans-serif'; ctx.fillStyle=T.dim;
-  if (tall){ ctx.textAlign='center'; ctx.fillText(leg, x+w/2, y+42); }
-  else { const lw=ctx.measureText(leg).width; ctx.font=fnt(T.tw,19,T.st); const tw_=ctx.measureText(String(CHANNEL.left||'').toUpperCase()).width;
-    if (tw_+lw+48<w){ ctx.font='600 13px "FR Poppins",system-ui,sans-serif'; ctx.textAlign='right'; ctx.fillStyle=T.st==='tv'?'#ffffff':T.dim; ctx.fillText(leg, x+w-14, y+15); } }
+  const L=CHAT.leaders(), tall=h>=140;          // shield/revive numbers live in the powers box beside it
   if (!L.length){
     ctx.textAlign='center'; ctx.fillStyle=T.text; ctx.font=(T.st==='arcade'?'400 ':'800 ')+(tall?18:17)+'px '+FF[T.st];
-    if (tall){ ctx.fillText('Type your country', x+w/2, y+h/2+4); ctx.fillText('in chat to save it!', x+w/2, y+h/2+30); }
+    if (tall){ ctx.fillText('Type your country', x+w/2, y+h/2-16); ctx.fillText('in chat to save it!', x+w/2, y+h/2+10); }
     else ctx.fillText('Type your country in chat to save it!', x+w/2, y+h/2+10, w-28);
   }
   L.forEach((r,i)=>{
     const col=r.alive?T.good:T.bad, f=Math.min(1,r.n/r.need), sp=sprites.get(r.code);
     let cx, cy, R, lx, ly, la;
-    if (tall){ R=23; cx=x+w/2+(i-(L.length-1)/2)*94; cy=y+92; lx=cx; ly=y+134; la='center'; }
+    if (tall){ R=23; cx=x+w/2+(i-(L.length-1)/2)*94; cy=y+76; lx=cx; ly=y+118; la='center'; }
     else { const sw=(w-20)/3; R=17; cx=x+10+sw*i+26; cy=y+(h+30)/2; lx=cx+R+12; ly=cy; la='left'; }
     ctx.lineWidth=tall?6:5; ctx.strokeStyle='rgba(255,255,255,0.16)'; ctx.beginPath(); ctx.arc(cx,cy,R+5,0,7); ctx.stroke();
     ctx.strokeStyle=col; ctx.lineCap='round'; ctx.beginPath(); ctx.arc(cx,cy,R+5,-Math.PI/2,-Math.PI/2+Math.max(0.02,f)*Math.PI*2); ctx.stroke();
@@ -5154,8 +5150,12 @@ function sideSupport(x,y,w,h,T){
   });
   if (tall){ const ev=CHAT.feed[0], show=ev && ev.t<12000, txt=show ? ev.txt : liveTip();
     ctx.textAlign='center'; ctx.font=(show?'800 14px':'700 13px')+' "FR Poppins",system-ui,sans-serif'; ctx.fillStyle=show?ev.col:T.gold;
-    let s2=txt, maxW=w-24; if (ctx.measureText(s2).width>maxW){ while (s2.length>4 && ctx.measureText(s2+'…').width>maxW) s2=s2.slice(0,-1); s2+='…'; }
-    ctx.fillText(s2, x+w/2, y+h-15); }
+    const maxW=w-24;
+    if (ctx.measureText(txt).width<=maxW) ctx.fillText(txt, x+w/2, y+h-15);
+    else { const wd=txt.split(' '); let best=[txt,''], bw=1e9;          // never cut a line: split it over two balanced rows
+      for (let k=1;k<wd.length;k++){ const a=wd.slice(0,k).join(' '), b=wd.slice(k).join(' '), m=Math.max(ctx.measureText(a).width, ctx.measureText(b).width); if (m<bw){ bw=m; best=[a,b]; } }
+      if (bw>maxW) ctx.font=(show?'800 ':'700 ')+Math.max(10,Math.floor(13*maxW/bw))+'px "FR Poppins",system-ui,sans-serif';
+      ctx.fillText(best[0], x+w/2, y+h-29); ctx.fillText(best[1], x+w/2, y+h-12); } }
   ctx.restore();
 }
 function sideRules(x,y,w,h,T){
@@ -5853,6 +5853,19 @@ function testSupport(code, n, member, untilFlag){
    ========================================================================== */
 const YT_KEY = 'flagsrumble-yt-v1', YTQ_KEY = 'flagsrumble-yt-quota-v1';
 const YT_COST = { list:5, video:1 };
+/* Chat timestamps come from YouTube's clock, and this PC's clock can be seconds or minutes off.
+   Without this, a PC clock running ahead makes every message look "sent before this round" and nothing counts.
+   CLOCK learns the gap from the freshest messages (2-minute window) and moves timestamps onto this PC's clock. */
+const CLOCK = { s:[], off:null, warned:0,
+  learn(p){
+    const now=Date.now(), d=now-p; this.s.push([now,d]);
+    while (this.s.length && (now-this.s[0][0]>120000 || this.s.length>400)) this.s.shift();
+    let m=Infinity; for (const x of this.s) if (x[1]<m) m=x[1]; this.off=m;
+    if (Math.abs(m)>5000 && now-this.warned>600000){ this.warned=now;
+      try{ CHAT.note('Chat timestamps were '+Math.round(Math.abs(m)/1000)+' s off this PC\'s clock: corrected automatically'); }catch(e){} }
+  },
+  fix(p, learn){ if (!p) return Date.now(); if (learn!==false) this.learn(p); return this.off==null ? p : p+this.off; },
+};
 const YT = {
   cfg:{ key:'', video:'', mode:'smart', interval:12, hours:12, limit:10000, autoResume:false },
   wanted:false, running:false, chatId:'', pageToken:'', timer:null, busy:false,
@@ -5990,7 +6003,7 @@ const YT = {
       for (const it of items){
         const t0=Date.parse(it.snippet.publishedAt); if (!t0) continue;
         if (now-t0 < -this.skew) this.skew=-(now-t0);          // our clock is behind YouTube's
-        const t=t0+this.skew;
+        const t = (!p.pageToken && CLOCK.off==null) ? t0+this.skew : CLOCK.fix(t0, !!p.pageToken);   // first poll is backlog: never learn from it
         if (t < this.connectedAt) continue;                     // backlog from before we connected
         const m=ytToMsg(it, t); if (m){ m.via='yt'; CHAT.ingest(m); n++; }
       }
@@ -6082,7 +6095,7 @@ const SE = {
     if (!raw){ if (this.unknown++<3) CHAT.note('StreamElements chat item not recognised: '+JSON.stringify(d).slice(0,140)); return; }
     this.chats++; this.lastChat=Date.now();
     const p=Date.parse(raw.snippet.publishedAt), now=Date.now();
-    const m=ytToMsg(raw, p && Math.abs(now-p)<600000 ? p : now);
+    const m=ytToMsg(raw, p ? CLOCK.fix(p) : now);
     if (m){ m.via='se'; CHAT.ingest(m); }
   },
   onAct(a){
@@ -6138,7 +6151,7 @@ const SL = {
   },
   onEvent(ev){
     if (!ev) return; const type=String(ev.type||''), forr=String(ev.for||'');
-    if (/^streamlabels|^alertPlaying|^alertplaying|^rollEndCredits/i.test(type)) return;        // Streamlabs housekeeping
+    if (/^streamlabels|^alertPlaying|^alertplaying|^rollEndCredits|^pollEvent|^poll/i.test(type)) return;        // Streamlabs housekeeping (polls too)        // Streamlabs housekeeping
     this.events++;
     const list=Array.isArray(ev.message)?ev.message:[ev.message||{}];
     for (const m of list){
