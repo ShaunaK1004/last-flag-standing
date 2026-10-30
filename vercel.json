@@ -1,0 +1,12 @@
+{
+  "headers": [
+    {
+      "source": "/winart/manifest.js",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/winart/:dir(c|kits|bg)/:path*",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
+}
